@@ -59,6 +59,7 @@ class FakeDocker:
         self.raise_on = raise_on
         self.logs = logs
         self.stopped = []
+        self.proxy_starts = []
 
     def docker(self, argv):
         self.commands.append(argv)
@@ -72,6 +73,10 @@ class FakeDocker:
         if argv[:2] == ["docker", "logs"]:
             return self.logs
         return ProcResult(0, b"", b"", False)
+
+    def start_proxy(self, args, name, egress, image):
+        self.proxy_starts.append((name, egress, image))
+        return self.docker(args)
 
     def proxy_name(self):
         run = next(c for c in self.commands if c[:3] == ["docker", "run", "-d"])
@@ -400,6 +405,7 @@ def test_docker_ops_is_a_protocol():
     [
         ["docker", "exec", "rootflake-px-0123456789ab", "sh"],
         ["docker", "run", "--rm", "alpine"],
+        ["docker", "run", "-d", "--name", "rootflake-px-0123456789ab", PROXY],
         ["docker", "network", "ls"],
         ["docker", "cp", "a", "b"],
         ["sh", "-c", "docker logs x"],
@@ -429,3 +435,72 @@ def test_docker_cli_times_out_a_hung_command(monkeypatch, tmp_path):
     result = DockerCli().docker(["docker", "logs", "rootflake-px-0123456789ab"])
     assert result.timed_out
     assert time.monotonic() - started < 5
+
+
+def download_name(fake):
+    run = next(c for c in fake.commands if "rootflake-fetch" in c)
+    return run[run.index("--name") + 1]
+
+
+def test_the_proxy_is_started_through_start_proxy():
+    fake = FakeDocker()
+    go(fake)
+    internal, proxy = names(fake)
+    egress = next(c[-1] for c in creates(fake) if "--internal" not in c)
+    assert fake.proxy_starts == [(proxy, egress, PROXY)]
+
+
+def test_the_download_container_is_removed_afterwards():
+    fake = FakeDocker()
+    record = go(fake)
+    assert ["docker", "rm", "-f", download_name(fake)] in fake.commands
+    assert record.cleanup_errors == []
+
+
+def test_a_failed_download_container_removal_is_recorded():
+    fake = FakeDocker(fail_on=["docker", "rm", "-f"])
+    errors = go(fake).cleanup_errors
+    assert any(download_name(fake) in e for e in errors)
+
+
+def test_a_raising_download_container_removal_does_not_skip_the_rest():
+    fake = FakeDocker(raise_on=["docker", "rm", "-f"])
+    record = go(fake)
+    assert any(download_name(fake) in e for e in record.cleanup_errors)
+    assert len([c for c in fake.commands if c[:3] == ["docker", "network", "rm"]]) == 2
+
+
+def test_no_download_container_removal_when_none_was_started():
+    fake = FakeDocker(fail_on=["docker", "network", "connect"])
+    go(fake)
+    removals = [c for c in fake.commands if c[:3] == ["docker", "rm", "-f"]]
+    assert removals == [["docker", "rm", "-f", fake.proxy_name()]]
+
+
+def _proxy_args():
+    return build_proxy_args(PX, EGRESS, PROXY, ["repo1.maven.org"])
+
+
+def test_docker_cli_start_proxy_runs_checked_args(monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        DockerCli, "run", lambda self, args, timeout_s: seen.append((args, timeout_s))
+    )
+    DockerCli().start_proxy(_proxy_args(), PX, EGRESS, PROXY)
+    assert seen == [(_proxy_args(), 120)]
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        _proxy_args()[:3] + ["--privileged"] + _proxy_args()[3:],
+        [x for x in _proxy_args() if x != "--read-only"],
+        _proxy_args() + ["--allow-private"],
+    ],
+)
+def test_docker_cli_start_proxy_refuses_anything_else(monkeypatch, args):
+    seen = []
+    monkeypatch.setattr(DockerCli, "run", lambda self, a, timeout_s: seen.append(a))
+    with pytest.raises(ValueError):
+        DockerCli().start_proxy(args, PX, EGRESS, PROXY)
+    assert seen == []

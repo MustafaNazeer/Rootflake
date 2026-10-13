@@ -40,7 +40,6 @@ DOCKER_SUBCOMMANDS = (
     ("network", "connect"),
     ("network", "inspect"),
     ("network", "rm"),
-    ("run", "-d"),
     ("logs",),
     ("rm", "-f"),
 )
@@ -48,6 +47,8 @@ DOCKER_SUBCOMMANDS = (
 
 class DockerOps(ProcessRunner, Protocol):
     def docker(self, argv: list[str]) -> ProcResult: ...
+
+    def start_proxy(self, args: list[str], name: str, egress: str, image: str) -> ProcResult: ...
 
 
 class DockerCli(DockerRunner):
@@ -59,6 +60,10 @@ class DockerCli(DockerRunner):
         ):
             raise ValueError(f"docker command not allowed here: {argv[:3]}")
         return self.run(argv, DOCKER_TIMEOUT_S)
+
+    def start_proxy(self, args: list[str], name: str, egress: str, image: str) -> ProcResult:
+        check_proxy_args(args, name, egress, image)
+        return self.run(args, DOCKER_TIMEOUT_S)
 
 
 class DownloadOutcome(Enum):
@@ -155,6 +160,8 @@ def download_dependencies(
     internal, egress, proxy = (f"rootflake-{kind}-{run_id}" for kind in ("dl", "eg", "px"))
     created: list[str] = []
     proxy_created = False
+    fetch_started = False
+    fetch_name = f"rootflake-{run_id}"
     log_truncated = False
     outcome, exit_code, output = DownloadOutcome.INFRASTRUCTURE, None, ""
     denied: list[tuple[str, int]] = []
@@ -170,7 +177,7 @@ def download_dependencies(
         proxy_args = build_proxy_args(proxy, egress, proxy_image, hosts)
         check_proxy_args(proxy_args, proxy, egress, proxy_image)
         proxy_created = True
-        if ops.docker(proxy_args).exit_code != 0:
+        if ops.start_proxy(proxy_args, proxy, egress, proxy_image).exit_code != 0:
             raise RuntimeError("could not start the proxy")
         if ops.docker(["docker", "network", "connect", internal, proxy]).exit_code != 0:
             raise RuntimeError("could not attach the proxy to the internal network")
@@ -181,9 +188,10 @@ def download_dependencies(
         if members.exit_code != 0 or members.stdout.decode().split() != [proxy]:
             raise RuntimeError(f"unexpected members on {internal}")
         download = Download(network=internal, proxy=f"{proxy}:{PROXY_PORT}")
-        attempt = replace(spec, command=[FETCH_COMMAND], name=f"rootflake-{run_id}")
+        attempt = replace(spec, command=[FETCH_COMMAND], name=fetch_name)
         args = build_download_args(attempt, limits, download)
         check_args(args, allowed_roots, spec.image, download=download)
+        fetch_started = True
         result = ops.run(args, timeout_s)
         if result.timed_out:
             ops.stop(attempt.name)
@@ -195,8 +203,14 @@ def download_dependencies(
     except RuntimeError as error:
         output = str(error)
     finally:
-        # Each step is guarded on its own: a failure in one must never leave the proxy or a
+        # Each step is guarded on its own: a failure in one must never leave a container or a
         # network behind.
+        if fetch_started:
+            try:
+                if ops.docker(["docker", "rm", "-f", fetch_name]).exit_code != 0:
+                    cleanup_errors.append(f"download container {fetch_name} not removed")
+            except Exception as error:
+                cleanup_errors.append(f"download container {fetch_name} not removed: {error}")
         if proxy_created:
             try:
                 logs = ops.docker(["docker", "logs", proxy])
