@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from enum import Enum
 from xml.parsers import expat
 
+from rootflake.sandbox.xmlsafe import RefusedXml, new_parser
+
 MAX_REPORT_BYTES = 8 * 1024 * 1024
 
 _IDENT = r"[A-Za-z_$][A-Za-z0-9_$]*"
@@ -43,14 +45,6 @@ class Outcome(Enum):
     INFRASTRUCTURE = "infrastructure"
 
 
-class _Refused(Exception):
-    pass
-
-
-def _refuse(*_args: object) -> None:
-    raise _Refused
-
-
 def parse_report(data: bytes, test: TestId) -> str:
     """Return passed, failed, skipped, missing, ambiguous, or unreadable."""
     if len(data) > MAX_REPORT_BYTES:
@@ -78,16 +72,12 @@ def parse_report(data: bytes, test: TestId) -> str:
             depth_of_match.pop()
         depth -= 1
 
-    parser = expat.ParserCreate()
-    parser.StartDoctypeDeclHandler = _refuse
-    parser.EntityDeclHandler = _refuse
-    parser.UnparsedEntityDeclHandler = _refuse
-    parser.ExternalEntityRefHandler = _refuse
+    parser = new_parser()
     parser.StartElementHandler = start
     parser.EndElementHandler = end
     try:
         parser.Parse(data, True)
-    except _Refused, expat.ExpatError:
+    except RefusedXml, expat.ExpatError:
         return "unreadable"
     if not matches:
         return "missing"

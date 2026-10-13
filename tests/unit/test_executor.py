@@ -1,10 +1,22 @@
+import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
 
+from rootflake.sandbox import executor
 from rootflake.sandbox.container import RunSpec, SandboxLimits
-from rootflake.sandbox.executor import ProcResult, report_path, run_test, sanitize_output
+from rootflake.sandbox.executor import (
+    HEAD_LIMIT,
+    OUTPUT_LIMIT,
+    TAIL_LIMIT,
+    DockerRunner,
+    ProcResult,
+    report_path,
+    run_test,
+    sanitize_output,
+)
 from rootflake.sandbox.results import Outcome, TestId
 
 IMAGE = "rootflake-sandbox@sha256:" + "a" * 64
@@ -125,16 +137,42 @@ def test_report_path_is_inside_the_module_reports_directory():
     assert report_path("", TEST) == Path("target/surefire-reports/TEST-demo.DemoTest.xml")
 
 
-def test_output_is_capped_and_stripped_of_terminal_controls():
-    text = sanitize_output(b"ok\x1b[31mred\x1b[0m\x07\r\n" + b"x" * 100, limit=20)
-    assert "\x1b" not in text and "\x07" not in text
-    assert text.startswith("okred")
-    assert len(text) <= 20 + len("\n[truncated]")
-    assert text.endswith("[truncated]")
+def test_output_keeps_the_head_and_the_tail_and_strips_terminal_controls():
+    data = b"ok\x1b[31mred\x1b[0m" + b"x" * 100 + b"\x07end\x1b[0m!"
+    text = sanitize_output(data, head=14, tail=9)
+    assert text == "okred\n[truncated]\nend!"
+
+
+def test_output_within_the_limits_is_kept_whole():
+    assert sanitize_output(b"a" * 10 + b"b" * 10, head=10, tail=10) == "a" * 10 + "b" * 10
+
+
+def test_dropped_bytes_put_the_marker_at_the_head_boundary():
+    assert sanitize_output(b"headtail", dropped=5, head=4, tail=4) == "head\n[truncated]\ntail"
+
+
+def test_the_default_limits_are_sixteen_and_forty_eight_kib():
+    assert (HEAD_LIMIT, TAIL_LIMIT, OUTPUT_LIMIT) == (16 * 1024, 48 * 1024, 64 * 1024)
 
 
 def test_invalid_utf8_output_does_not_raise():
-    assert sanitize_output(b"\xff\xfe ok", limit=100).endswith("ok")
+    assert sanitize_output(b"\xff\xfe ok").endswith("ok")
+
+
+def test_record_output_marks_a_stream_that_lost_bytes():
+    dropped = ProcResult(1, b"x" * HEAD_LIMIT + b"last line", b"", False, stdout_dropped=99)
+    record = go(FakeRunner([dropped]), reports(FAIL))
+    assert record.output == "x" * HEAD_LIMIT + "\n[truncated]\nlast line"
+
+
+def test_capture_keeps_a_bounded_head_and_rolling_tail():
+    capture = executor._Capture()
+    for i in range(64):
+        capture.add(bytes([65 + i % 26]) * 65536)
+        assert len(capture.head) <= HEAD_LIMIT and len(capture.tail) <= TAIL_LIMIT
+    assert capture.head == b"A" * HEAD_LIMIT
+    assert capture.tail == b"L" * TAIL_LIMIT
+    assert capture.dropped == 64 * 65536 - OUTPUT_LIMIT
 
 
 @pytest.mark.parametrize("timeout_s", [0, -1, 7 * 3600])
@@ -152,17 +190,78 @@ def test_timeout_must_be_bounded(timeout_s):
         )
 
 
-def test_docker_runner_bounds_output_from_a_noisy_process():
-    from rootflake.sandbox.executor import OUTPUT_LIMIT, DockerRunner
-
-    noisy = ["python3", "-c", "import sys\nfor _ in range(4000): sys.stdout.write('x' * 4096)"]
-    result = DockerRunner().run(noisy, timeout_s=60)
+def test_docker_runner_keeps_the_head_and_tail_of_a_noisy_process():
+    script = (
+        "import sys\nsys.stdout.write('START')\n"
+        "for _ in range(4000): sys.stdout.write('x' * 4096)\nsys.stdout.write('END')"
+    )
+    result = DockerRunner().run(["python3", "-c", script], timeout_s=60)
     assert result.exit_code == 0
-    assert len(result.stdout) == OUTPUT_LIMIT + 1
+    assert len(result.stdout) == OUTPUT_LIMIT
+    assert result.stdout.startswith(b"START") and result.stdout.endswith(b"END")
+    assert result.stdout_dropped == 5 + 4000 * 4096 + 3 - OUTPUT_LIMIT
+    assert result.stderr_dropped == 0
 
 
 def test_docker_runner_reports_a_timeout():
-    from rootflake.sandbox.executor import DockerRunner
-
     result = DockerRunner().run(["sleep", "5"], timeout_s=0.5)
     assert result.timed_out
+
+
+def test_docker_runner_kills_a_process_that_outlives_its_timeout():
+    started = time.monotonic()
+    result = DockerRunner().run(["python3", "-c", "import time; time.sleep(30)"], timeout_s=0.5)
+    assert result.timed_out
+    assert time.monotonic() - started < 5
+
+
+def test_stop_survives_a_hung_docker_daemon(monkeypatch):
+    calls = []
+
+    def hung(argv, **kwargs):
+        calls.append(argv[:2])
+        raise subprocess.TimeoutExpired(argv, kwargs.get("timeout"))
+
+    monkeypatch.setattr(executor.subprocess, "run", hung)
+    DockerRunner().stop("rootflake-0000000000000000")
+    assert calls == [["docker", "stop"], ["docker", "rm"]]
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "\u009b31mred",
+        "\u009d0;title\u009c",
+        "a\u202eb",
+        "a\u2066b\u2069",
+        "a\u200eb\u200fc\u061cd",
+        "\x1b]0;title\x1b\\",
+        "\x1bPpayload\x1b\\",
+    ],
+)
+def test_c1_controls_and_bidi_marks_are_stripped(raw):
+    text = sanitize_output(raw.encode("utf-8"))
+    banned = "\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069\u200e\u200f\u061c\x1b"
+    assert not any(0x80 <= ord(c) <= 0x9F or c in banned for c in text)
+
+
+def test_an_unterminated_string_control_cannot_erase_later_output():
+    text = sanitize_output(("\x1b]" + "a" * 300 + "visible").encode())
+    assert text.endswith("visible")
+
+
+def test_run_test_checks_the_arguments_before_running_anything():
+    other_root = Path(tempfile.mkdtemp(prefix="rootflake-other-")).resolve()
+    runner = FakeRunner([ok()])
+    with pytest.raises(ValueError):
+        run_test(
+            base_spec(),
+            SandboxLimits(),
+            TEST,
+            "",
+            runner,
+            reports(PASS),
+            (other_root,),
+            timeout_s=300,
+        )
+    assert runner.calls == []

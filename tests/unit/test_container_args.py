@@ -5,16 +5,18 @@ import pytest
 
 from rootflake.sandbox.container import (
     FORBIDDEN_FLAGS,
+    Download,
     RunSpec,
     SandboxLimits,
     build_docker_args,
+    build_download_args,
     check_args,
 )
 
 IMAGE = "rootflake-sandbox@sha256:" + "a" * 64
 BASE = Path(tempfile.mkdtemp(prefix="rootflake-test-")).resolve()
 ROOT = BASE / "managed"
-for sub in ("runs/p1/ws", "m2/p1", "x"):
+for sub in ("runs/p1/ws", "m2/p1", "x", "runs/p1/ws/m2", "m2/p1/ws"):
     (ROOT / sub).mkdir(parents=True, exist_ok=True)
 ROOTS = (ROOT,)
 
@@ -406,3 +408,106 @@ def test_missing_computed_env_key_is_rejected():
 def test_jdk_must_be_an_int():
     with pytest.raises(ValueError, match="JDK"):
         build_docker_args(spec(jdk=8.0), SandboxLimits())
+
+
+NET = "rootflake-dl-0123456789ab"
+DL = Download(network=NET, proxy="rootflake-px-0123456789ab:3128")
+
+
+def dl_args(**overrides):
+    return build_download_args(spec(**overrides), SandboxLimits(), DL)
+
+
+def test_download_uses_the_internal_network_and_a_writable_repository():
+    args = dl_args()
+    assert value_after(args, "--network") == [NET]
+    assert value_after(args, "--mount") == [
+        f"type=bind,src={ROOT}/runs/p1/ws,dst=/workspace",
+        f"type=bind,src={ROOT}/m2/p1,dst=/m2/repo",
+    ]
+    env = env_of(args)
+    assert "--offline" not in env["MAVEN_ARGS"].split()
+    assert "-Dmaven.repo.local=/m2/repo" in env["MAVEN_ARGS"].split()
+    assert env["ROOTFLAKE_PROXY"] == "rootflake-px-0123456789ab:3128"
+    check_args(args, ROOTS, IMAGE, download=DL)
+
+
+def test_download_args_fail_the_offline_check():
+    with pytest.raises(ValueError):
+        check_args(dl_args(), ROOTS, IMAGE)
+
+
+def test_offline_args_fail_the_download_check():
+    with pytest.raises(ValueError):
+        check_args(build_docker_args(spec(), SandboxLimits()), ROOTS, IMAGE, download=DL)
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        (NET, "bridge"),
+        (NET, "host"),
+        (NET, "rootflake-dl-ffffffffffff"),
+        ("ROOTFLAKE_PROXY=rootflake-px-0123456789ab:3128", "ROOTFLAKE_PROXY=evil.example:3128"),
+    ],
+)
+def test_download_check_pins_network_and_proxy(old, new):
+    args = [new if a == old else a for a in dl_args()]
+    with pytest.raises(ValueError):
+        check_args(args, ROOTS, IMAGE, download=DL)
+
+
+@pytest.mark.parametrize(
+    "download",
+    [
+        dict(network="bridge", proxy="rootflake-px-0123456789ab:3128"),
+        dict(network=NET, proxy="evil.example:3128"),
+        dict(network=NET, proxy="rootflake-px-0123456789ab"),
+        dict(network=NET, proxy="rootflake-px-0123456789ab:99999"),
+    ],
+)
+def test_download_target_is_validated(download):
+    with pytest.raises(ValueError):
+        Download(**download)
+
+
+def test_proxy_env_is_refused_in_offline_runs():
+    with pytest.raises(ValueError, match="ROOTFLAKE_PROXY"):
+        check_args(
+            args_with("--env", "ROOTFLAKE_PROXY=rootflake-px-0123456789ab:3128"), ROOTS, IMAGE
+        )
+
+
+def test_home_tmpfs_belongs_to_the_sandbox_user():
+    tmpfs = value_after(build_docker_args(spec(), SandboxLimits()), "--tmpfs")
+    home = next(t for t in tmpfs if t.startswith("/home/sandbox:"))
+    options = home.split(":", 1)[1].split(",")
+    assert {"uid=10001", "gid=10001", "mode=0700", "nosuid", "nodev"} <= set(options)
+
+
+def test_download_args_without_the_proxy_variable_are_a_value_error():
+    args = dl_args()
+    i = next(i for i, a in enumerate(args) if a.startswith("ROOTFLAKE_PROXY="))
+    del args[i - 1 : i + 1]
+    with pytest.raises(ValueError, match="ROOTFLAKE_PROXY"):
+        check_args(args, ROOTS, IMAGE, download=DL)
+
+
+OVERLAPS = {
+    "same directory": (f"{ROOT}/runs/p1/ws", f"{ROOT}/runs/p1/ws"),
+    "repository inside workspace": (f"{ROOT}/runs/p1/ws", f"{ROOT}/runs/p1/ws/m2"),
+    "workspace inside repository": (f"{ROOT}/m2/p1/ws", f"{ROOT}/m2/p1"),
+}
+
+
+@pytest.mark.parametrize("download", [None, DL], ids=["offline", "download"])
+@pytest.mark.parametrize("overlap", list(OVERLAPS), ids=list(OVERLAPS))
+def test_workspace_and_repository_must_not_overlap(overlap, download):
+    workspace, repo = OVERLAPS[overlap]
+    changed = spec(workspace=Path(workspace), maven_repo=Path(repo))
+    if download:
+        args = build_download_args(changed, SandboxLimits(), download)
+    else:
+        args = build_docker_args(changed, SandboxLimits())
+    with pytest.raises(ValueError, match="overlap"):
+        check_args(args, ROOTS, IMAGE, download=download)

@@ -44,8 +44,9 @@ COPY --from=fetch /opt/jdk /opt/jdk
 COPY --from=fetch /opt/maven /opt/maven
 COPY --from=fetch /opt/m2-tail /opt/m2-tail
 COPY entrypoint.sh /usr/local/bin/rootflake-entrypoint
+COPY fetch.sh /usr/local/bin/rootflake-fetch
 RUN set -eu; \
-    chmod 0555 /usr/local/bin/rootflake-entrypoint; \
+    chmod 0555 /usr/local/bin/rootflake-entrypoint /usr/local/bin/rootflake-fetch; \
     chmod -R a-w /opt/jdk /opt/maven /opt/m2-tail; \
     find / -xdev -perm /6000 -type f -exec chmod a-s {} +
 

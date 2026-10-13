@@ -20,8 +20,10 @@ WORKSPACE = "/workspace"
 REPO_TAIL = "/m2/tail"
 IMAGE_REPO_TAIL = "/opt/m2-tail"
 REPO_HEAD = "/tmp/m2"
+REPO_DOWNLOAD = "/m2/repo"
 MAVEN_HEAP = "-Xmx768m"
 HOME = "/home/sandbox"
+HOME_TMPFS_OPTIONS = "rw,nosuid,nodev,uid=10001,gid=10001,mode=0700"
 
 COMPUTED_ENV = frozenset(
     {
@@ -33,7 +35,7 @@ COMPUTED_ENV = frozenset(
         "JAVA_TOOL_OPTIONS",
     }
 )
-ALLOWED_ENV = COMPUTED_ENV | {"TZ"}
+ALLOWED_ENV = COMPUTED_ENV | {"TZ", "ROOTFLAKE_PROXY"}
 
 FORBIDDEN_FLAGS = frozenset(
     {
@@ -62,6 +64,8 @@ SIZE_RE = re.compile(r"([1-9][0-9]{0,5})([kmg])")
 SAFE_PATH_RE = re.compile(r"/[A-Za-z0-9._/-]*")
 ENV_VALUE_RE = re.compile(r"[ -~]*")
 NAME_RE = re.compile(r"rootflake-[a-z0-9]{8,40}")
+NETWORK_RE = re.compile(r"rootflake-dl-[a-z0-9]{8,40}")
+PROXY_RE = re.compile(r"rootflake-px-[a-z0-9]{8,40}:([0-9]{1,5})")
 
 MEMORY_MIB = (256, 16384)
 CPUS = (1, 8)
@@ -116,6 +120,21 @@ class RunSpec:
     timezone: str | None = None
 
 
+@dataclass(frozen=True)
+class Download:
+    """The internal network and allowlist proxy a dependency download runs behind."""
+
+    network: str
+    proxy: str
+
+    def __post_init__(self) -> None:
+        if not NETWORK_RE.fullmatch(self.network):
+            raise ValueError(f"network must match {NETWORK_RE.pattern}: {self.network!r}")
+        match = PROXY_RE.fullmatch(self.proxy)
+        if not match or not 0 < int(match.group(1)) < 65536:
+            raise ValueError(f"proxy must be <{PROXY_RE.pattern}>: {self.proxy!r}")
+
+
 def _safe_path(name: str, path: Path) -> str:
     text = str(path)
     if not SAFE_PATH_RE.fullmatch(text) or ".." in path.parts:
@@ -124,6 +143,16 @@ def _safe_path(name: str, path: Path) -> str:
 
 
 def build_docker_args(spec: RunSpec, limits: SandboxLimits) -> list[str]:
+    """Arguments for a run with no network and the dependency repository read only."""
+    return _build(spec, limits, None)
+
+
+def build_download_args(spec: RunSpec, limits: SandboxLimits, download: Download) -> list[str]:
+    """Arguments for the dependency download: internal network, proxy, writable repository."""
+    return _build(spec, limits, download)
+
+
+def _build(spec: RunSpec, limits: SandboxLimits, download: Download | None) -> list[str]:
     if not DIGEST_RE.fullmatch(spec.image):
         raise ValueError(f"image must be pinned by digest: {spec.image!r}")
     if type(spec.jdk) is not int or spec.jdk not in SUPPORTED_JDKS:
@@ -139,15 +168,15 @@ def build_docker_args(spec: RunSpec, limits: SandboxLimits) -> list[str]:
         "docker", "run", "--rm",
         "--name", spec.name,
         "--runtime", RUNTIME,
-        "--network", "none",
+        "--network", download.network if download else "none",
         "--user", SANDBOX_USER,
         "--cap-drop", "ALL",
         "--security-opt", "no-new-privileges=true",
         "--read-only",
         "--tmpfs", f"/tmp:rw,exec,nosuid,nodev,size={limits.tmp_size}",
-        "--tmpfs", f"/home/sandbox:rw,nosuid,nodev,size={limits.home_size}",
+        "--tmpfs", f"/home/sandbox:{HOME_TMPFS_OPTIONS},size={limits.home_size}",
         "--mount", f"type=bind,src={workspace},dst={WORKSPACE}",
-        "--mount", f"type=bind,src={repo},dst={REPO_TAIL},readonly",
+        "--mount", _repo_mount(repo, download),
         "--workdir", WORKSPACE,
         "--memory", memory,
         "--memory-swap", memory,
@@ -159,7 +188,7 @@ def build_docker_args(spec: RunSpec, limits: SandboxLimits) -> list[str]:
         "--log-opt", f"max-size={limits.log_max_mib}m",
         "--log-opt", "max-file=1",
     ]  # fmt: skip
-    for key, value in _env(spec, limits).items():
+    for key, value in _env(spec, limits, download).items():
         args += ["--env", f"{key}={value}"]
     return args + [spec.image, *spec.command]
 
@@ -172,6 +201,19 @@ MAVEN_ARGS = " ".join(
         f"-Dmaven.repo.local.tail={REPO_TAIL},{IMAGE_REPO_TAIL}",
     ]
 )
+MAVEN_ARGS_DOWNLOAD = " ".join(
+    [
+        "--batch-mode",
+        f"-Dmaven.repo.local={REPO_DOWNLOAD}",
+        f"-Dmaven.repo.local.tail={IMAGE_REPO_TAIL}",
+    ]
+)
+
+
+def _repo_mount(repo: str, download: Download | None) -> str:
+    if download:
+        return f"type=bind,src={repo},dst={REPO_DOWNLOAD}"
+    return f"type=bind,src={repo},dst={REPO_TAIL},readonly"
 
 
 def _tool_options(memory_mib: str, cpus: str, timezone: str | None) -> str:
@@ -188,14 +230,16 @@ def _check_zone(timezone: str) -> None:
         raise ValueError(f"malformed time zone: {timezone!r}")
 
 
-def _env(spec: RunSpec, limits: SandboxLimits) -> dict[str, str]:
+def _env(spec: RunSpec, limits: SandboxLimits, download: Download | None) -> dict[str, str]:
     env = {
         "HOME": HOME,
         "ROOTFLAKE_JDK": str(spec.jdk),
         "ROOTFLAKE_MAX_PROCS": str(limits.pids),
         "MAVEN_OPTS": MAVEN_HEAP,
-        "MAVEN_ARGS": MAVEN_ARGS,
+        "MAVEN_ARGS": MAVEN_ARGS_DOWNLOAD if download else MAVEN_ARGS,
     }
+    if download:
+        env["ROOTFLAKE_PROXY"] = download.proxy
     if spec.timezone is not None:
         _check_zone(spec.timezone)
         env["TZ"] = spec.timezone
@@ -243,7 +287,6 @@ def _ulimit(flag: str, value: str) -> None:
 SINGLE_VALUE_FLAGS = {
     "--name": _name,
     "--runtime": _exact(RUNTIME),
-    "--network": _exact("none"),
     "--user": _exact(SANDBOX_USER),
     "--cap-drop": _exact("ALL"),
     "--security-opt": _exact("no-new-privileges=true"),
@@ -259,10 +302,17 @@ MULTI_VALUE_FLAGS = ("--tmpfs", "--mount", "--log-opt", "--env")
 BOOLEAN_FLAGS = ("--rm", "--read-only", "--init")
 
 
-def check_args(args: list[str], allowed_roots: Sequence[Path], expected_image: str) -> None:
+def check_args(
+    args: list[str],
+    allowed_roots: Sequence[Path],
+    expected_image: str,
+    download: Download | None = None,
+) -> None:
     """Raise ValueError unless `args` is exactly the hardened command the builder makes.
 
-    Mount sources must exist, contain no symlinks, and sit strictly inside a managed root.
+    Without `download` only the no network, read only repository form passes; with it only
+    the download form for exactly that network and proxy passes. Mount sources must exist,
+    contain no symlinks, and sit strictly inside a managed root.
     """
     if args[:2] != ["docker", "run"]:
         raise ValueError("expected a docker run command")
@@ -279,7 +329,7 @@ def check_args(args: list[str], allowed_roots: Sequence[Path], expected_image: s
             seen.setdefault(token, []).append("")
             i += 1
             continue
-        if token not in SINGLE_VALUE_FLAGS and token not in MULTI_VALUE_FLAGS:
+        if token not in SINGLE_VALUE_FLAGS and token not in MULTI_VALUE_FLAGS + ("--network",):
             raise ValueError(f"flag not allowed: {token}")
         if i + 1 >= len(args) or not args[i + 1] or args[i + 1].startswith("-"):
             raise ValueError(f"missing or suspicious value for {token}")
@@ -302,18 +352,23 @@ def check_args(args: list[str], allowed_roots: Sequence[Path], expected_image: s
         if len(values) != 1:
             raise ValueError(f"{flag} must appear exactly once, got {len(values)}")
         check(flag, values[0])
+    network = download.network if download else "none"
+    if seen.get("--network") != [network]:
+        raise ValueError(f"--network must be exactly [{network!r}], got {seen.get('--network')}")
     if seen["--memory"] != seen["--memory-swap"]:
         raise ValueError("--memory-swap must equal --memory so swap is unavailable")
     _check_tmpfs(seen.get("--tmpfs", []))
     _check_log_opts(seen.get("--log-opt", []))
-    _check_mounts(seen.get("--mount", []), allowed_roots)
-    _check_env(seen.get("--env", []), seen)
+    _check_mounts(seen.get("--mount", []), allowed_roots, download)
+    _check_env(seen.get("--env", []), seen, download)
 
 
 def _check_tmpfs(values: list[str]) -> None:
     patterns = {
         "/tmp": re.compile(r"/tmp:rw,exec,nosuid,nodev,size=([1-9][0-9]{0,5}[kmg])"),
-        "/home/sandbox": re.compile(r"/home/sandbox:rw,nosuid,nodev,size=([1-9][0-9]{0,5}[kmg])"),
+        "/home/sandbox": re.compile(
+            r"/home/sandbox:rw,nosuid,nodev,uid=10001,gid=10001,mode=0700,size=([1-9][0-9]{0,5}[kmg])"
+        ),
     }
     targets = []
     for value in values:
@@ -340,6 +395,10 @@ MOUNT_RES = {
     WORKSPACE: re.compile(r"type=bind,src=(/[A-Za-z0-9._/-]*),dst=/workspace"),
     REPO_TAIL: re.compile(r"type=bind,src=(/[A-Za-z0-9._/-]*),dst=/m2/tail,readonly"),
 }
+DOWNLOAD_MOUNT_RES = {
+    WORKSPACE: MOUNT_RES[WORKSPACE],
+    REPO_DOWNLOAD: re.compile(r"type=bind,src=(/[A-Za-z0-9._/-]*),dst=/m2/repo"),
+}
 
 
 def _resolved_roots(allowed_roots: Sequence[Path]) -> list[Path]:
@@ -353,11 +412,15 @@ def _resolved_roots(allowed_roots: Sequence[Path]) -> list[Path]:
     return roots
 
 
-def _check_mounts(values: list[str], allowed_roots: Sequence[Path]) -> None:
+def _check_mounts(
+    values: list[str], allowed_roots: Sequence[Path], download: Download | None
+) -> None:
+    patterns = DOWNLOAD_MOUNT_RES if download else MOUNT_RES
     roots = _resolved_roots(allowed_roots)
     targets = []
+    sources = []
     for value in values:
-        matches = [(t, m) for t, p in MOUNT_RES.items() if (m := p.fullmatch(value))]
+        matches = [(t, m) for t, p in patterns.items() if (m := p.fullmatch(value))]
         if not matches:
             raise ValueError(f"mount not allowed: {value!r}")
         target, match = matches[0]
@@ -373,11 +436,15 @@ def _check_mounts(values: list[str], allowed_roots: Sequence[Path]) -> None:
         if not any(real != root and real.is_relative_to(root) for root in roots):
             raise ValueError(f"mount source is outside the managed roots: {value!r}")
         targets.append(target)
-    if sorted(targets) != sorted(MOUNT_RES):
+        sources.append(real)
+    if sorted(targets) != sorted(patterns):
         raise ValueError(f"expected exactly the workspace and repository mounts, got {targets}")
+    first, second = sources
+    if first.is_relative_to(second) or second.is_relative_to(first):
+        raise ValueError(f"workspace and repository mounts overlap: {first} and {second}")
 
 
-def _check_env(values: list[str], seen: dict[str, list[str]]) -> None:
+def _check_env(values: list[str], seen: dict[str, list[str]], download: Download | None) -> None:
     env: dict[str, str] = {}
     for entry in values:
         key, sep, value = entry.partition("=")
@@ -401,11 +468,15 @@ def _check_env(values: list[str], seen: dict[str, list[str]]) -> None:
         "HOME": HOME,
         "ROOTFLAKE_MAX_PROCS": seen["--pids-limit"][0],
         "MAVEN_OPTS": MAVEN_HEAP,
-        "MAVEN_ARGS": MAVEN_ARGS,
+        "MAVEN_ARGS": MAVEN_ARGS_DOWNLOAD if download else MAVEN_ARGS,
         "JAVA_TOOL_OPTIONS": _tool_options(memory_mib, seen["--cpus"][0], timezone),
     }
+    if download:
+        expected["ROOTFLAKE_PROXY"] = download.proxy
+    elif "ROOTFLAKE_PROXY" in env:
+        raise ValueError("ROOTFLAKE_PROXY is only allowed for the download container")
     for key, value in expected.items():
-        if env[key] != value:
-            raise ValueError(f"{key} must be {value!r}, got {env[key]!r}")
+        if env.get(key) != value:
+            raise ValueError(f"{key} must be {value!r}, got {env.get(key)!r}")
     if env["ROOTFLAKE_JDK"] not in {str(v) for v in SUPPORTED_JDKS}:
         raise ValueError(f"ROOTFLAKE_JDK must be one of {SUPPORTED_JDKS}")

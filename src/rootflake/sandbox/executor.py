@@ -19,10 +19,17 @@ from rootflake.sandbox.container import RunSpec, SandboxLimits, build_docker_arg
 from rootflake.sandbox.results import Outcome, TestId, classify, maven_test_command, parse_report
 
 MAX_TIMEOUT_S = 6 * 3600
-OUTPUT_LIMIT = 64 * 1024
+HEAD_LIMIT = 16 * 1024
+TAIL_LIMIT = 48 * 1024
+OUTPUT_LIMIT = HEAD_LIMIT + TAIL_LIMIT
 RETRIED = (Outcome.INFRASTRUCTURE, Outcome.TIMEOUT)
 
-_CONTROL_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07|[\x00-\x08\x0b-\x1f\x7f]")
+_CONTROL_RE = re.compile(
+    r"\x1b\[[0-9;?]*[A-Za-z]"  # CSI
+    r"|\x1b[\]PX^_][^\x07\x1b]{0,256}(?:\x07|\x1b\\)?"  # OSC, DCS, SOS, PM, APC
+    r"|[\x00-\x08\x0b-\x1f\x7f-\x9f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]"  # C0, C1, bidi
+)
+TRUNCATED = "\n[truncated]\n"
 
 
 @dataclass(frozen=True)
@@ -31,6 +38,8 @@ class ProcResult:
     stdout: bytes
     stderr: bytes
     timed_out: bool
+    stdout_dropped: int = 0
+    stderr_dropped: int = 0
 
 
 class ProcessRunner(Protocol):
@@ -50,11 +59,28 @@ class RunRecord:
     output: str
 
 
-def sanitize_output(data: bytes, limit: int = OUTPUT_LIMIT) -> str:
-    text = _CONTROL_RE.sub("", data.decode("utf-8", errors="replace"))
-    if len(text) > limit:
-        return text[:limit] + "\n[truncated]"
-    return text
+def _clean(data: bytes) -> str:
+    return _CONTROL_RE.sub("", data.decode("utf-8", errors="replace"))
+
+
+def sanitize_output(
+    data: bytes, dropped: int = 0, head: int = HEAD_LIMIT, tail: int = TAIL_LIMIT
+) -> str:
+    """Strip terminal controls, keeping at most the first `head` and last `tail` bytes.
+
+    `dropped` says bytes were already cut between the head and the tail while draining.
+    """
+    if len(data) > head + tail:
+        data, dropped = data[:head] + data[-tail:], dropped + len(data) - head - tail
+    if dropped:
+        return _clean(data[:head]) + TRUNCATED + _clean(data[head:])
+    return _clean(data)
+
+
+def result_output(result: ProcResult) -> str:
+    return sanitize_output(result.stdout, result.stdout_dropped) + sanitize_output(
+        result.stderr, result.stderr_dropped
+    )
 
 
 def report_path(module: str, test: TestId) -> Path:
@@ -101,28 +127,46 @@ def run_test(
                 exit_code=result.exit_code,
                 report=report,
                 seconds=seconds,
-                output=sanitize_output(result.stdout + result.stderr),
+                output=result_output(result),
             )
 
 
-def _drain(stream: IO[bytes], keep: bytearray) -> None:
+class _Capture:
+    """The first HEAD_LIMIT bytes of a stream and a rolling window of its last TAIL_LIMIT."""
+
+    def __init__(self) -> None:
+        self.head = bytearray()
+        self.tail = bytearray()
+        self.dropped = 0
+
+    def add(self, chunk: bytes) -> None:
+        room = HEAD_LIMIT - len(self.head)
+        self.head += chunk[:room]
+        self.tail += chunk[room:] if room > 0 else chunk
+        excess = len(self.tail) - TAIL_LIMIT
+        if excess > 0:
+            del self.tail[:excess]
+            self.dropped += excess
+
+
+def _drain(stream: IO[bytes], capture: _Capture) -> None:
     while chunk := stream.read(1 << 16):
-        room = OUTPUT_LIMIT + 1 - len(keep)
-        if room > 0:
-            keep += chunk[:room]
+        capture.add(chunk)
 
 
 class DockerRunner:
     """Runs the checked `docker run` command as a subprocess.
 
-    Each output pipe is drained on its own thread: the first OUTPUT_LIMIT + 1 bytes are kept
-    and the rest is read and discarded, so a test that prints without bound can neither
-    exhaust host memory or disk nor block on a full pipe. Wall time bounds the total.
+    Each output pipe is drained on its own thread: the first HEAD_LIMIT and the last
+    TAIL_LIMIT bytes are kept and the rest is read and discarded, so a test that prints
+    without bound can neither exhaust host memory or disk nor block on a full pipe, and the
+    end of the output, where a failure is usually reported, survives. Wall time bounds the
+    total.
     """
 
     def run(self, args: list[str], timeout_s: float) -> ProcResult:
         process = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=PIPE, stderr=PIPE)
-        out, err = bytearray(), bytearray()
+        out, err = _Capture(), _Capture()
         readers = [
             threading.Thread(target=_drain, args=(process.stdout, out), daemon=True),
             threading.Thread(target=_drain, args=(process.stderr, err), daemon=True),
@@ -137,8 +181,18 @@ class DockerRunner:
             code, timed_out = -1, True
         for reader in readers:
             reader.join(timeout=10)
-        return ProcResult(code, bytes(out), bytes(err), timed_out)
+        return ProcResult(
+            code,
+            bytes(out.head + out.tail),
+            bytes(err.head + err.tail),
+            timed_out,
+            stdout_dropped=out.dropped,
+            stderr_dropped=err.dropped,
+        )
 
     def stop(self, name: str) -> None:
-        subprocess.run(["docker", "stop", name], capture_output=True, timeout=60, check=False)
-        subprocess.run(["docker", "rm", "-f", name], capture_output=True, timeout=60, check=False)
+        for argv in (["docker", "stop", name], ["docker", "rm", "-f", name]):
+            try:
+                subprocess.run(argv, capture_output=True, timeout=60, check=False)
+            except subprocess.TimeoutExpired:
+                pass
