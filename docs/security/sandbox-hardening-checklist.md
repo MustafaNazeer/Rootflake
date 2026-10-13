@@ -30,7 +30,7 @@ Two facts shape most of the Cloud Run column:
 | Credentials live only in the pipeline process | SH-12, SH-13, SH-25 |
 | LLM output is untrusted: patches apply only inside the sandbox copy, and the repo server refuses paths outside the workspace | SH-14, SH-15, SH-16 |
 | Suspected vulnerabilities in target projects are reported privately | SH-24 |
-| Additional controls the threat model calls for | SH-17, SH-18, SH-20, SH-21, SH-22, SH-23 |
+| Additional controls the threat model calls for | SH-17, SH-18, SH-20, SH-21, SH-22, SH-23, SH-26 |
 
 ## Summary
 
@@ -61,6 +61,7 @@ Two facts shape most of the Cloud Run column:
 | SH-23 | Spend and loop caps | Same | Same |
 | SH-24 | Private vulnerability disclosure | Process | Process |
 | SH-25 | Least privilege cloud identities | Not applicable | Required |
+| SH-26 | gVisor runtime for target code, no fallback | Required | Not applicable (VMM boundary per instance) |
 
 ## Controls
 
@@ -76,9 +77,9 @@ Two facts shape most of the Cloud Run column:
 ### SH-02. Dependency download as a separate step
 
 * **Threats:** TM-01, TM-05.
-* **Local Docker:** dependencies are fetched (`mvn dependency:go-offline` or equivalent) in a separate container that has network access but holds no credentials, mounts nothing but an empty, per project Maven repository directory and a read only copy of the workspace, and runs under every other control in this list. Test runs then use that repository read only, with Maven in offline mode.
+* **Local Docker:** dependencies are fetched (`mvn dependency:go-offline` or equivalent) in a separate container that holds no credentials, runs under gVisor (SH-26) and every other control in this list, and mounts only an empty, per project and commit Maven repository directory (writable) and its own disposable, writable copy of the workspace, which is thrown away afterwards so nothing it writes reaches the copy tests run in. Its network is a per run Docker network created with `--internal`, which has "no default route" ([network create](https://docs.docker.com/reference/cli/docker/network/create/)); the only other member is a forwarding proxy that allows HTTPS to Maven Central plus the repositories declared in the project's own POM files, read on the host without executing anything ([ADR 0005](../adr/0005-local-sandbox-hardening.md)). A POM can declare its own host, so this narrows egress rather than closing it. The same Docker page says traffic to the network's gateway address remains possible, so no host service may listen there. Test runs then use the filled repository read only, with Maven in offline mode (SH-11).
 * **Cloud Run Jobs: Different.** Network configuration belongs to the job, not to a single command, so download and test execution need two jobs (or two executions with different network settings), or the Preview sandbox feature, which can grant egress per sandbox with `--allow-egress` ([code execution](https://docs.cloud.google.com/run/docs/code-execution)). How the downloaded repository moves from one to the other is not designed yet.
-* **Verification:** a fixture project whose build needs a dependency that was not fetched fails offline instead of downloading it.
+* **Verification:** a fixture project whose build needs a dependency that was not fetched fails offline instead of downloading it. From the download container: an allowlisted host is reachable through the proxy, a host off the list is refused, a direct connection that bypasses the proxy fails, external DNS resolution fails, and no port on the network gateway accepts a connection.
 
 ### SH-03. Non root user
 
@@ -111,9 +112,9 @@ Two facts shape most of the Cloud Run column:
 ### SH-07. Memory limit
 
 * **Threats:** TM-03.
-* **Local Docker:** `--memory`, with `--memory-swap` set to the same value so swap does not extend it ([docker run](https://docs.docker.com/reference/cli/docker/container/run/)). The JVM heap is set below the container limit so a test gets a Java `OutOfMemoryError` before the kernel kills the container.
+* **Local Docker:** `--memory`, with `--memory-swap` set to the same value so swap does not extend it ([docker run](https://docs.docker.com/reference/cli/docker/container/run/)). The JVM heap is set below the container limit so a test gets a Java `OutOfMemoryError` before the kernel kills the container. The sandbox image ships JDK 8 at 8u372 or later and JDK 11 at 11.0.16 or later, the updates that carry the backport of cgroup v2 detection, [JDK-8230305](https://bugs.openjdk.org/browse/JDK-8230305) (JDK 17 has it). Those floors are necessary but not sufficient: on the development machine, Temurin 8u504 still sized its heap from the host inside a 4 GiB container. The actual control is `-XX:MaxRAM=<container memory>` passed to every JVM through `JAVA_TOOL_OPTIONS`, so heap ergonomics never depend on cgroup detection, under `runc` or gVisor. Maven's own JVM also gets an explicit `-Xmx` through `MAVEN_OPTS`; the forked test JVM keeps the default `MaxRAMPercentage` of 25 percent of that `MaxRAM`. Every run records the memory limit each JVM detected (`-XshowSettings:system`) and whether the container was OOM killed (`docker inspect` `State.OOMKilled`). Details in [ADR 0005](../adr/0005-local-sandbox-hardening.md).
 * **Cloud Run Jobs: Same.** Jobs take a memory limit, up to 32 GiB, and "Cloud Run instances that exceed their allowed memory limit are terminated" ([job memory limits](https://docs.cloud.google.com/run/docs/configuring/jobs/memory-limits)). Files written to the in memory filesystem count against it.
-* **Verification:** a fixture test that allocates without bound ends as an infrastructure or failed outcome within the limit, and the host stays responsive.
+* **Verification:** every JVM in the container reports a maximum heap derived from the passed `MaxRAM`, not from host memory, on each supported JDK under gVisor, and the recorded `-XshowSettings:system` output is kept with the run; a fixture test that allocates without bound ends as an infrastructure or failed outcome within the limit, and the host stays responsive.
 
 ### SH-08. CPU limit
 
@@ -126,27 +127,27 @@ Two facts shape most of the Cloud Run column:
 
 * **Threats:** TM-03.
 * **Local Docker:** `--pids-limit` with a fixed value ([docker run](https://docs.docker.com/reference/cli/docker/container/run/)), plus `--init` so orphaned processes are reaped.
-* **Cloud Run Jobs: Not supported** as a setting. The only documented process related limit is a hard limit of 25000 open file descriptors per process ([container runtime contract](https://docs.cloud.google.com/run/docs/container-contract)). Compensating control: the sandbox entrypoint sets a per user process limit (`ulimit -u`) for the unprivileged user before it runs any target code. The second generation environment supports cgroups ([execution environments](https://docs.cloud.google.com/run/docs/configuring/execution-environments)), which may allow a stricter limit; not yet evaluated.
-* **Verification:** a fork bomb fixture is contained, the runner still returns a result, and on Cloud Run the task ends within its timeout.
+* **Cloud Run Jobs: Not supported** as a setting. The only documented process related limit is a hard limit of 25000 open file descriptors per process ([container runtime contract](https://docs.cloud.google.com/run/docs/container-contract)). Compensating control: the sandbox entrypoint sets a per user process limit (`ulimit -u`) for the unprivileged user before it runs any target code. `RLIMIT_NPROC` is "a limit on the number of extant process (or, more precisely on Linux, threads)" for the caller's real user ID ([getrlimit(2)](https://man7.org/linux/man-pages/man2/getrlimit.2.html)), counted across the whole kernel, not per container. Under `runc` every sandbox runs as the same UID, so the limit would couple concurrent sandboxes on one host. The entrypoint therefore applies it only when the container's `/sys/fs/cgroup/pids.max` reads `max`, that is, when no cgroup pids limit exists; locally `--pids-limit` is the control. The second generation environment supports cgroups ([execution environments](https://docs.cloud.google.com/run/docs/configuring/execution-environments)), which may allow a stricter limit; not yet evaluated.
+* **Verification:** a fork bomb fixture and a thread bomb fixture are contained, the runner still returns a result, and on Cloud Run the task ends within its timeout. Locally the test runs under gVisor (SH-26): the cgroup v2 pids controller counts host TIDs ([cgroup v2](https://docs.kernel.org/admin-guide/cgroup-v2.html)), and whether `--pids-limit` on the host bounds the threads inside a gVisor sandbox is not yet verified, so this test decides it.
 
 ### SH-10. Wall time limit
 
 * **Threats:** TM-03, TM-14.
-* **Local Docker:** the runner enforces a timeout on every command (single run, N reruns, iDFlakies, NonDex), then stops the container and kills it if it does not exit within `--stop-timeout`.
+* **Local Docker:** the runner enforces a timeout on every command (single run, N reruns, iDFlakies, NonDex), then stops the container and kills it if it does not exit within `--stop-timeout`. Because Docker's json-file log driver keeps container output on the host disk and its `max-size` "Defaults to -1 (unlimited)" ([json-file driver](https://docs.docker.com/engine/logging/drivers/json-file/)), every container is started with `--log-opt max-size=10m --log-opt max-file=1` so a test that prints without end cannot fill the disk.
 * **Cloud Run Jobs: Same, plus an in container timeout.** Each task has a timeout, 10 minutes by default and up to 168 hours, applied to each attempt ([task timeout](https://docs.cloud.google.com/run/docs/configuring/task-timeout)); on timeout Cloud Run sends `SIGTERM` ([container runtime contract](https://docs.cloud.google.com/run/docs/container-contract)). One task runs many reruns, so the task timeout is only the outer bound; the same per command timeout as locally runs inside the container.
 * **Verification:** a test that sleeps forever ends as a timeout and is recorded as an infrastructure outcome after one retry, never as a failed fix.
 
 ### SH-11. No sensitive mounts
 
 * **Threats:** TM-01, TM-02, TM-04.
-* **Local Docker:** the runner mounts exactly two things: the workspace and the per project Maven repository. It never mounts the Docker socket, the home directory, any cloud configuration directory, SSH keys, or the Rootflake checkout. The mount list is built in one function and asserted by a unit test.
+* **Local Docker:** the runner mounts exactly two host paths: the run copy of the workspace (writable) and the per project and commit Maven repository (read only during test runs, as the tail of Maven's chained local repository, `maven.repo.local.tail`, available since Maven 3.9.0). Everything else writable is a size capped tmpfs that lives only as long as the container: `/tmp`, which also holds the empty writable head repository that `maven.repo.local` points at, and the sandbox user's home directory. Whether Maven ever writes to a read only tail repository is not yet verified; the SH-06 test runs a full offline build with this layout. Details in [ADR 0005](../adr/0005-local-sandbox-hardening.md). It never mounts the Docker socket, the home directory, any cloud configuration directory, SSH keys, or the Rootflake checkout. The mount list is built in one function and asserted by a unit test.
 * **Cloud Run Jobs: Same.** There are no host mounts on Cloud Run; only volumes declared on the job exist, and the sandbox job declares none that hold secrets.
-* **Verification:** a unit test on the runner's container arguments, and an in sandbox test that lists mounts and finds only the expected ones.
+* **Verification:** a unit test on the runner's container arguments, and an in sandbox test that lists mounts and finds only the workspace, the repository, and the two tmpfs mounts.
 
 ### SH-12. No credentials in the sandbox
 
 * **Threats:** TM-01, TM-02, TM-04, TM-05, TM-12.
-* **Local Docker:** the runner passes an explicit allowlist of environment variables (JDK selection, Maven options, the test name) and nothing inherited from the host process. Credentials are never passed as build arguments and never copied into an image layer. The Vertex AI, BigQuery, and Supabase clients exist only in the pipeline process.
+* **Local Docker:** the runner passes an explicit allowlist of environment variables (JDK selection, Maven options, the test name, and `TZ` plus `JAVA_TOOL_OPTIONS` carrying `-Duser.timezone` for time zone sweeps) and nothing inherited from the host process. Credentials are never passed as build arguments and never copied into an image layer. The Vertex AI, BigQuery, and Supabase clients exist only in the pipeline process.
 * **Cloud Run Jobs: Different.** The environment allowlist works the same way, but every Cloud Run container can reach a metadata server that provides credentials specific to the sandbox ([security design](https://docs.cloud.google.com/run/docs/securing/security)) and can generate OAuth2 access tokens for the job's service account ([container runtime contract](https://docs.cloud.google.com/run/docs/container-contract)). Google's documentation does not describe a way to turn the token endpoint off ([service identity](https://docs.cloud.google.com/run/docs/securing/service-identity)). Therefore SH-13 is mandatory, and the pipeline must never run in the same job as target code.
 * **Verification:** an in sandbox test dumps the environment and fails on anything outside the allowlist, and a scan of every image layer finds no key files or tokens.
 
@@ -183,7 +184,7 @@ Two facts shape most of the Cloud Run column:
 ### SH-16. Patches touch only the sandbox copy
 
 * **Threats:** TM-07, TM-08.
-* **Both environments: Same.** The workspace is a fresh copy of the target repository at the pinned commit for every attempt. Patches are applied to that copy only, never to a clone used by anything else. A patch leaves the machine only as part of a PR package, and a person reads every package before any PR is submitted by hand.
+* **Both environments: Same.** The workspace is a fresh copy of the target repository at the pinned commit for every attempt. Patches are applied to that copy only, never to a clone used by anything else. Reruns that need independent state start each run from a clean read only snapshot of the patched, built workspace ([ADR 0005](../adr/0005-local-sandbox-hardening.md)). A patch leaves the machine only as part of a PR package, and a person reads every package before any PR is submitted by hand.
 * **Verification:** a test applies a patch and confirms the source clone and every other workspace are unchanged.
 
 ### SH-17. Sandbox output treated as untrusted
@@ -195,13 +196,13 @@ Two facts shape most of the Cloud Run column:
 ### SH-18. Pinned versions and digests
 
 * **Threats:** TM-05, TM-15.
-* **Both environments: Same.** The sandbox image's base is pinned by digest; JDKs, Maven, iDFlakies, and NonDex are pinned to exact versions with recorded checksums; Python dependencies are locked with hashes; GitHub Actions are pinned to commit SHAs. The deployed job references the image by digest, not by tag.
+* **Both environments: Same.** The sandbox image's base is pinned by digest; JDKs, Maven, iDFlakies, and NonDex are pinned to exact versions with recorded checksums; Python dependencies are locked with hashes; GitHub Actions are pinned to commit SHAs. The deployed job references the image by digest, not by tag. The image installs no apt packages. The JDK and Maven archives are fetched with Dockerfile `ADD --checksum` pinned to SHA-256 values; the iDFlakies and NonDex plugin jars are fetched by a pinned `maven-dependency-plugin` with `--strict-checksums` and then checked against recorded SHA-256 values. These checksums come from the same origin as the files, so they prove integrity, not authenticity: a compromised origin could serve a matching file and checksum. The plugins' transitive dependencies rely on Maven Central's checksums alone. Verifying publisher GPG signatures is a possible later step. Details in [ADR 0005](../adr/0005-local-sandbox-hardening.md).
 * **Verification:** a CI check that fails on unpinned base images, unpinned actions, or a lock file out of date.
 
 ### SH-19. Default seccomp, never privileged
 
 * **Threats:** TM-02.
-* **Local Docker:** the runner never passes `--privileged`, which among other things "disables the default seccomp profile" ([docker run](https://docs.docker.com/reference/cli/docker/container/run/)), never adds devices, and never sets `seccomp=unconfined` or an AppArmor override.
+* **Local Docker:** the runner never passes `--privileged`, which among other things "disables the default seccomp profile" ([docker run](https://docs.docker.com/reference/cli/docker/container/run/)), never adds devices, and never sets `seccomp=unconfined` or an AppArmor override. It also never passes `--cap-add`, `--pid host`, `--ipc host`, `--userns host`, `--network host`, or `--volumes-from`.
 * **Cloud Run Jobs: Platform default.** Google states that "basic security profiles, similar to seccomp security profiles for Docker, are applied around each of your containers" ([container runtime contract](https://docs.cloud.google.com/run/docs/container-contract)). They are not configurable.
 * **Verification:** a unit test on the runner's container arguments rejects the forbidden flags.
 
@@ -242,3 +243,10 @@ Two facts shape most of the Cloud Run column:
 * **Local Docker:** not applicable.
 * **Cloud Run Jobs: Required.** Terraform creates one service account for the pipeline job, granted only the roles it needs for Vertex AI and the BigQuery dataset, and the empty sandbox account from SH-13. Google recommends a user managed service account and disabling the automatic role grant to the default service account ([service identity](https://docs.cloud.google.com/run/docs/securing/service-identity)).
 * **Verification:** a Terraform plan review lists every role binding and each one has a written reason.
+
+### SH-26. gVisor runtime for target code, no fallback
+
+* **Threats:** TM-02, TM-05.
+* **Local Docker:** every container that runs target project code, including the dependency download container (SH-02), is started with `--runtime=runsc`, the [gVisor](https://gvisor.dev/docs/user_guide/quick_start/docker/) runtime, which handles the container's system calls in its own application kernel instead of passing them to the host kernel ([gVisor security model](https://gvisor.dev/docs/architecture_guide/security/)). `runsc` is pinned to one point release, installed from gVisor's release bucket with its SHA-512 checked, and its version is recorded with every run (SH-18). There is no fallback: the runner refuses to start a target container if `runsc` is not registered with Docker, and after start it checks that `docker inspect` reports `HostConfig.Runtime` as `runsc`. A project that cannot run under gVisor is recorded as such and never rerun under `runc`. Every other control in this list still applies. The pinned release, the install steps, and the compatibility and overhead bar this control depends on are in [ADR 0005](../adr/0005-local-sandbox-hardening.md).
+* **Cloud Run Jobs: Not applicable.** Each instance is already isolated by a virtual machine monitor ([security design](https://docs.cloud.google.com/run/docs/securing/security)); the Cloud Run network question is OD-1.
+* **Verification:** the runner refuses to start when `runsc` is missing; a started container's `HostConfig.Runtime` is `runsc`; a unit test on the runner's container arguments requires `--runtime=runsc`; and the gVisor compatibility and overhead measurement in [ADR 0005](../adr/0005-local-sandbox-hardening.md) passes before this control is relied on.

@@ -58,15 +58,15 @@ Each entry lists the entry point, the impact, a likelihood and impact rating (lo
 * **Description:** code opens outbound connections to send out anything it can read, download a second stage payload, or join a botnet. During the dependency download step the network is necessarily on.
 * **Impact:** high if any secret is reachable (TM-04); otherwise abuse of Rootflake's IP address and bandwidth. **Likelihood:** low for the offline corpus, medium for the upstream track.
 * **Controls:** SH-01, SH-02, SH-11, SH-12, SH-13.
-* **Residual risk:** code that runs during the dependency download step (TM-05) still has network access. Nothing sensitive is reachable from it, so the residual impact is limited to outbound abuse during that window.
+* **Residual risk:** code that runs during the dependency download step (TM-05) still has network access, but locally only through an allowlist proxy on an internal Docker network: HTTPS to Maven Central plus the repositories declared in the project's own POM files ([ADR 0005](../adr/0005-local-sandbox-hardening.md), SH-02). The allowlist is derived from untrusted input, so a repository written to attack Rootflake can declare its own host and reach it. Nothing sensitive is reachable from the download container, so the residual impact is limited to outbound traffic to allowlisted hosts during that window.
 
 ### TM-02. Sandbox escape
 
 * **Entry point:** B2.
 * **Description:** code inside the container exploits the container runtime, the kernel, or a misconfiguration (privileged mode, the Docker socket mounted, a sensitive host path mounted, extra capabilities) to act on the host.
 * **Impact:** high (A1, A2). **Likelihood:** low; requires a kernel or runtime exploit if the configuration controls hold.
-* **Controls:** SH-03, SH-04, SH-05, SH-06, SH-12, SH-19.
-* **Residual risk:** local Docker containers share the host kernel, so a kernel exploit is not stopped by any control in the checklist. On Cloud Run, each instance sits behind a virtual machine monitor boundary ([security design](https://docs.cloud.google.com/run/docs/securing/security)), which is a stronger boundary than a container. Running bulk sandbox work on a dedicated machine or virtual machine, or under a stronger local runtime, would reduce this further; that is an open decision (see section 6).
+* **Controls:** SH-03, SH-04, SH-05, SH-06, SH-12, SH-19, SH-26.
+* **Residual risk:** locally, every container that runs target code uses the gVisor runtime ([ADR 0005](../adr/0005-local-sandbox-hardening.md), SH-26), so system calls are handled by gVisor's own application kernel instead of going straight to the host kernel. An escape now needs a gVisor bug in addition to, or instead of, a host kernel bug; gVisor states it does not protect against hardware side channels. This holds only once the gVisor compatibility and overhead measurement in ADR 0005 passes; if it fails, the fallback is a dedicated virtual machine, decided in a follow up ADR. On Cloud Run, each instance sits behind a virtual machine monitor boundary ([security design](https://docs.cloud.google.com/run/docs/securing/security)), which is a stronger boundary than a container.
 
 ### TM-03. Resource exhaustion
 
@@ -89,8 +89,8 @@ Each entry lists the entry point, the impact, a likelihood and impact rating (lo
 * **Entry point:** B5, ADV2 and ADV1.
 * **Description:** Maven plugins and build extensions are code, and resolving them can execute that code while the network is still on. A malicious artifact can also plant files in the Maven repository cache that later runs reuse.
 * **Impact:** medium to high: network abuse during the download step, cache poisoning across projects (TM-06). **Likelihood:** low.
-* **Controls:** SH-02, SH-12, SH-18, SH-20.
-* **Residual risk:** Rootflake cannot vet the target's dependency tree; it can only make sure the download step holds nothing worth stealing and that its output is isolated per project and commit.
+* **Controls:** SH-02, SH-12, SH-18, SH-20, SH-26.
+* **Residual risk:** Rootflake cannot vet the target's dependency tree; it can only make sure the download step holds nothing worth stealing, runs under gVisor with every other sandbox control, reaches only allowlisted repositories over HTTPS (SH-02, SH-26), and writes into a repository isolated per project and commit. A malicious POM can widen its own allowlist, as noted under TM-01.
 
 ### TM-06. Cross run contamination and persistence
 
@@ -122,7 +122,7 @@ Each entry lists the entry point, the impact, a likelihood and impact rating (lo
 * **Description:** the repo server's read file, search code, view diff, and apply patch tools accept paths. A path such as `../../.config/gcloud/credentials.db`, an absolute path, or a path that passes through a symlink committed to the target repository could make the server, which runs in the credential holding pipeline process, read or write host files. Search results could carry host file contents back into the model's context and from there into logs.
 * **Impact:** high (A1, A2). **Likelihood:** medium if paths are only checked as strings.
 * **Controls:** SH-14, SH-15.
-* **Residual risk:** low once path resolution follows the rules in SH-14 and the contract tests include traversal and symlink fixtures.
+* **Residual risk:** low once path resolution follows the rules in SH-14 and the contract tests include traversal and symlink fixtures. The impact of a miss is higher locally than it looks: the pipeline process runs as a user in the `docker` group, and Docker states that "The `docker` group grants root-level privileges to the user" ([post installation steps](https://docs.docker.com/engine/install/linux-postinstall/)). Anything that compromises the pipeline process can therefore reach root on the host through the Docker socket, whatever runtime the sandbox uses. This is accepted as a residual risk, mitigated by path confinement (SH-14) and patch validation (SH-15), and revisited if sandbox work moves to a dedicated virtual machine ([ADR 0005](../adr/0005-local-sandbox-hardening.md)).
 
 ### TM-10. Malicious sandbox output
 
@@ -185,10 +185,10 @@ Each entry lists the entry point, the impact, a likelihood and impact rating (lo
 | Threat | Controls |
 |---|---|
 | TM-01 Network exfiltration | SH-01, SH-02, SH-11, SH-12, SH-13 |
-| TM-02 Sandbox escape | SH-03, SH-04, SH-05, SH-06, SH-12, SH-19 |
+| TM-02 Sandbox escape | SH-03, SH-04, SH-05, SH-06, SH-12, SH-19, SH-26 |
 | TM-03 Resource exhaustion | SH-07, SH-08, SH-09, SH-10, SH-23 |
 | TM-04 Credential exposure | SH-11, SH-12, SH-13, SH-22 |
-| TM-05 Poisoned dependencies | SH-02, SH-12, SH-18, SH-20 |
+| TM-05 Poisoned dependencies | SH-02, SH-12, SH-18, SH-20, SH-26 |
 | TM-06 Cross run contamination | SH-06, SH-20 |
 | TM-07 Prompt injection | SH-14, SH-15, SH-16, SH-21, SH-23 |
 | TM-08 Harmful patches | SH-14, SH-15, SH-16 |
@@ -203,9 +203,9 @@ Each entry lists the entry point, the impact, a likelihood and impact rating (lo
 
 ## 6. Open decisions
 
-These are not settled yet and will be recorded as ADRs before the code they affect lands.
+Each open decision is recorded as an ADR before the code it affects lands. OD-1 is still open; OD-2, OD-3 and OD-4 are decided for local execution by [ADR 0005](../adr/0005-local-sandbox-hardening.md).
 
 * **OD-1. How the sandbox gets "no network" on Cloud Run Jobs.** Cloud Run has no equivalent of Docker's `--network none`. The candidates are listed under SH-01 in the checklist. Until one is chosen and tested, the deployed pipeline does not execute target project tests on Cloud Run.
-* **OD-2. Local runtime strength.** Plain Docker shares the host kernel (TM-02). Options include running bulk work on a dedicated machine or virtual machine, or a stronger container runtime. Not yet evaluated.
-* **OD-3. Which files a patch may touch.** The checklist proposes rejecting changes to build files by default (SH-15). Some legitimate flaky test fixes may need a build file change; how often that happens in the corpus is not yet measured.
-* **OD-4. Egress allowlist during dependency download.** Restricting the download step to known Maven repositories would narrow TM-01 and TM-05 further, at the cost of breaking projects that use other repositories. Not yet decided.
+* **OD-2. Local runtime strength. Decided by ADR 0005.** Every container that runs target code, including the dependency download container, uses gVisor (`runsc`) pinned to one point release, with no fallback to `runc` (SH-26). Accepted only once the gVisor compatibility and overhead measurement passes; otherwise a dedicated virtual machine, in a follow up ADR.
+* **OD-3. Which files a patch may touch. Decided by ADR 0005.** Changes to `pom.xml` at any depth, anything under `.mvn/`, `mvnw` and `mvnw.cmd` are rejected by default (SH-15), with a committed override list that starts empty. How often real fixes touch build files is measured by the corpus builder from the merged fix diffs.
+* **OD-4. Egress allowlist during dependency download. Decided by ADR 0005.** An allowlist proxy on an internal Docker network permits HTTPS to Maven Central plus the repositories declared in the project's own POM files, read on the host without executing anything (SH-02). A malicious POM can declare its own host; that limit is stated under TM-01.
