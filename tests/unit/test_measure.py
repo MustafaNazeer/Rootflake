@@ -10,6 +10,7 @@ import pytest
 import rootflake
 from rootflake.sandbox import measure
 from rootflake.sandbox.container import RUNTIME, RunSpec, SandboxLimits, build_docker_args
+from rootflake.sandbox.download import check_proxy_args
 from rootflake.sandbox.executor import ProcResult, run_test
 from rootflake.sandbox.measure import (
     RuntimeOverride,
@@ -23,12 +24,13 @@ from rootflake.sandbox.results import TestId
 from rootflake.sandbox.workspace import ManagedRoot
 
 IMAGE = "rootflake-sandbox@sha256:" + "a" * 64
+PROXY = "rootflake-proxy@sha256:" + "b" * 64
+REAL_FIXTURES_DIR = measure.FIXTURES_DIR
 ROOT = Path(tempfile.mkdtemp(prefix="rootflake-measure-")).resolve()
 (ROOT / "ws").mkdir()
 (ROOT / "m2").mkdir()
 TEST = TestId.parse("demo.DemoTest#adds")
 PASS = b'<testsuite><testcase classname="demo.DemoTest" name="adds"/></testsuite>'
-REPO_KEY = "demo-" + "0" * 40
 
 
 def spec():
@@ -109,6 +111,46 @@ def make_fixtures(tmp_path):
     return fixtures
 
 
+@pytest.fixture(autouse=True)
+def fixtures(tmp_path, monkeypatch):
+    path = make_fixtures(tmp_path)
+    monkeypatch.setattr(measure, "FIXTURES_DIR", path)
+    return path
+
+
+class DownloadFake:
+    """Plays the docker side of download_dependencies and records the fetch container."""
+
+    def __init__(self, exit_code=0):
+        self.exit_code = exit_code
+        self.proxy = None
+        self.fetches = []
+
+    def docker(self, argv):
+        if argv[:3] == ["docker", "network", "inspect"]:
+            return ProcResult(0, self.proxy.encode(), b"", False)
+        return ProcResult(0, b"", b"", False)
+
+    def start_proxy(self, args, name, egress, image):
+        check_proxy_args(args, name, egress, image)
+        self.proxy = name
+        return ProcResult(0, b"", b"", False)
+
+    def run(self, args, timeout_s):
+        self.fetches.append(args)
+        return ProcResult(self.exit_code, b"", b"", False)
+
+    def stop(self, name):
+        pass
+
+
+def mount_source(args, dst):
+    for i, arg in enumerate(args):
+        if arg == "--mount" and f"dst={dst}" in args[i + 1]:
+            return Path(args[i + 1].split(",")[1].removeprefix("src="))
+    raise AssertionError(f"no mount for {dst}")
+
+
 def make_root(tmp_path, copier=None):
     path = tmp_path / "root"
     path.mkdir(mode=0o700, exist_ok=True)
@@ -124,21 +166,18 @@ def fixed_versions(spec):
     return {"stub": "1"}
 
 
-def go(tmp_path, runner, clock, runs, root=None, fixture="demo", **kwargs):
+def go(tmp_path, runner, clock, runs, root=None, fixture="demo", download=None, **kwargs):
     root = root or make_root(tmp_path)
-    fixtures = tmp_path / "fixtures"
-    if not fixtures.exists():
-        make_fixtures(tmp_path)
     return measure_runtimes(
         fixture,
         root,
-        root.repo_dir(REPO_KEY),
         17,
         SandboxLimits(),
         TEST,
         "",
         runs,
-        fixtures_dir=fixtures,
+        proxy_image=PROXY,
+        download_ops=download or DownloadFake(),
         runner=runner,
         read_report=always_pass,
         clock=clock,
@@ -309,23 +348,21 @@ def test_a_failed_fixture_copy_stops_the_measurement_and_cleans_up(tmp_path):
         "missing",
     ],
 )
-def test_anything_but_a_fixture_name_is_refused(tmp_path, name):
-    fixtures = make_fixtures(tmp_path)
+def test_anything_but_a_fixture_name_is_refused(tmp_path, fixtures, name):
     for clean in ("corpus/commons-lang", "fixtures/Demo", "fixtures/demo_x", "fixtures/-demo"):
         (tmp_path / clean).mkdir(parents=True)
         (tmp_path / clean / "pom.xml").write_text("<project/>")
     (fixtures / ("a" * 62)).mkdir()
     with pytest.raises(ValueError):
-        resolve_fixture(name, fixtures)
+        resolve_fixture(name)
 
 
-def test_an_absolute_or_parent_path_to_a_clean_tree_is_refused(tmp_path):
-    fixtures = make_fixtures(tmp_path)
+def test_an_absolute_or_parent_path_to_a_clean_tree_is_refused(tmp_path, fixtures):
     clean = tmp_path / "corpus" / "commons-lang"
     clean.mkdir(parents=True)
     for name in (str(clean), "../corpus/commons-lang", "../corpus"):
         with pytest.raises(ValueError):
-            resolve_fixture(name, fixtures)
+            resolve_fixture(name)
 
 
 def test_an_arbitrary_path_is_never_measured(tmp_path):
@@ -336,28 +373,25 @@ def test_an_arbitrary_path_is_never_measured(tmp_path):
         go(tmp_path, FakeRunner(clock, {}), clock, 1, fixture=str(project))
 
 
-def test_a_symlinked_fixture_is_refused(tmp_path):
-    fixtures = make_fixtures(tmp_path)
+def test_a_symlinked_fixture_is_refused(tmp_path, fixtures):
     (fixtures / "linked").symlink_to(fixtures / "demo")
     with pytest.raises(ValueError, match="symlink"):
-        resolve_fixture("linked", fixtures)
+        resolve_fixture("linked")
 
 
-def test_a_symlink_inside_a_fixture_is_refused(tmp_path):
-    fixtures = make_fixtures(tmp_path)
+def test_a_symlink_inside_a_fixture_is_refused(tmp_path, fixtures):
     (fixtures / "demo" / "escape").symlink_to(tmp_path)
     with pytest.raises(ValueError, match="symlink"):
-        resolve_fixture("demo", fixtures)
+        resolve_fixture("demo")
 
 
-def test_a_valid_fixture_resolves_inside_the_fixtures_dir(tmp_path):
-    fixtures = make_fixtures(tmp_path)
-    assert resolve_fixture("demo", fixtures) == fixtures / "demo"
+def test_a_valid_fixture_resolves_inside_the_fixtures_dir(tmp_path, fixtures):
+    assert resolve_fixture("demo") == fixtures / "demo"
 
 
 def test_the_default_fixtures_dir_is_in_this_repository():
     repository = Path(__file__).resolve().parents[2]
-    assert measure.FIXTURES_DIR == repository / "tests" / "fixtures" / "maven"
+    assert REAL_FIXTURES_DIR == repository / "tests" / "fixtures" / "maven"
 
 
 class Recorder:
@@ -463,8 +497,8 @@ def test_first_line_keeps_only_the_first_line(tmp_path, monkeypatch):
 def test_main_takes_a_fixture_name_and_writes_the_json(tmp_path, monkeypatch):
     seen = {}
 
-    def fake_measure(fixture, root, maven_repo, jdk, limits, test, module, runs, **kwargs):
-        seen.update(fixture=fixture, root=root, maven_repo=maven_repo, jdk=jdk, test=test)
+    def fake_measure(fixture, root, jdk, limits, test, module, runs, **kwargs):
+        seen.update(fixture=fixture, root=root, jdk=jdk, test=test)
         seen.update(module=module, runs=runs, **kwargs)
         return {"ratio_median_runsc_over_runc": 1.5}
 
@@ -476,7 +510,7 @@ def test_main_takes_a_fixture_name_and_writes_the_json(tmp_path, monkeypatch):
             "--image", IMAGE,
             "--fixture", "demo",
             "--root-dir", str(root.path),
-            "--maven-repo", str(root.repo_dir(REPO_KEY)),
+            "--proxy-image", PROXY,
             "--test", "demo.DemoTest#adds",
             "--module", "core",
             "--jdk", "11",
@@ -489,11 +523,10 @@ def test_main_takes_a_fixture_name_and_writes_the_json(tmp_path, monkeypatch):
     assert seen["fixture"] == "demo" and seen["root"].path == root.path
     assert seen["root"].image == IMAGE and seen["jdk"] == 11
     assert (seen["test"], seen["module"], seen["runs"]) == (TEST, "core", 50)
-    assert seen["timeout_s"] == 300
-    assert "fixtures_dir" not in seen
+    assert seen["timeout_s"] == 300 and seen["proxy_image"] == PROXY
 
 
-@pytest.mark.parametrize("option", ["--workspace", "--fixtures-dir"])
+@pytest.mark.parametrize("option", ["--workspace", "--fixtures-dir", "--maven-repo"])
 def test_the_command_line_has_no_way_to_point_at_other_trees(tmp_path, monkeypatch, option):
     called = []
     monkeypatch.setattr(measure, "measure_runtimes", lambda *a, **k: called.append(a) or {})
@@ -502,7 +535,7 @@ def test_the_command_line_has_no_way_to_point_at_other_trees(tmp_path, monkeypat
         "--image", IMAGE,
         "--fixture", "demo",
         "--root-dir", str(root.path),
-        "--maven-repo", str(root.repo_dir(REPO_KEY)),
+        "--proxy-image", PROXY,
         "--test", "demo.DemoTest#adds",
     ]  # fmt: skip
     measure.main([*valid, str(tmp_path / "ok.json")])
@@ -512,6 +545,116 @@ def test_the_command_line_has_no_way_to_point_at_other_trees(tmp_path, monkeypat
     assert len(called) == 1
 
 
-def test_a_missing_fixtures_directory_is_a_value_error(tmp_path):
+def test_a_missing_fixtures_directory_is_a_value_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(measure, "FIXTURES_DIR", tmp_path / "absent")
     with pytest.raises(ValueError, match="fixtures"):
-        resolve_fixture("demo", tmp_path / "absent")
+        resolve_fixture("demo")
+
+
+def staged(root):
+    (path,) = (root.path / "pristine").iterdir()
+    return path
+
+
+def test_the_repository_is_derived_from_the_fixture_and_filled_by_its_download(tmp_path):
+    clock = Clock()
+    download = DownloadFake()
+    runner = FakeRunner(clock, {"runc": [1], "runsc": [1]})
+    root = make_root(tmp_path)
+    result = go(tmp_path, runner, clock, 1, root=root, download=download)
+    key = staged(root).name
+    assert key.startswith("fixture-demo-")
+    repo = root.path / "repos" / key
+    (fetch,) = download.fetches
+    assert fetch[-1] == "rootflake-fetch"
+    assert fetch[fetch.index("--runtime") + 1] == "runsc"
+    assert mount_source(fetch, "/m2/repo") == repo
+    assert mount_source(fetch, "/workspace").parent.name.startswith("download-")
+    assert result["download"]["outcome"] == "ok"
+    assert result["download"]["cleanup_errors"] == []
+    assert list((root.path / "runs").iterdir()) == []
+
+
+def test_measured_runs_load_only_the_derived_repository(tmp_path):
+    clock = Clock()
+    seen = []
+
+    class Watch(FakeRunner):
+        def run(self, args, timeout_s):
+            seen.append(mount_source(args, "/m2/tail"))
+            return super().run(args, timeout_s)
+
+    root = make_root(tmp_path)
+    go(tmp_path, Watch(clock, {"runc": [1], "runsc": [1]}), clock, 1, root=root)
+    assert seen == [root.path / "repos" / staged(root).name] * 2
+
+
+def test_a_repository_under_any_other_key_is_refused(tmp_path, monkeypatch):
+    clock = Clock()
+    root = make_root(tmp_path)
+    other = root.repo_dir("commons-lang-" + "1" * 40)
+    monkeypatch.setattr(root, "repo_dir", lambda key: other)
+    download = DownloadFake()
+    runner = FakeRunner(clock, {"runc": [1], "runsc": [1]})
+    with pytest.raises(ValueError, match="repository"):
+        go(tmp_path, runner, clock, 1, root=root, download=download)
+    assert download.fetches == [] and runner.runtimes == []
+
+
+def test_a_failed_download_stops_the_measurement(tmp_path):
+    clock = Clock()
+    root = make_root(tmp_path)
+    runner = FakeRunner(clock, {"runc": [1], "runsc": [1]})
+    with pytest.raises(RuntimeError, match="download"):
+        go(tmp_path, runner, clock, 1, root=root, download=DownloadFake(exit_code=1))
+    assert runner.runtimes == []
+    assert list((root.path / "runs").iterdir()) == []
+
+
+@pytest.mark.parametrize("keyword", ["maven_repo", "fixtures_dir"])
+def test_callers_cannot_supply_a_repository_or_fixtures_dir(tmp_path, keyword):
+    clock = Clock()
+    with pytest.raises(TypeError):
+        go(tmp_path, FakeRunner(clock, {}), clock, 1, **{keyword: tmp_path})
+    with pytest.raises(TypeError):
+        resolve_fixture("demo", tmp_path)
+
+
+def test_a_staged_fixture_with_matching_content_is_reused(tmp_path, monkeypatch):
+    clock = Clock()
+    root = make_root(tmp_path)
+    go(tmp_path, FakeRunner(clock, {"runc": [1], "runsc": [1]}), clock, 1, root=root)
+
+    def no_copy(*args, **kwargs):
+        raise AssertionError("a matching staged fixture must not be copied again")
+
+    monkeypatch.setattr(measure, "copytree", no_copy)
+    go(tmp_path, FakeRunner(clock, {"runc": [1], "runsc": [1]}), clock, 1, root=root)
+
+
+def test_a_staged_fixture_with_a_leftover_file_is_refused(tmp_path):
+    clock = Clock()
+    root = make_root(tmp_path)
+    go(tmp_path, FakeRunner(clock, {"runc": [1], "runsc": [1]}), clock, 1, root=root)
+    (staged(root) / "leftover.txt").write_text("x")
+    runner = FakeRunner(clock, {"runc": [1], "runsc": [1]})
+    with pytest.raises(ValueError, match="staged"):
+        go(tmp_path, runner, clock, 1, root=root)
+    assert runner.runtimes == []
+
+
+def test_a_symlink_added_between_the_check_and_the_copy_is_caught(tmp_path, fixtures, monkeypatch):
+    clock = Clock()
+    root = make_root(tmp_path)
+    real_copytree = shutil.copytree
+
+    def racing_copytree(src, dst, **kwargs):
+        (Path(src) / "escape").symlink_to(tmp_path)
+        return real_copytree(src, dst, **kwargs)
+
+    monkeypatch.setattr(measure, "copytree", racing_copytree)
+    runner = FakeRunner(clock, {"runc": [1], "runsc": [1]})
+    with pytest.raises(ValueError, match="symlink"):
+        go(tmp_path, runner, clock, 1, root=root)
+    assert runner.runtimes == []
+    assert list((root.path / "pristine").iterdir()) == []
