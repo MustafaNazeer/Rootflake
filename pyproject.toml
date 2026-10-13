@@ -1,0 +1,32 @@
+[project]
+name = "rootflake"
+version = "0.1.0"
+description = "Finds, diagnoses, and verifies fixes for flaky tests in open source Java projects."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.14,<3.15"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.17.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv]
+required-version = ">=0.13.0"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["docker: needs a local Docker daemon and the sandbox image"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
