@@ -22,7 +22,10 @@ required-version = ">=0.13.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["docker: needs a local Docker daemon and the sandbox image"]
+markers = [
+    "docker: needs a local Docker daemon and the sandbox image",
+    "idoft: needs the pinned IDoFT pr-data.csv in the local cache",
+]
 
 [tool.ruff]
 line-length = 100
