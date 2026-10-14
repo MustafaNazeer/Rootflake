@@ -44,40 +44,42 @@ def test_the_od_family_folds_into_one_stratum():
 
 @pytest.mark.parametrize("status", ["Opened", "accepted", "Accepted ", "", "DeveloperFixed"])
 def test_rule_1_only_exact_accepted_survives(status):
-    eligible, reasons, not_accepted = screen([row(1, status=status), *many("ID", 6)])
-    assert not_accepted == 1
-    assert 1 not in reasons
-    assert 1 not in {e.row.idoft_row for e in eligible}
+    result = screen([row(1, status=status), *many("ID", 6)])
+    assert result.not_accepted == 1
+    assert 1 not in result.reasons and 1 not in result.accepted
+    assert 1 not in {e.row.idoft_row for e in result.eligible}
 
 
 def test_rule_2_removes_every_copy_of_a_duplicate_test_across_spellings():
     rows = [row(1, project="O/R", pr=1), row(2, project="o/r", pr=2), *many("ID", 6)]
-    _, reasons, _ = screen(rows)
+    reasons = screen(rows).reasons
     assert reasons[1] == reasons[2] == "duplicate_test"
 
 
 def test_the_same_test_in_another_module_is_not_a_duplicate():
     rows = [row(1, module="a"), row(2, module="b"), *many("ID", 6)]
-    _, reasons, _ = screen(rows)
+    reasons = screen(rows).reasons
     assert 1 not in reasons and 2 not in reasons
 
 
 @pytest.mark.parametrize("category", ["NIO;OD", "OD;ID", "NDOD;UD;NOD"])
 def test_rule_3_removes_any_multi_label_row(category):
-    _, reasons, _ = screen([row(1, category=category), *many("ID", 6)])
+    reasons = screen([row(1, category=category), *many("ID", 6)]).reasons
     assert reasons[1] == "multiple_labels"
 
 
-@pytest.mark.parametrize("category", ["UD", "OSD", "TD", "ID-HtF", "NDOD", "NDOI", "id"])
+@pytest.mark.parametrize("category", ["UD", "OSD", "TD", "ID-HtF", "NDOD", "NDOI"])
 def test_rule_4_removes_excluded_labels(category):
-    _, reasons, _ = screen([row(1, category=category), *many("ID", 6)])
+    reasons = screen([row(1, category=category), *many("ID", 6)]).reasons
     assert reasons[1] == "category_excluded"
 
 
 def test_rule_5_needs_six_eligible_prs_in_the_folded_stratum():
     thin = many("NOD", 5, start=100)
     folded = [*many("OD-Vic", 3, start=200), *many("OD-Brit", 2, start=300), *many("OD", 1, 400)]
-    eligible, reasons, _ = screen([*thin, *folded])
+    result = screen([*thin, *folded])
+    eligible, reasons = result.eligible, result.reasons
+    assert {result.strata[r.idoft_row] for r in thin} == {"NOD"}
     assert {reasons[r.idoft_row] for r in thin} == {"stratum_too_thin"}
     assert {e.stratum for e in eligible} == {"OD"}
     assert len(eligible) == 6
@@ -85,12 +87,12 @@ def test_rule_5_needs_six_eligible_prs_in_the_folded_stratum():
 
 def test_rule_5_counts_prs_not_rows():
     rows = [row(100 + i, test=f"p.C{i}.m", category="NIO", pr=1) for i in range(10)]
-    _, reasons, _ = screen(rows)
+    reasons = screen(rows).reasons
     assert set(reasons.values()) == {"stratum_too_thin"}
 
 
 def test_eligible_rows_carry_stratum_and_a_case_folded_class_key():
-    eligible, _, _ = screen(many("OD-Vic", 6, project="Apache/Struts"))
+    eligible = screen(many("OD-Vic", 6, project="Apache/Struts")).eligible
     first = eligible[0]
     assert first.stratum == "OD"
     assert first.class_key == ("https://github.com/apache/struts", "p.C100")
@@ -122,11 +124,21 @@ def test_a_malformed_row_that_is_not_accepted_is_only_counted():
     from dataclasses import replace
 
     bad = replace(row(7, status="Opened"), sha_detected="x")
-    _, _, not_accepted = screen([bad, *many("ID", 6)])
-    assert not_accepted == 1
+    assert screen([bad, *many("ID", 6)]).not_accepted == 1
 
 
 def test_one_pr_spelled_two_ways_stops_the_screen():
     rows = [*many("ID", 6), row(1, pr=100, project="O/R", test="p.X.m")]
     with pytest.raises(ValueError, match="spelled"):
         screen(rows)
+
+
+@pytest.mark.parametrize("category", ["id", "XYZ", "OD-Vic "])
+def test_an_unknown_label_stops_the_screen_naming_the_row(category):
+    with pytest.raises(ValueError, match="row 1"):
+        screen([row(1, category=category), *many("ID", 6)])
+
+
+def test_every_accepted_row_is_listed():
+    rows = [row(1, status="Opened"), row(2, category="UD"), *many("ID", 6)]
+    assert screen(rows).accepted == frozenset({2, *range(100, 106)})

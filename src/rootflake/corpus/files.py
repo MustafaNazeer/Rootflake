@@ -11,6 +11,7 @@ import tempfile
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from rootflake.corpus.funnel import ScreenResult
 from rootflake.corpus.walk import Drawn, WalkResult
 
 SPLITS = ("dev", "test")
@@ -24,16 +25,18 @@ def _jsonl(objects: list[dict]) -> bytes:
     return "".join(dumps_line(obj) + "\n" for obj in objects).encode("utf-8")
 
 
-def funnel_rows(
-    screened: dict[int, str], screened_strata: dict[int, str], walked: WalkResult
-) -> list[dict]:
-    """One row per Accepted row: the rule 2 to 5 reasons joined with the walk's outcomes."""
-    overlap = set(screened) & set(walked.reasons)
+def funnel_rows(screened: ScreenResult, walked: WalkResult) -> list[dict]:
+    """One row per Accepted row, so the counts add up: rule 2 to 5 reasons and walk outcomes."""
+    overlap = set(screened.reasons) & set(walked.reasons)
     if overlap:
         raise ValueError(f"rows with a screen and a walk reason: {sorted(overlap)}")
+    listed = set(screened.reasons) | set(walked.reasons)
+    if listed != screened.accepted:
+        missing, extra = sorted(screened.accepted - listed), sorted(listed - screened.accepted)
+        raise ValueError(f"funnel rows without a reason: {missing}; not Accepted: {extra}")
     rows = [
-        {"idoft_row": n, "reason": reason, "stratum": screened_strata.get(n), "detail": None}
-        for n, reason in screened.items()
+        {"idoft_row": n, "reason": reason, "stratum": screened.strata.get(n), "detail": None}
+        for n, reason in screened.reasons.items()
     ]
     rows += [
         {"idoft_row": n, "reason": reason, "stratum": walked.strata[n], "detail": detail}

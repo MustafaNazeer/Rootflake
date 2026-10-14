@@ -38,7 +38,8 @@ def test_rules_one_to_five_match_the_adr(rows):
 
     from rootflake.corpus.funnel import screen
 
-    eligible, reasons, not_accepted = screen(rows)
+    result = screen(rows)
+    eligible, reasons, not_accepted = result.eligible, result.reasons, result.not_accepted
     assert not_accepted == 5772
     assert Counter(reasons.values()) == {
         "duplicate_test": 18,

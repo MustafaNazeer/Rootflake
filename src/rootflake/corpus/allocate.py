@@ -39,7 +39,13 @@ def largest_remainder(total: int, weights: dict[str, int], caps: dict[str, int])
 def plan(
     eligible_prs: dict[str, int], floor: int = FLOOR, total: int = TOTAL, dev_total: int = DEV_TOTAL
 ) -> dict[str, tuple[int, int]]:
-    """Planned (dev, test) counts per stratum from each stratum's eligible PR count."""
+    """Planned (dev, test) counts per stratum from each stratum's eligible PR count.
+
+    ADR 0006 defines the dev step only when the strata can fill the whole corpus; with fewer
+    eligible PRs it would put the slots into dev first, so that case is refused.
+    """
+    if sum(eligible_prs.values()) < total:
+        raise ValueError(f"{sum(eligible_prs.values())} eligible PRs cannot fill {total} slots")
     floors = {name: min(floor, count) for name, count in eligible_prs.items()}
     above = {name: count - floors[name] for name, count in eligible_prs.items()}
     extra = largest_remainder(max(total - sum(floors.values()), 0), above, above)

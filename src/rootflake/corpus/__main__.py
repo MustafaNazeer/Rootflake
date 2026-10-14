@@ -25,14 +25,15 @@ def _screen(_args: argparse.Namespace) -> int:
         print(f"{path} is missing; run `python -m rootflake.corpus fetch-idoft`", file=sys.stderr)
         return 1
     rows = idoft.parse(path.read_bytes(), idoft.PINNED_SHA256)
-    eligible, reasons, not_accepted = screen(rows)
+    result = screen(rows)
+    eligible = result.eligible
     prs: dict[str, set[str]] = {}
     for item in eligible:
         prs.setdefault(item.stratum, set()).add(item.pr)
     counts = {name: len(urls) for name, urls in sorted(prs.items())}
     report = {
         "source": {"commit": idoft.PINNED_COMMIT, "sha256": idoft.PINNED_SHA256},
-        "funnel": {"status_not_accepted": not_accepted, **Counter(reasons.values())},
+        "funnel": {"status_not_accepted": result.not_accepted, **Counter(result.reasons.values())},
         "eligible_rows": dict(sorted(Counter(item.stratum for item in eligible).items())),
         "eligible_prs": counts,
         "plan": {name: list(split) for name, split in plan(counts).items()},

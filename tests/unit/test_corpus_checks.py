@@ -153,7 +153,7 @@ def test_screen_prints_the_counts_and_the_plan(tmp_path, monkeypatch, capsys):
     header = ",".join(idoft.HEADER)
     lines = [header] + [
         f"https://github.com/o/r{n},{SHA},.,p.C{n}.m,ID,Accepted,https://github.com/o/r{n}/pull/{n},"
-        for n in range(1, 8)
+        for n in range(1, 151)
     ]
     data = ("\n".join(lines) + "\n").encode()
     path = idoft.cache_path(tmp_path, idoft.PINNED_COMMIT)
@@ -163,6 +163,6 @@ def test_screen_prints_the_counts_and_the_plan(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(idoft, "PINNED_SHA256", hashlib.sha256(data).hexdigest())
     assert cli.main(["screen"]) == 0
     report = json.loads(capsys.readouterr().out)
-    assert report["eligible_prs"] == {"ID": 7}
-    assert report["plan"] == {"ID": [7, 0]}
+    assert report["eligible_prs"] == {"ID": 150}
+    assert report["plan"] == {"ID": [50, 100]}
     assert report["funnel"] == {"status_not_accepted": 0}

@@ -4,6 +4,7 @@ import json
 import pytest
 
 from rootflake.corpus.files import dumps_line, funnel_counts, funnel_rows, write_version
+from rootflake.corpus.funnel import ScreenResult
 from rootflake.corpus.idoft import Row
 from rootflake.corpus.walk import Drawn, FixDiff, WalkResult
 
@@ -29,13 +30,18 @@ def result():
     return walk
 
 
+def screened(reasons, strata=None, extra=()):
+    accepted = frozenset({*reasons, 3, 5, 7, 9, *extra})
+    return ScreenResult([], dict(reasons), dict(strata or {}), 10, accepted)
+
+
 def test_a_line_is_sorted_compact_and_keeps_non_ascii():
     assert dumps_line({"b": 1, "a": 'Ü,"'}) == '{"a":"Ü,\\"","b":1}'
 
 
 def test_split_files_are_sorted_by_row_with_a_final_newline(tmp_path):
     out = tmp_path / "v1"
-    funnel = funnel_rows({2: "duplicate_test"}, {}, result())
+    funnel = funnel_rows(screened({2: "duplicate_test"}), result())
     write_version(out, result().drawn, funnel, {"corpus_version": "corpus-v1"})
     lines = (out / "test.jsonl").read_bytes().split(b"\n")
     assert lines[-1] == b""
@@ -60,7 +66,7 @@ def test_the_exact_bytes_of_one_split_row(tmp_path):
 
 
 def test_funnel_rows_join_screen_and_walk_reasons_by_row():
-    rows = funnel_rows({2: "duplicate_test", 4: "stratum_too_thin"}, {4: "TZD"}, result())
+    rows = funnel_rows(screened({2: "duplicate_test", 4: "stratum_too_thin"}, {4: "TZD"}), result())
     assert rows == [
         {"idoft_row": 2, "reason": "duplicate_test", "stratum": None, "detail": None},
         {"idoft_row": 3, "reason": "drawn", "stratum": "OD", "detail": "11"},
@@ -73,11 +79,11 @@ def test_funnel_rows_join_screen_and_walk_reasons_by_row():
 
 def test_a_row_with_two_reasons_is_refused():
     with pytest.raises(ValueError):
-        funnel_rows({3: "duplicate_test"}, {}, result())
+        funnel_rows(screened({3: "duplicate_test"}), result())
 
 
 def test_funnel_counts_overall_and_per_stratum():
-    rows = funnel_rows({2: "duplicate_test"}, {}, result())
+    rows = funnel_rows(screened({2: "duplicate_test"}), result())
     assert funnel_counts(rows, not_accepted=10) == {
         "overall": {"status_not_accepted": 10, "duplicate_test": 1, "drawn": 3, "build_failed": 1},
         "per_stratum": {"OD": {"drawn": 3, "build_failed": 1}},
@@ -104,8 +110,21 @@ def test_an_existing_version_is_never_overwritten(tmp_path):
 
 
 def test_two_writes_of_the_same_result_are_byte_identical(tmp_path):
-    funnel = funnel_rows({2: "duplicate_test"}, {}, result())
+    funnel = funnel_rows(screened({2: "duplicate_test"}), result())
     for name in ("a", "b"):
         write_version(tmp_path / name, result().drawn, funnel, {"x": [1, "Ü"]})
     for file in ("dev.jsonl", "test.jsonl", "funnel.jsonl", "manifest.json"):
         assert (tmp_path / "a" / file).read_bytes() == (tmp_path / "b" / file).read_bytes()
+
+
+def test_an_accepted_row_without_a_reason_is_refused():
+    with pytest.raises(ValueError, match="11"):
+        funnel_rows(screened({2: "duplicate_test"}, extra=(11,)), result())
+
+
+def test_a_reason_for_a_row_that_is_not_accepted_is_refused():
+    walk = result()
+    walk.reasons[12] = ("not_examined", None)
+    walk.strata[12] = "OD"
+    with pytest.raises(ValueError, match="12"):
+        funnel_rows(screened({2: "duplicate_test"}), walk)

@@ -45,6 +45,15 @@ _SHA_RE = re.compile(r"[0-9a-f]{40}")
 
 
 @dataclass(frozen=True)
+class ScreenResult:
+    eligible: list[Eligible]
+    reasons: dict[int, str]
+    strata: dict[int, str]
+    not_accepted: int
+    accepted: frozenset[int]
+
+
+@dataclass(frozen=True)
 class Eligible:
     row: Row
     stratum: str
@@ -75,14 +84,19 @@ def _check(row: Row) -> None:
         raise bad(f"PR link {row.pr_url!r} is not a pull request of {row.project_url!r}")
     if not row.category:
         raise bad("empty Category")
+    unknown = [
+        label for label in row.category.split(";") if label not in FOLD and label not in EXCLUDED
+    ]
+    if unknown:
+        raise bad(f"unknown IDoFT label {unknown[0]!r}")
     try:
         derive_test_class(row.test_name)
     except ValueError as error:
         raise bad(str(error)) from error
 
 
-def screen(rows: list[Row]) -> tuple[list[Eligible], dict[int, str], int]:
-    """Returns the eligible rows, the reason for each removed Accepted row, and the rule 1 count."""
+def screen(rows: list[Row]) -> ScreenResult:
+    """Rules 1 to 5: the eligible rows, the reason and (from rule 5) stratum of each removed row."""
     accepted = [row for row in rows if row.status == "Accepted"]
     spellings: dict[str, set[str]] = defaultdict(set)
     for row in accepted:
@@ -114,9 +128,12 @@ def screen(rows: list[Row]) -> tuple[list[Eligible], dict[int, str], int]:
     for item in survivors:
         prs[item.stratum].add(item.pr)
     eligible = []
+    strata: dict[int, str] = {}
     for item in survivors:
         if len(prs[item.stratum]) < MIN_STRATUM_PRS:
             reasons[item.row.idoft_row] = "stratum_too_thin"
+            strata[item.row.idoft_row] = item.stratum
         else:
             eligible.append(item)
-    return eligible, reasons, len(rows) - len(accepted)
+    ids = frozenset(row.idoft_row for row in accepted)
+    return ScreenResult(eligible, reasons, strata, len(rows) - len(accepted), ids)

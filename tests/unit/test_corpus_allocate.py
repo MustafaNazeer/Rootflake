@@ -16,15 +16,15 @@ def test_the_adr_illustrative_allocation_is_reproduced_exactly():
     "prs",
     [
         {"ID": 527, "OD": 70, "NIO": 30, "NOD": 7},
-        {"A": 6, "B": 6},
+        {"A": 150},
         {"A": 1000},
         {"A": 13, "B": 400, "C": 6, "D": 51},
     ],
 )
-def test_totals_are_one_fifty_and_fifty_when_enough_prs_exist(prs):
+def test_totals_are_one_fifty_and_fifty(prs):
     result = plan(prs)
-    assert sum(d + t for d, t in result.values()) == 150 if sum(prs.values()) >= 150 else True
-    assert sum(d for d, _ in result.values()) == 50 if sum(prs.values()) >= 150 else True
+    assert sum(d + t for d, t in result.values()) == 150
+    assert sum(d for d, _ in result.values()) == 50
     for stratum, (dev, test) in result.items():
         assert 0 <= dev and 0 <= test and dev + test <= prs[stratum]
 
@@ -34,9 +34,10 @@ def test_a_stratum_below_the_floor_gets_all_its_prs():
     assert sum(result["B"]) == 7
 
 
-def test_fewer_prs_than_the_corpus_size_gives_a_smaller_plan():
-    result = plan({"A": 20, "B": 10})
-    assert sum(sum(v) for v in result.values()) == 30
+@pytest.mark.parametrize("prs", [{"A": 6, "B": 6}, {"A": 40, "B": 30}, {"A": 149}])
+def test_fewer_eligible_prs_than_the_corpus_size_is_refused(prs):
+    with pytest.raises(ValueError, match="150"):
+        plan(prs)
 
 
 def test_a_capped_stratum_is_fixed_and_the_rest_recomputed():
