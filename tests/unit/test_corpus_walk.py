@@ -186,3 +186,82 @@ def test_the_walk_is_deterministic():
 def test_a_stratum_without_a_plan_is_refused():
     with pytest.raises(ValueError):
         walk([item(1, "NIO")], {"ID": (0, 1)}, SEED, Checks())
+
+
+def test_a_claimed_pr_is_rule_six_even_after_the_quota_fills():
+    rare = [item(n, "NOD", project=f"n/r{n}") for n in range(1, 7)]
+    common = [item(n, "ID", project=f"i/r{n}") for n in range(10, 30)]
+    shared = item(99, "ID", project="n/r1", pr=1)
+    ids = [*common, shared]
+    first = ranked(ids, "ID")[0]
+    assert first is not shared, "precondition: the shared PR is not the first ID unit"
+    result = walk([*rare, *ids], {"NOD": (0, 6), "ID": (0, 1)}, SEED, Checks())
+    assert result.reasons[99][0] == "same_pr_already_drawn"
+
+
+def test_two_rows_of_one_class_can_both_go_to_test():
+    items = [item(1, cls="p.Same"), item(2, cls="p.Same")]
+    result = walk(items, {"ID": (0, 2)}, SEED, Checks())
+    assert [d.split for d in result.drawn] == ["test", "test"]
+
+
+def test_rule_eight_is_checked_before_any_network_check():
+    items = [item(1, cls="p.Same"), item(2, cls="p.Same")]
+    checks = Checks()
+    result = walk(items, {"ID": (1, 1)}, SEED, checks)
+    (blocked,) = [
+        n for n, (reason, _) in result.reasons.items() if reason == "class_in_other_split"
+    ]
+    assert blocked not in checked(checks)
+
+
+def test_strata_with_equal_pr_counts_are_walked_in_name_order():
+    x = [item(n, "X", project=f"s/r{n}") for n in range(1, 7)]
+    y = [item(100 + n, "Y", project=f"y/r{n}") for n in range(1, 6)]
+    y.append(item(200, "Y", project="s/r1", pr=1))
+    result = walk([*y, *x], {"Y": (0, 6), "X": (0, 6)}, SEED, Checks())
+    assert result.reasons[1][0] == "drawn"
+    assert result.reasons[200][0] == "same_pr_already_drawn"
+
+
+def test_lost_test_and_dev_slots_are_reallocated_separately():
+    rare = [item(n, "A", project=f"a/r{n}") for n in range(1, 7)]
+    later = [item(100 + n, "B", project=f"b/r{n}") for n in range(1, 21)]
+    checks = Checks(broken={3, 4, 5, 6})
+    result = walk([*rare, *later], {"A": (2, 3), "B": (0, 0)}, SEED, checks)
+    assert result.shortfalls[0] == {"stratum": "A", "lost_test": 1, "lost_dev": 2}
+    assert result.reallocations == [{"from": "A", "test": {"B": 1}, "dev": {"B": 2}}]
+    assert result.final["B"] == (2, 1)
+
+
+def test_reallocation_weights_count_only_unclaimed_prs():
+    a = [item(n, "A", project=f"s/r{n}") for n in range(1, 7)]
+    b_shared = [item(100 + n, "B", project=f"s/r{n}", pr=n) for n in range(1, 7)]
+    b_own = [item(200 + n, "B", project=f"b/r{n}") for n in range(1, 7)]
+    c = [item(300 + n, "C", project=f"c/r{n}") for n in range(1, 8)]
+    plan = {"A": (0, 10), "B": (0, 0), "C": (0, 0)}
+    result = walk([*a, *b_shared, *b_own, *c], plan, SEED, Checks())
+    assert result.reallocations[0] == {"from": "A", "test": {"B": 2, "C": 2}, "dev": {}}
+
+
+def test_a_short_recipient_passes_on_the_slots_it_received():
+    a = [item(n, "A", project=f"a/r{n}") for n in range(1, 7)]
+    b = [item(100 + n, "B", project=f"b/r{n}") for n in range(1, 11)]
+    c = [item(200 + n, "C", project=f"c/r{n}") for n in range(1, 11)]
+    broken = {3, 4, 5, 6, *range(102, 111)}
+    plan = {"A": (0, 4), "B": (0, 2), "C": (0, 0)}
+    result = walk([*a, *b, *c], plan, SEED, Checks(broken=broken))
+    assert result.shortfalls == [
+        {"stratum": "A", "lost_test": 2, "lost_dev": 0},
+        {"stratum": "B", "lost_test": 2, "lost_dev": 0},
+    ]
+    assert result.final == {"A": (0, 2), "B": (0, 1), "C": (0, 3)}
+
+
+def test_a_later_stratum_with_every_pr_claimed_receives_nothing():
+    a = [item(n, "A", project=f"s/r{n}") for n in range(1, 7)]
+    b = [item(100 + n, "B", project=f"s/r{n}", pr=n) for n in (1, 2)]
+    c = [item(200 + n, "C", project=f"c/r{n}") for n in range(1, 11)]
+    plan = {"A": (0, 6), "B": (0, 0), "C": (0, 0)}
+    result = walk([*a, *b, *c], plan, SEED, Checks(broken={3, 4, 5, 6}))
+    assert result.reallocations == [{"from": "A", "test": {"C": 4}, "dev": {}}]

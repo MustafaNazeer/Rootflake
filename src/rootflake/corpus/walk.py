@@ -83,7 +83,7 @@ class Drawn:
 class WalkResult:
     drawn: list[Drawn] = field(default_factory=list)
     reasons: dict[int, tuple[str, str | None]] = field(default_factory=dict)
-    strata: dict[str, str] = field(default_factory=dict)
+    strata: dict[int, str] = field(default_factory=dict)
     planned: dict[str, tuple[int, int]] = field(default_factory=dict)
     final: dict[str, tuple[int, int]] = field(default_factory=dict)
     shortfalls: list[dict] = field(default_factory=list)
@@ -154,14 +154,13 @@ def walk(
         drawn = {"dev": 0, "test": 0}
         for url in ranked:
             rows = sorted(units[stratum][url], key=lambda e: row_key(seed, e.row.idoft_row))
-            full = drawn["test"] >= test_quota and drawn["dev"] >= dev_quota
-            if full:
-                for item in rows:
-                    record(item, "not_examined")
-                continue
             if url.lower() in claimed:
                 for item in rows:
                     record(item, "same_pr_already_drawn")
+                continue
+            if drawn["test"] >= test_quota and drawn["dev"] >= dev_quota:
+                for item in rows:
+                    record(item, "not_examined")
                 continue
             split = "test" if drawn["test"] < test_quota else "dev"
             for item in rows:
