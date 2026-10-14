@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -11,6 +12,7 @@ from rootflake.sandbox import workspace as workspace_module
 from rootflake.sandbox.executor import ProcResult
 from rootflake.sandbox.workspace import (
     COPY_TIMEOUT_S,
+    PROJECT_KEY_RE,
     RUNTIME,
     ManagedRoot,
     build_copy_args,
@@ -19,7 +21,9 @@ from rootflake.sandbox.workspace import (
     check_copy_args,
     check_remove_args,
     check_unlock_args,
+    corpus_key,
     default_root,
+    project_slug,
 )
 
 IMAGE = "rootflake-sandbox@sha256:" + "a" * 64
@@ -685,3 +689,70 @@ def test_an_existing_keyed_dir_owned_by_someone_else_is_refused(tmp_path, monkey
     monkeypatch.setattr(workspace_module.os, "getuid", lambda: os.stat(path).st_uid + 1)
     with pytest.raises(ValueError, match="owned"):
         getattr(root, method)(f"x-{SHA}")
+
+
+def test_the_root_has_a_private_mirrors_directory(tmp_path):
+    root = make_root(tmp_path)
+    assert mode(root.mirrors) == 0o700
+
+
+def test_a_mirror_directory_is_keyed_private_and_owned(tmp_path):
+    root = make_root(tmp_path)
+    path = root.mirror_dir("apache_struts")
+    assert path == root.mirrors / "apache_struts"
+    assert mode(path) == 0o700
+    for key in ("../x", "Apache_Struts", "", "a/b", "fixture-x"):
+        with pytest.raises(ValueError):
+            root.mirror_dir(key)
+
+
+@pytest.mark.parametrize(
+    ("url", "slug"),
+    [
+        ("https://github.com/Apache/Struts", "apache_struts"),
+        ("https://github.com/o-1/r.js_x-y", "o-1_r.js_x-y"),
+        ("https://github.com/fixture/x", "fixture_x"),
+    ],
+)
+def test_project_slugs_are_case_folded_with_an_unambiguous_separator(url, slug):
+    assert project_slug(url) == slug
+
+
+def test_a_long_repository_name_is_hashed_into_the_slug():
+    url = "https://github.com/owner/" + "r" * 100
+    slug = project_slug(url)
+    expected = hashlib.sha256(b"owner/" + b"r" * 100).hexdigest()[:16]
+    assert slug == f"owner_{expected}"
+    assert PROJECT_KEY_RE.fullmatch(corpus_key(url, "a" * 40))
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://gitlab.com/o/r",
+        "https://github.com/o",
+        "https://github.com/o/r/pull/1",
+        "https://github.com/o/..",
+        "https://github.com/-o/r",
+        "file:///tmp/r",
+    ],
+)
+def test_other_project_urls_are_refused(url):
+    with pytest.raises(ValueError):
+        project_slug(url)
+
+
+def test_a_corpus_key_is_the_slug_and_the_commit():
+    assert corpus_key("https://github.com/Apache/Struts", "b" * 40) == "apache_struts-" + "b" * 40
+
+
+@pytest.mark.parametrize("sha", ["B" * 40, "b" * 39, "main"])
+def test_a_corpus_key_needs_a_full_lowercase_commit(sha):
+    with pytest.raises(ValueError):
+        corpus_key("https://github.com/o/r", sha)
+
+
+def test_a_corpus_key_never_takes_the_fixture_prefix(monkeypatch):
+    monkeypatch.setattr(workspace_module, "project_slug", lambda url: "fixture-x")
+    with pytest.raises(ValueError, match="fixture"):
+        corpus_key("https://github.com/o/r", "b" * 40)

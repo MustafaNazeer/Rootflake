@@ -2,13 +2,15 @@
 
 Everything lives under one managed root: `pristine/` holds the host's checkouts, `runs/`
 holds one directory per copy (a download copy and a test run copy are never the same
-directory), and `repos/` holds one Maven repository per project and commit. Copies are made
+directory), `repos/` holds one Maven repository per project and commit, and `mirrors/` holds
+the host's bare clone of each corpus project, readable only by the current user. Copies are made
 with `cp -a` and deleted with `chmod -R` then `find -delete`, each from the sandbox image
 running as UID 10001, so the files belong to the sandbox user and the host never needs root.
 `cp -a` copies symlinks as symlinks, and `chmod -R` and `find` never follow them, so a link
 in a target project cannot reach outside its copy.
 """
 
+import hashlib
 import os
 import re
 import secrets
@@ -24,6 +26,12 @@ COPY_TIMEOUT_S = 900
 KINDS = ("download", "run")
 RUN_DIR_RE = re.compile(r"(download|run)-[0-9a-f]{16}")
 PROJECT_KEY_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,80}-[0-9a-f]{40}")
+MIRROR_KEY_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,80}")
+FIXTURE_PREFIX = "fixture-"
+_GITHUB_PROJECT_RE = re.compile(
+    r"https://github\.com/([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9._-]{1,100})"
+)
+_COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 
 
 def default_root() -> Path:
@@ -124,9 +132,11 @@ def _make_dir(path: Path, mode: int) -> None:
     os.chmod(path, mode)
 
 
-def _keyed_dir(parent: Path, project_key: str, mode: int) -> Path:
-    if not PROJECT_KEY_RE.fullmatch(project_key):
-        raise ValueError(f"project key must match {PROJECT_KEY_RE.pattern}: {project_key!r}")
+def _keyed_dir(
+    parent: Path, project_key: str, mode: int, pattern: re.Pattern = PROJECT_KEY_RE
+) -> Path:
+    if not pattern.fullmatch(project_key):
+        raise ValueError(f"project key must match {pattern.pattern}: {project_key!r}")
     path = parent / project_key
     if not os.path.lexists(path):
         _make_dir(path, mode)
@@ -163,7 +173,8 @@ class ManagedRoot:
         self.runs = path / "runs"
         self.repos = path / "repos"
         self.pristine = path / "pristine"
-        for sub in (self.runs, self.repos, self.pristine):
+        self.mirrors = path / "mirrors"
+        for sub in (self.runs, self.repos, self.pristine, self.mirrors):
             if not os.path.lexists(sub):
                 _make_dir(sub, 0o700)
             if not stat.S_ISDIR(os.lstat(sub).st_mode):
@@ -251,6 +262,12 @@ class ManagedRoot:
         """The host's checkout for one project and commit, readable by the sandbox user."""
         return _keyed_dir(self.pristine, project_key, 0o755)
 
+    def mirror_dir(self, key: str) -> Path:
+        """The directory that holds the host's bare clone of one corpus project."""
+        if key.startswith(FIXTURE_PREFIX):
+            raise ValueError(f"mirror keys never use the {FIXTURE_PREFIX!r} prefix: {key!r}")
+        return _keyed_dir(self.mirrors, key, 0o700, MIRROR_KEY_RE)
+
     def _run(self, args: list[str], name: str, what: str) -> list[str]:
         try:
             result = self.runner.run(args, COPY_TIMEOUT_S)
@@ -266,3 +283,27 @@ class ManagedRoot:
         if result.exit_code != 0:
             return [f"{what} container {name} exited {result.exit_code}: {result_output(result)}"]
         return []
+
+
+def project_slug(project_url: str) -> str:
+    """`owner_repo`, case folded; GitHub owners never contain `_`, so the split is unambiguous."""
+    match = _GITHUB_PROJECT_RE.fullmatch(project_url)
+    if not match or match.group(2) in (".", "..") or match.group(1).endswith("-"):
+        raise ValueError(f"not a GitHub project URL: {project_url!r}")
+    owner, repo = (part.lower() for part in match.groups())
+    slug = f"{owner}_{repo}"
+    if not MIRROR_KEY_RE.fullmatch(slug):
+        slug = f"{owner}_{hashlib.sha256(f'{owner}/{repo}'.encode()).hexdigest()[:16]}"
+    return slug
+
+
+def corpus_key(project_url: str, sha: str) -> str:
+    """The pristine and repository key of one corpus project at one commit."""
+    if not _COMMIT_RE.fullmatch(sha):
+        raise ValueError(f"commit must be a full lowercase SHA: {sha!r}")
+    key = f"{project_slug(project_url)}-{sha}"
+    if key.startswith(FIXTURE_PREFIX):
+        raise ValueError(f"corpus keys never use the {FIXTURE_PREFIX!r} prefix: {key!r}")
+    if not PROJECT_KEY_RE.fullmatch(key):
+        raise ValueError(f"corpus key must match {PROJECT_KEY_RE.pattern}: {key!r}")
+    return key
