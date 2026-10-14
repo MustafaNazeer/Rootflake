@@ -84,8 +84,10 @@ def parse_report(data: bytes, test: TestId) -> str:
     if len(matches) > 1:
         return "ambiguous"
     children = matches[0]
-    if "failure" in children or "error" in children:
+    if children & {"failure", "error", "rerunFailure", "rerunError"}:
         return "failed"
+    if children & {"flakyFailure", "flakyError"}:
+        return "flaky"
     if "skipped" in children:
         return "skipped"
     return "passed"
@@ -97,6 +99,9 @@ def classify(exit_code: int, report: str, timed_out: bool) -> Outcome:
     if exit_code == 0 and report == "passed":
         return Outcome.PASSED
     if exit_code == 1 and report == "failed":
+        return Outcome.FAILED
+    if exit_code in (0, 1) and report == "flaky":
+        # Surefire passes a test that failed and then passed a rerun; one failure is a failure.
         return Outcome.FAILED
     return Outcome.INFRASTRUCTURE
 

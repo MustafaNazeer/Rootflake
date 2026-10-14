@@ -172,3 +172,31 @@ def test_failure_nested_in_another_testcase_does_not_leak():
         b'<testcase name="other" classname="demo.DemoTest"><failure/></testcase>',
     )
     assert parse_report(other_failing, TEST) == "passed"
+
+
+def _report(children):
+    return (
+        b'<testsuite><testcase classname="demo.DemoTest" name="adds">'
+        + children
+        + b"</testcase></testsuite>"
+    )
+
+
+@pytest.mark.parametrize("element", [b"flakyFailure", b"flakyError"])
+def test_a_pass_after_a_surefire_rerun_is_flaky_not_passed(element):
+    assert parse_report(_report(b"<" + element + b"/>"), TEST) == "flaky"
+
+
+@pytest.mark.parametrize("element", [b"rerunFailure", b"rerunError"])
+def test_a_test_that_failed_every_rerun_is_failed(element):
+    assert parse_report(_report(b"<failure/><" + element + b"/>"), TEST) == "failed"
+    assert parse_report(_report(b"<" + element + b"/>"), TEST) == "failed"
+
+
+@pytest.mark.parametrize("exit_code", [0, 1])
+def test_a_flaky_report_is_a_failed_run_whatever_the_exit_status(exit_code):
+    assert classify(exit_code, "flaky", False) is Outcome.FAILED
+
+
+def test_a_flaky_report_with_another_exit_status_is_infrastructure():
+    assert classify(137, "flaky", False) is Outcome.INFRASTRUCTURE
