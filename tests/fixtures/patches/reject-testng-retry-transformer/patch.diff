@@ -1,0 +1,114 @@
+diff --git a/src/test/java/com/automation/listeners/RetryTransformer.java b/src/test/java/com/automation/listeners/RetryTransformer.java
+new file mode 100644
+index 0000000..4d62399
+--- /dev/null
++++ b/src/test/java/com/automation/listeners/RetryTransformer.java
+@@ -0,0 +1,22 @@
++package com.automation.listeners;
++
++import java.lang.reflect.Constructor;
++import java.lang.reflect.Method;
++import org.testng.IAnnotationTransformer;
++import org.testng.annotations.ITestAnnotation;
++
++/**
++ * Assigns {@link RetryAnalyzer} to every {@code @Test} method at annotation-processing time, so
++ * retry behaviour applies framework-wide without annotating individual tests.
++ *
++ * <p>Registered as a suite-level {@code <listener>} (not {@code @Listeners}) since
++ * IAnnotationTransformer must be active before TestNG processes {@code @Test} annotations.
++ */
++public class RetryTransformer implements IAnnotationTransformer {
++
++  @Override
++  public void transform(
++      ITestAnnotation annotation, Class testClass, Constructor testConstructor, Method testMethod) {
++    annotation.setRetryAnalyzer(RetryAnalyzer.class);
++  }
++}
+diff --git a/src/test/java/com/automation/listeners/RetryAnalyzer.java b/src/test/java/com/automation/listeners/RetryAnalyzer.java
+new file mode 100644
+index 0000000..d8461c5
+--- /dev/null
++++ b/src/test/java/com/automation/listeners/RetryAnalyzer.java
+@@ -0,0 +1,65 @@
++package com.automation.listeners;
++
++import com.automation.utils.ConfigReader;
++import io.qameta.allure.Allure;
++import io.qameta.allure.model.Status;
++import java.util.concurrent.atomic.AtomicInteger;
++import org.slf4j.Logger;
++import org.slf4j.LoggerFactory;
++import org.testng.IRetryAnalyzer;
++import org.testng.ITestResult;
++
++/**
++ * Retries a failing test up to {@code RETRY_COUNT} times (see config.properties). Applied to every
++ * {@code @Test} method framework-wide via {@link RetryTransformer}, so individual tests don't need
++ * to declare a retryAnalyzer themselves.
++ */
++public class RetryAnalyzer implements IRetryAnalyzer {
++
++  private static final Logger LOG = LoggerFactory.getLogger(RetryAnalyzer.class);
++  private static final int DEFAULT_RETRY_COUNT = 0;
++  private static final ConfigReader CONFIG = new ConfigReader("config.properties");
++
++  private final int maxRetryCount;
++  private final AtomicInteger attempts = new AtomicInteger(0);
++
++  public RetryAnalyzer() {
++    this(CONFIG.getInt("RETRY_COUNT", DEFAULT_RETRY_COUNT));
++  }
++
++  RetryAnalyzer(int maxRetryCount) {
++    this.maxRetryCount = maxRetryCount;
++  }
++
++  @Override
++  public boolean retry(ITestResult result) {
++    int attempt = attempts.incrementAndGet();
++    if (attempt <= maxRetryCount) {
++      String failureReason = describe(result);
++      LOG.warn(
++          "Retrying {} - attempt {} of {}, previous failure: {}",
++          result.getName(),
++          attempt,
++          maxRetryCount,
++          failureReason);
++      if (Allure.getLifecycle().getCurrentTestCaseOrStep().isPresent()) {
++        Allure.step(
++            String.format(
++                "Retry %d/%d: previous attempt failed with '%s' - retrying",
++                attempt, maxRetryCount, failureReason),
++            Status.FAILED);
++      }
++      return true;
++    }
++    return false;
++  }
++
++  private static String describe(ITestResult result) {
++    Throwable throwable = result.getThrowable();
++    if (throwable == null) {
++      return "unknown failure";
++    }
++    String message = throwable.getMessage();
++    return message == null ? throwable.getClass().getSimpleName() : message;
++  }
++}
+diff --git a/testng.xml b/testng.xml
+index e66a1fc..2246652 100644
+--- a/testng.xml
++++ b/testng.xml
+@@ -1,6 +1,10 @@
+ <!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd">
+ <suite name="AutomationSuite" parallel="methods" thread-count="3" data-provider-thread-count="3">
+ 
++    <listeners>
++        <listener class-name="com.automation.listeners.RetryTransformer"/>
++    </listeners>
++
+     <test name="LoginTests">
+         <classes>
+             <class name="com.automation.tests.LoginIT"/>

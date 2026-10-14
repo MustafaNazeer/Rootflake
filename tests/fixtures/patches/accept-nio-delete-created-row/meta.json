@@ -1,0 +1,19 @@
+{
+  "id": "accept-nio-delete-created-row",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "clean_up_own_state",
+  "disputed": false,
+  "notes": "Deletes the row each test inserted at the end of the test, so a second run in the same JVM and database does not see it (\"Fixed non-idempotent tests\"). Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/ebean-orm/ebean",
+    "commit": "5f218e1fdb4f58e4cd0671bf46e650da8a16cdc5",
+    "pr": "https://github.com/ebean-orm/ebean/pull/3409",
+    "path": "ebean-postgis-types/src/test/java/org/example/domain/TestCacheSerialization.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,17 @@
+diff --git a/operator/controller/src/test/java/io/apicurio/registry/operator/it/LeaderElectionITTest.java b/operator/controller/src/test/java/io/apicurio/registry/operator/it/LeaderElectionITTest.java
+--- a/operator/controller/src/test/java/io/apicurio/registry/operator/it/LeaderElectionITTest.java
++++ b/operator/controller/src/test/java/io/apicurio/registry/operator/it/LeaderElectionITTest.java
+@@ -37,8 +36,12 @@ public class LeaderElectionITTest extends ITBase {
+     private static final String DEFAULT_LEASE_NAME = "apicurio-registry-operator-lease";
+ 
+     @Test
+-    @DisabledIf("io.apicurio.registry.operator.it.ITBase#isLocalDeployment")
+     void testLeaderElectionCreatesLease() {
++        if (operatorDeployment == OperatorDeployment.local) {
++            log.warn("This test requires an ability to edit the operator Deployment, so it's not supported when running locally.");
++            return;
++        }
++
+         var operatorDeploymentCell = k8sCell(client, this::getOperatorDeployment);
+         Cell<EnvVar> originalEnabledEnvVar = cell();
+ 

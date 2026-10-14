@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit4-ignore-junit3-style-method",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit4_ignore_no_test_annotation",
+  "disputed": false,
+  "notes": "Adds @Ignore to a method that has no @Test annotation because the class uses the JUnit 3 style naming convention of its test framework. The checker has to recognise the disable even without an @Test next to it.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/opensearch-project/ml-commons",
+    "commit": "b3dd0bbfa27033650f315a54ee64eaaa789e362b",
+    "pr": "https://github.com/opensearch-project/ml-commons/pull/4943",
+    "path": "plugin/src/test/java/org/opensearch/ml/rest/RestChatAgentWithMcpConnectorIT.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

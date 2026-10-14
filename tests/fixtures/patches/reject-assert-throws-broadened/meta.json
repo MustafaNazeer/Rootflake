@@ -1,0 +1,21 @@
+{
+  "id": "reject-assert-throws-broadened",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "assert_throws_broadened",
+  "disputed": false,
+  "notes": "Broadens assertThrows(IllegalArgumentException.class, ...) to assertThrows(Exception.class, ...), so any exception, including one from a broken set up, passes. Built on the post image of the debezium commit, which added this assertThrows in a new test; the change to Exception.class is hand written.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/debezium/debezium-connector-spanner",
+    "commit": "43be12bcb65e844405887153511025eee95486bb",
+    "pr": "https://github.com/debezium/debezium-connector-spanner/pull/176",
+    "path": "src/test/java/io/debezium/connector/spanner/db/DaoFactoryTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

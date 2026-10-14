@@ -1,0 +1,21 @@
+{
+  "id": "reject-rerunner-jupiter-repeated-if-exceptions",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "retry",
+  "variant": "rerunner_jupiter",
+  "disputed": false,
+  "notes": "Replaces @Test with rerunner-jupiter's @RepeatedIfExceptionsTest(repeats = 3).",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/objectionary/eo",
+    "commit": "ef4d40de242114fa127fcae87883829fcccd81c5",
+    "pr": "https://github.com/objectionary/eo/pull/6540",
+    "path": "eo-runtime/src/test/java/org/eolang/SyscallTest.java",
+    "license": "MIT",
+    "fetched": "2026-10-14"
+  }
+}

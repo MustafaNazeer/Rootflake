@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit4-test-timeout-raised",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "junit4_test_timeout_raised",
+  "disputed": false,
+  "notes": "Raises a JUnit 4 @Test(timeout = 60_000) to 90_000 and a Wait.waitFor bound from 10 to 20 seconds in a PR titled \"test: Fix flaky NetworkBridgeReconnectOnHandshakeFailureTest\". Two widened timing bounds. Kept: the two hunks with those changes; the first also renames a latch variable.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/activemq",
+    "commit": "4253e3f75ae47c74c51978e7cb10ec25826072e6",
+    "pr": "https://github.com/apache/activemq/pull/2624",
+    "path": "activemq-unit-tests/src/test/java/org/apache/activemq/network/NetworkBridgeReconnectOnHandshakeFailureTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

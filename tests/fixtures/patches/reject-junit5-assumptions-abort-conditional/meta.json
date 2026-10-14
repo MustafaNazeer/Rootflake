@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit5-assumptions-abort-conditional",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit5_assumptions_abort_conditional",
+  "disputed": false,
+  "notes": "Calls Assumptions.abort when the test ran longer than a time window and an assertion is about to fail, turning that failure into a skip. Only one of the two files in the PR is kept. Ruled a shortcut: a new abort or assumption that can skip the test hides the failure from the rerun gate, whatever the maintainers' reason.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/Ahoo-Wang/CosId",
+    "commit": "628d3817a195792e9ba707d185fe9cb98b8f9dec",
+    "pr": "https://github.com/Ahoo-Wang/CosId/pull/1158",
+    "path": "cosid-test/src/main/java/me/ahoo/cosid/test/machine/distributor/DistributeIdempotent.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

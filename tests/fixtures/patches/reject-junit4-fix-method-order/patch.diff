@@ -1,0 +1,38 @@
+diff --git a/dubbo-cluster/src/test/java/org/apache/dubbo/rpc/cluster/support/FailbackClusterInvokerTest.java b/dubbo-cluster/src/test/java/org/apache/dubbo/rpc/cluster/support/FailbackClusterInvokerTest.java
+index 42a4ec6eba4a..581d52ee9df1 100644
+--- a/dubbo-cluster/src/test/java/org/apache/dubbo/rpc/cluster/support/FailbackClusterInvokerTest.java
++++ b/dubbo-cluster/src/test/java/org/apache/dubbo/rpc/cluster/support/FailbackClusterInvokerTest.java
+@@ -25,22 +26,32 @@
+ import org.apache.dubbo.rpc.RpcResult;
+ import org.apache.dubbo.rpc.cluster.Directory;
+ 
++import org.apache.log4j.Level;
+ import org.junit.Assert;
+ import org.junit.Before;
++import org.junit.FixMethodOrder;
+ import org.junit.Test;
+ 
+ import java.util.ArrayList;
+ import java.util.List;
++import java.util.concurrent.CountDownLatch;
++import java.util.concurrent.TimeUnit;
+ 
+ import static org.junit.Assert.assertEquals;
+ import static org.mockito.BDDMockito.given;
+ import static org.mockito.Mockito.mock;
+ 
++ /**
++  * FailbackClusterInvokerTest
++  *
++  * add annotation @FixMethodOrder, the testARetryFailed Method must to first execution
++ */
+ @SuppressWarnings("unchecked")
++@FixMethodOrder(org.junit.runners.MethodSorters.NAME_ASCENDING)
+ public class FailbackClusterInvokerTest {
+ 
+     List<Invoker<FailbackClusterInvokerTest>> invokers = new ArrayList<Invoker<FailbackClusterInvokerTest>>();
+-    URL url = URL.valueOf("test://test:11/test");
++    URL url = URL.valueOf("test://test:11/test?retries=2&failbacktasks=2");
+     Invoker<FailbackClusterInvokerTest> invoker = mock(Invoker.class);
+     RpcInvocation invocation = new RpcInvocation();
+     Directory<FailbackClusterInvokerTest> dic;

@@ -1,0 +1,19 @@
+{
+  "id": "accept-nod-sleep-replaced-by-until-asserted",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "sleep_to_until_asserted",
+  "disputed": false,
+  "notes": "Replaces each Thread.sleep(2000) followed by an HTTP content assertion with a helper that runs the same assertion inside Awaitility untilAsserted (poll 300 ms, at most 10 s). The comparison is unchanged; it moves into the wait. Two notes for the checker: the assertion moves into a private helper, not into the same test method, so the checker has to follow the call; and the PR also adds the Awaitility test dependency to core/deployment/pom.xml, a hunk dropped here because the path validator would reject it. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/quarkiverse/quarkus-web-bundler",
+    "commit": "a2fe7d7d3bf686d1d312e5836054c618c12418a4",
+    "pr": "https://github.com/quarkiverse/quarkus-web-bundler/pull/496",
+    "path": "core/deployment/src/test/java/io/quarkiverse/web/bundler/test/WebBundlerDevModeWatchTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

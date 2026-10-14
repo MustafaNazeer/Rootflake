@@ -1,0 +1,21 @@
+{
+  "id": "reject-thread-sleep-before-assertion",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "sleep_added_before_assert",
+  "disputed": false,
+  "notes": "Adds Thread.sleep(50) before an assertion so a background counter has time to update (\"Fix race condition in BatchWorkerPoolTest\"). A fixed sleep is a timing bound in disguise; the allowed fix is a condition wait. Only the test hunk of the PR is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/openlogiclab/kafka-pipeline",
+    "commit": "62c1ff944340654b47b442232e46549313b6f9bb",
+    "pr": "https://github.com/openlogiclab/kafka-pipeline/pull/36",
+    "path": "src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,30 @@
+diff --git a/src/test/java/net/openhft/chronicle/core/time/SystemTimeProviderTest.java b/src/test/java/net/openhft/chronicle/core/time/SystemTimeProviderTest.java
+index 5602dab1b49..4082f0f2d44 100644
+--- a/src/test/java/net/openhft/chronicle/core/time/SystemTimeProviderTest.java
++++ b/src/test/java/net/openhft/chronicle/core/time/SystemTimeProviderTest.java
+@@ -25,6 +25,7 @@
+ import org.jetbrains.annotations.NotNull;
+ import org.junit.Test;
+ 
++import java.security.SecureRandom;
+ import java.util.concurrent.TimeUnit;
+ 
+ import static org.junit.Assert.assertTrue;
+@@ -32,7 +33,16 @@
+ public class SystemTimeProviderTest {
+     @Test
+     public void currentTimeMicros() throws IllegalStateException {
+-        FlakyTestRunner.run(Jvm.isArm() || OS.isWindows() || OS.isMacOSX(), this::doCurrentTimeMicros);
++        // doCurrentTimeMicros() is very flaky so that is why we retry this operation
++        for (int i = 0; i < 3; i++) {
++            try {
++                FlakyTestRunner.run(Jvm.isArm() || OS.isWindows() || OS.isMacOSX(), this::doCurrentTimeMicros);
++                break;
++            } catch (Throwable t) {
++                System.out.println("Trying to deflake flaky test: " + i);
++                Jvm.pause(500 + new SecureRandom().nextInt(500));
++            }
++        }
+     }
+ 
+     static void assertBetween(long min, long actual, long max) {

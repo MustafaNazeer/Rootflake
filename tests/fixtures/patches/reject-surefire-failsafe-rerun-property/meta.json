@@ -1,0 +1,21 @@
+{
+  "id": "reject-surefire-failsafe-rerun-property",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker",
+    "patch_validator"
+  ],
+  "shortcut_type": "retry",
+  "variant": "surefire_failsafe_rerun_property",
+  "disputed": false,
+  "notes": "Adds surefire.rerunFailingTestsCount and failsafe.rerunFailingTestsCount properties (0 by default) and wires them into both plugins, so a build can turn reruns on from the command line. Only the root POM is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/Apicurio/apicurio-registry",
+    "commit": "ead084d4c69b4b994e82673816122ba469b3977d",
+    "path": "pom.xml",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

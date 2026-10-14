@@ -1,0 +1,19 @@
+{
+  "id": "accept-od-catch-throwable-around-setup",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "catch_throwable_setup_only",
+  "disputed": false,
+  "notes": "Adds try/catch (Throwable) that prints and continues, but only around class initialisation and cleanup at the start of the test. The code under test and its expected Error come after the try block and are untouched. Looks like a swallow, which is why it is here: the checker must look at what the try block covers, not only at the catch clause. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category OD, test hudson.remoting.ClassFilterTest.transport_chunking (9 rows reference it; the first is shown); the fix is linked from the PR Link column; IDoFT lists the PR as Opened, and GitHub reports it merged.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/jenkinsci/remoting",
+    "commit": "38c4b578a8cc7c930b6f71d21a398b160bdd3441",
+    "pr": "https://github.com/jenkinsci/remoting/pull/706",
+    "path": "src/test/java/hudson/remoting/DefaultClassFilterTest.java",
+    "license": "MIT",
+    "fetched": "2026-10-14"
+  }
+}

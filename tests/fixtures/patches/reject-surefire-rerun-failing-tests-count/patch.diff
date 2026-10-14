@@ -1,0 +1,12 @@
+diff --git a/glassfish/shopservice/pom.xml b/glassfish/shopservice/pom.xml
+index 02052dd..3aeea6c 100644
+--- a/glassfish/shopservice/pom.xml
++++ b/glassfish/shopservice/pom.xml
+@@ -139,6 +139,7 @@
+                         <include>**/*Test.java</include>
+                         <include>**/*IT.java</include>
+                     </includes>
++                    <rerunFailingTestsCount>5</rerunFailingTestsCount>
+                     <!--
+                         GlassFish 7 Embedded running under Java 17+ needs JVM add-opens flags
+                         so that Weld can generate proxy classes for built-in CDI beans

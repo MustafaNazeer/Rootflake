@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit5-disabled-method",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit5_disabled",
+  "disputed": false,
+  "notes": "Adds JUnit 5 @Disabled(\"Flaky test\") to a test method.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/TimefoldAI/timefold-solver",
+    "commit": "f15f745a5a40ed4d65598e2ba2461b6f9fde7343",
+    "pr": "https://github.com/TimefoldAI/timefold-solver/pull/2577",
+    "path": "service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit5-disabled-class",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit5_disabled_class",
+  "disputed": false,
+  "notes": "Adds @Disabled to a whole JUnit 5 test class.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/quarkusio/quarkus",
+    "commit": "4fe5bb5d111c7b61bf3b415d9200af333fdef50e",
+    "pr": "https://github.com/quarkusio/quarkus/pull/55429",
+    "path": "integration-tests/vertx-http/src/test/java/io/quarkus/it/vertx/AccessLogTestCase.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

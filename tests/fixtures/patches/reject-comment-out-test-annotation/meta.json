@@ -1,0 +1,21 @@
+{
+  "id": "reject-comment-out-test-annotation",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "comment_out_test_annotation",
+  "disputed": false,
+  "notes": "Comments out @Test (\"//@Test //Removed as this is getting flaky\") so JUnit no longer discovers the method.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/codeheadsystems/hofmann-elimination",
+    "commit": "232d5251d3ead762308c1068cbc67682593cc25c",
+    "pr": "https://github.com/codeheadsystems/hofmann-elimination/pull/112",
+    "path": "hofmann-server/src/test/java/com/codeheadsystems/hofmann/server/manager/AuthStartStoreTimingTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

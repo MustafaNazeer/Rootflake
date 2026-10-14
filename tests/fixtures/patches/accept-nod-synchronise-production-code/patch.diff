@@ -1,0 +1,74 @@
+diff --git a/ratis-server/src/main/java/org/apache/ratis/server/impl/LeaderStateImpl.java b/ratis-server/src/main/java/org/apache/ratis/server/impl/LeaderStateImpl.java
+index 798fb3c4f9..b3f872e2b5 100644
+--- a/ratis-server/src/main/java/org/apache/ratis/server/impl/LeaderStateImpl.java
++++ b/ratis-server/src/main/java/org/apache/ratis/server/impl/LeaderStateImpl.java
+@@ -351,6 +351,8 @@ boolean isApplied() {
+   private final int stagingCatchupGap;
+   private final TimeDuration stagingTimeout;
+   private final RaftServerMetricsImpl raftServerMetrics;
++  // Serialize follower metric registration and updates with cleanup on step-down.
++  private final Object followerMetricsLock = new Object();
+   private final LogAppenderMetrics logAppenderMetrics;
+   private final long followerMaxGapThreshold;
+   private final PendingStepDown pendingStepDown;
+@@ -483,7 +485,9 @@ CompletableFuture<Void> stop() {
+       replyFlusher.stop();
+     }
+     logAppenderMetrics.unregister();
+-    raftServerMetrics.unregister();
++    synchronized (followerMetricsLock) {
++      raftServerMetrics.clearFollowerHeartbeatMetrics();
++    }
+     pendingRequests.close();
+     watchRequests.close();
+     leaderTracer.close();
+@@ -687,7 +691,11 @@ private Collection<LogAppender> addSenders(Collection<RaftPeer> newPeers, long n
+     final List<LogAppender> newAppenders = newPeers.stream().map(peer -> {
+       final FollowerInfo f = new FollowerInfoImpl(server.getMemberId(), peer, this::getPeer, t, nextIndex, caughtUp);
+       followerInfoMap.put(peer.getId(), f);
+-      raftServerMetrics.addFollower(peer.getId());
++      synchronized (followerMetricsLock) {
++        if (!isStopped.get()) {
++          raftServerMetrics.addFollower(peer.getId());
++        }
++      }
+       logAppenderMetrics.addFollowerGauges(peer.getId(), f::getNextIndex, f::getMatchIndex, f::getLastRpcTime);
+       return newLogAppender(f);
+     }).collect(Collectors.toList());
+@@ -1370,7 +1378,12 @@ public void checkHealth(FollowerInfo follower) {
+       server.getStateMachine().leaderEvent().notifyFollowerSlowness(leaderInfo, follower.getPeer());
+     }
+     final RaftPeerId followerId = follower.getId();
+-    raftServerMetrics.recordFollowerHeartbeatElapsedTime(followerId, elapsedTime.toLong(TimeUnit.NANOSECONDS));
++    synchronized (followerMetricsLock) {
++      // An appender may finish its current iteration after stopAsync() was called.
++      if (!isStopped.get()) {
++        raftServerMetrics.recordFollowerHeartbeatElapsedTime(followerId, elapsedTime.toLong(TimeUnit.NANOSECONDS));
++      }
++    }
+   }
+ 
+   @Override
+diff --git a/ratis-server/src/main/java/org/apache/ratis/server/metrics/RaftServerMetricsImpl.java b/ratis-server/src/main/java/org/apache/ratis/server/metrics/RaftServerMetricsImpl.java
+index 70711c3e3b..0b6af9726f 100644
+--- a/ratis-server/src/main/java/org/apache/ratis/server/metrics/RaftServerMetricsImpl.java
++++ b/ratis-server/src/main/java/org/apache/ratis/server/metrics/RaftServerMetricsImpl.java
+@@ -196,6 +196,18 @@ public void addFollower(RaftPeerId followerName) {
+     addPeerCommitIndexGauge(followerName);
+   }
+ 
++  /**
++   * Remove the heartbeat gauges owned by the leader, retaining server metrics.
++   * Peer commit-index gauges still read the server cache, which is updated as a follower.
++   * The caller must serialize this with follower metric registration and updates.
++   */
++  public void clearFollowerHeartbeatMetrics() {
++    followerLastHeartbeatElapsedTimeMap.keySet().forEach(followerId -> {
++      getRegistry().remove(String.format(FOLLOWER_LAST_HEARTBEAT_ELAPSED_TIME_METRIC, followerId));
++    });
++    followerLastHeartbeatElapsedTimeMap.clear();
++  }
++
+   /**
+    * Register a commit index tracker for the peer in cluster.
+    */

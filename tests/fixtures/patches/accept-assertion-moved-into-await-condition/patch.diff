@@ -1,0 +1,18 @@
+diff --git a/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java b/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java
+index be1823d4f14..9a9e67feacb 100644
+--- a/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java
++++ b/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java
+@@ -203,12 +202,10 @@ public void test_priority_consume_retry_as_lowest() throws Exception {
+                 PopResult result = popMessageAsync(Duration.ofSeconds(600).toMillis(), 32, 5000).get();
+                 if (PopStatus.FOUND.equals(result.getPopStatus())) {
+                     collect.addAll(result.getMsgFoundList());
+-                    return false;
+                 }
+-                return true;
++                return collect.size() == count;
+             });
+ 
+-        assertEquals(count, collect.size());
+         assertEquals(1, collect.get(collect.size() - 1).getReconsumeTimes());
+         assertEquals(retryId, collect.get(collect.size() - 1).getMsgId());
+     }

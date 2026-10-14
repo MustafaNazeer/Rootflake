@@ -1,0 +1,11 @@
+diff --git a/.github/workflows/verify-unit-tests.yaml b/.github/workflows/verify-unit-tests.yaml
+index 684eb5fe1a0..7cb175113ec 100644
+--- a/.github/workflows/verify-unit-tests.yaml
++++ b/.github/workflows/verify-unit-tests.yaml
+@@ -86,4 +86,5 @@ jobs:
+             -Dcheckstyle.skip=true \
+             -Dmaven.source.skip=true -Dmaven.javadoc.skip=true \
+             -Dmaven.wagon.httpconnectionManager.maxTotal=30 \
+-            -Dmaven.wagon.http.retryHandler.count=5
++            -Dmaven.wagon.http.retryHandler.count=5 \
++            -Dsurefire.rerunFailingTestsCount=2

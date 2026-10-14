@@ -1,0 +1,19 @@
+{
+  "id": "accept-assertion-moved-into-await-condition",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "assertion_into_wait_condition",
+  "disputed": false,
+  "notes": "Deletes assertEquals(count, collect.size()) after an Awaitility loop and makes the loop wait until collect.size() == count. Awaitility throws on timeout, so the deleted check is still enforced. Accepted under the strict assertion principle: the same comparison moved into an Awaitility until condition keeps its strength. Not from IDoFT: neither the PR nor the test class PopPriorityIT appears in pr-data.csv under any status. Taken from the same merged PR as reject-comment-out-assertions-in-loop (hunk 2 only).",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/rocketmq",
+    "commit": "527273694e8ed1487ad5c84ebabdbf1f43bda124",
+    "pr": "https://github.com/apache/rocketmq/pull/10390",
+    "path": "test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

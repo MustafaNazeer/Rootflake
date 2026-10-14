@@ -1,0 +1,19 @@
+{
+  "id": "accept-id-linked-hash-map-and-updated-expected",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "ordered_map_and_updated_expected_value",
+  "disputed": false,
+  "notes": "Switches the production map from HashMap to LinkedHashMap so parameters keep insertion order, then updates the expected string in assertEquals to that order. The expected literal of an equality assertion changes, but the assertion is as strict as before. Kept: the import and addParam hunks of PhoneNumber.java and the global number hunk of the test. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.directory.scim.spec.resources.PhoneNumberBuilderTest.test_adding_params_for_GlobalPhoneNumberBuilder (2 rows reference it; the first is shown); the fix is linked from the PR Link column.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/directory-scimple",
+    "commit": "2f37271ede0a0c95958e76529181f29ec1ca028c",
+    "pr": "https://github.com/apache/directory-scimple/pull/201",
+    "path": "scim-spec/scim-spec-schema/src/main/java/org/apache/directory/scim/spec/resources/PhoneNumber.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "reject-equality-to-not-null",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "equality_to_not_null",
+  "disputed": false,
+  "notes": "Same assertion as reject-equality-to-lower-bound, replaced by a null check that holds for any value. Change from the original: the added comment and isGreaterThanOrEqualTo line are replaced by assertNotNull(row.getField(2)).",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/gravitino",
+    "commit": "bff141888cbf0843168c5c9e564d9bbb8a3cd036",
+    "pr": "https://github.com/apache/gravitino/pull/13287",
+    "path": "trino-connector/trino-connector/src/test/java/org/apache/gravitino/trino/connector/TestGravitinoConnector.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

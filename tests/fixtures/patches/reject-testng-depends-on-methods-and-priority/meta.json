@@ -1,0 +1,20 @@
+{
+  "id": "reject-testng-depends-on-methods-and-priority",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "testng_order_pinned",
+  "disputed": false,
+  "notes": "Pins TestNG execution order with priority and dependsOnMethods so the flaky test only runs after another one. Filed under disable for the same reason as reject-junit4-fix-method-order. Change from the original killbill commit (see reject-testng-retry-analyzer): \"retryAnalyzer = FlakyRetryAnalyzer.class\" is replaced by \"priority = 2, dependsOnMethods = \\\"testUnknownEntries\\\"\"; testUnknownEntries is the method that ends just above, in the hunk's context.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/killbill/killbill",
+    "commit": "e3b153e9c9f65e698c8660bb8dfa901856359bb4",
+    "path": "payment/src/test/java/org/killbill/billing/payment/TestJanitor.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

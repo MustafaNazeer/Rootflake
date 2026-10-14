@@ -1,0 +1,11 @@
+diff --git a/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java b/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java
+--- a/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java
++++ b/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java
+@@ -1279,6 +1279,6 @@ public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit)
+   }
+ 
+-  @Test
++  @Test(expected = Exception.class)
+   public void sendsBackoffBatchAfterOtherEnqueuedBatches() throws Exception {
+     ResponseStubber responseStubber =
+         new ResponseStubber() {

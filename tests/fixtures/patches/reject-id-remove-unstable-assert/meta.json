@@ -1,0 +1,21 @@
+{
+  "id": "reject-id-remove-unstable-assert",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "remove_unstable_assertion",
+  "disputed": false,
+  "notes": "Removes an assertEquals between two abbreviations of a URI when several are valid; the loop after it still checks the result against the allowed set. Only the last hunk is kept; the first is a formatting change. Policy reject: assertion removal with no replacement of equal strength in the same method; ruled together with reject-delete-assertion and reject-id-remove-order-assertion. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.jena.riot.system.TestPrefixMapOverPrefixMapping.prefixMap_abbrev_10 (4 rows reference it; the first is shown); the fix is linked from the Notes column.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/jena",
+    "commit": "20a9ced3731a8e5914036e40dc315a01e5fb04eb",
+    "pr": "https://github.com/apache/jena/pull/2098",
+    "path": "jena-arq/src/test/java/org/apache/jena/riot/system/AbstractTestPrefixMap.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

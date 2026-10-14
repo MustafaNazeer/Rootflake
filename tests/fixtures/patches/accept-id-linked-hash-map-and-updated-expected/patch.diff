@@ -1,0 +1,35 @@
+diff --git a/scim-spec/scim-spec-schema/src/main/java/org/apache/directory/scim/spec/resources/PhoneNumber.java b/scim-spec/scim-spec-schema/src/main/java/org/apache/directory/scim/spec/resources/PhoneNumber.java
+index b49e65fc1..337038c42 100644
+--- a/scim-spec/scim-spec-schema/src/main/java/org/apache/directory/scim/spec/resources/PhoneNumber.java
++++ b/scim-spec/scim-spec-schema/src/main/java/org/apache/directory/scim/spec/resources/PhoneNumber.java
+@@ -23,7 +23,7 @@
+ package org.apache.directory.scim.spec.resources;
+ 
+ import java.io.Serializable;
+-import java.util.HashMap;
++import java.util.LinkedHashMap;
+ import java.util.Map;
+ import java.util.Map.Entry;
+ 
+@@ -122,7 +122,7 @@ public class PhoneNumber extends KeyedResource implements Serializable, TypedAtt
+ 
+   public void addParam(String name, String value) {
+     if (this.params == null) {
+-      this.params = new HashMap<String, String>();
++      this.params = new LinkedHashMap<>();
+     }
+ 
+     this.params.put(name, value);
+diff --git a/scim-spec/scim-spec-schema/src/test/java/org/apache/directory/scim/spec/resources/PhoneNumberBuilderTest.java b/scim-spec/scim-spec-schema/src/test/java/org/apache/directory/scim/spec/resources/PhoneNumberBuilderTest.java
+index ec4570bc5..f43923b38 100644
+--- a/scim-spec/scim-spec-schema/src/test/java/org/apache/directory/scim/spec/resources/PhoneNumberBuilderTest.java
++++ b/scim-spec/scim-spec-schema/src/test/java/org/apache/directory/scim/spec/resources/PhoneNumberBuilderTest.java
+@@ -709,7 +709,7 @@ public void test_adding_params_for_GlobalPhoneNumberBuilder() throws PhoneNumber
+ 
+     assertEquals("+1-888-888-5555", phoneNumber.getNumber());
+     assertEquals("1234", phoneNumber.getExtension());
+-    assertEquals(("tel:+1-888-888-5555;ext=1234;milhouse=simpson;example=gh234"), phoneNumber.getValue());
++    assertEquals(("tel:+1-888-888-5555;ext=1234;example=gh234;milhouse=simpson"), phoneNumber.getValue());
+   }
+   
+   @Test

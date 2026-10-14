@@ -1,0 +1,20 @@
+{
+  "id": "reject-testng-retry-analyzer",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "retry",
+  "variant": "testng_retry_analyzer",
+  "disputed": false,
+  "notes": "Adds retryAnalyzer = FlakyRetryAnalyzer.class to a TestNG @Test annotation (commit message: \"payment: mark test as flaky\").",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/killbill/killbill",
+    "commit": "e3b153e9c9f65e698c8660bb8dfa901856359bb4",
+    "path": "payment/src/test/java/org/killbill/billing/payment/TestJanitor.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

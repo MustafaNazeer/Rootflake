@@ -1,0 +1,21 @@
+{
+  "id": "reject-awaitility-at-most-raised",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "awaitility_at_most_raised",
+  "disputed": false,
+  "notes": "Rewrites a leader wait helper as await().atMost(attempts, SECONDS) and raises the attempts argument at the call site from 5 to 30, so the Awaitility bound goes from 5 to 30 seconds. The sleep loop to Awaitility change in the helper is the allowed kind; the raised bound is not. The checker has to follow the argument into the helper's atMost to see it. Kept: the helper hunk and one call site of the PR.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/camel",
+    "commit": "108c8808fe00853f17e7c66d0a392cef0bd17d70",
+    "pr": "https://github.com/apache/camel/pull/26193",
+    "path": "components/camel-jgroups-raft/src/test/java/org/apache/camel/component/jgroups/raft/JGroupsRaftProducerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "reject-assume-no-exception-in-catch",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "swallow_failure",
+  "variant": "assume_no_exception",
+  "disputed": false,
+  "notes": "Wraps the call under test in try/catch (Exception) and calls Assume.assumeNoException(e), which turns an execution failure into a skipped test. Built from the same pre image as reject-catch-exception-return-early; the try/catch is hand written and uses the fully qualified org.junit.Assume so no import is added.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/rocketmq",
+    "commit": "527273694e8ed1487ad5c84ebabdbf1f43bda124",
+    "pr": "https://github.com/apache/rocketmq/pull/10390",
+    "path": "test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

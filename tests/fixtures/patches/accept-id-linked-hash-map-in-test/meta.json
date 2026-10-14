@@ -1,0 +1,18 @@
+{
+  "id": "accept-id-linked-hash-map-in-test",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "ordered_map_in_test",
+  "disputed": false,
+  "notes": "Builds the test input with a LinkedHashMap instead of a HashMap so the expected order is deterministic. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test com.twelvemonkeys.imageio.StandardImageMetadataSupportTest.withTextValuesMap; the fix is linked from the Notes column.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/haraldk/TwelveMonkeys",
+    "commit": "be348543d8a41d4677f83e1c69988221527977a9",
+    "path": "imageio/imageio-core/src/test/java/com/twelvemonkeys/imageio/StandardImageMetadataSupportTest.java",
+    "license": "BSD-3-Clause",
+    "fetched": "2026-10-14"
+  }
+}

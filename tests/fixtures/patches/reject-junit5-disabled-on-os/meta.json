@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit5-disabled-on-os",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit5_disabled_on_os",
+  "disputed": false,
+  "notes": "Adds @DisabledOnOs({OS.WINDOWS}) to a test class because it flakes on Windows. The sandbox runs Linux, so this patch would not skip the test there; the checker should still reject it as a disable.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/Consensys-Incorporated/teku",
+    "commit": "91e2c0feb730d45540724e10b763c5bac270406e",
+    "pr": "https://github.com/Consensys-Incorporated/teku/pull/10603",
+    "path": "services/timer/src/test/java/tech/pegasys/teku/services/timer/TimerServiceTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

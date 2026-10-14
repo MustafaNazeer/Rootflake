@@ -1,0 +1,19 @@
+{
+  "id": "accept-id-look-up-column-index",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "lookup_column_then_assert_equal",
+  "disputed": false,
+  "notes": "Finds the id column by name first, then asserts equality on that column. The equality assertion is kept and was wrong before (it indexed rows by column number). IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test com.j256.ormlite.table.TableUtilsTest.testComboIndex; the fix is linked from the PR Link column of a row for another test in the same PR.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/j256/ormlite-core",
+    "commit": "04c05bdd4acc7576ac84d1fe3bb9a8ed6b662410",
+    "pr": "https://github.com/j256/ormlite-core/pull/240",
+    "path": "src/test/java/com/j256/ormlite/stmt/RawResultsImplTest.java",
+    "license": "ISC",
+    "fetched": "2026-10-14"
+  }
+}

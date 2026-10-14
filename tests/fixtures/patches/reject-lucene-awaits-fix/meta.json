@@ -1,0 +1,20 @@
+{
+  "id": "reject-lucene-awaits-fix",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "lucene_awaits_fix",
+  "disputed": false,
+  "notes": "Adds Lucene's @AwaitsFix(bugUrl = \"flaky test - enable after fix\") to a test class, which the Lucene test runner treats as disabled. The project builds with Gradle; the annotation is the point here. Only one file of the commit is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/opensearch-project/OpenSearch",
+    "commit": "19b99d8300f30732edf15c3c37c6ae5f80106d04",
+    "path": "qa/smoke-test-http/src/test/java/org/opensearch/http/ResponseHeaderPluginIT.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

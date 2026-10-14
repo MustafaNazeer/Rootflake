@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit5-timeout-raised",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "junit5_timeout_raised",
+  "disputed": false,
+  "notes": "Raises a JUnit 5 @Timeout from 10 to 30 seconds on a test method, in a PR titled \"Try to fix/stabilize a number of flaky tests\". A widened timing bound in test code. One hunk of one file is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/netty/netty",
+    "commit": "ac4ea466df44a201d1f9397da8756cc416eb4e01",
+    "pr": "https://github.com/netty/netty/pull/17763",
+    "path": "buffer/src/test/java/io/netty/buffer/PooledByteBufAllocatorTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "reject-delete-assertion",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "delete_assertion",
+  "disputed": false,
+  "notes": "Deletes an assertion (present twice) and leaves a comment explaining why the value is not checked. Only one of the two files is kept. Policy reject: the maintainers explain that the asserted state legitimately varies, and no diff rule can tell that apart from deleting an inconvenient assertion. Under the strict assertion principle a removed assertion passes only if an added assertion in the same test method keeps its strength, and none does. Ruled together with reject-id-remove-order-assertion and reject-id-remove-unstable-assert.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/ozone",
+    "commit": "7f6ea8b1ac745f95d7a2db89d1d8e12586712170",
+    "pr": "https://github.com/apache/ozone/pull/11062",
+    "path": "hadoop-ozone/integration-test/src/test/java/org/apache/hadoop/ozone/client/rpc/TestFailureHandlingByClientFlushDelay.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

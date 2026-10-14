@@ -1,0 +1,19 @@
+{
+  "id": "accept-nio-reset-static-flag-after-each",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "reset_static_flag_after",
+  "disputed": false,
+  "notes": "Moves set up from @BeforeClass to @Before and adds an @After that resets a static flag in the servlet, so the test passes when run twice in one JVM. Removes the @BeforeClass annotation and import, which a careless checker could read as removing an annotation. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category NIO, test io.undertow.servlet.test.spec.UnavailableServletTestCase.testTempUnavailableServlet; the fix is linked from the PR Link column; IDoFT lists the PR as Opened, and GitHub reports it merged.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/undertow-io/undertow",
+    "commit": "729e81d45b0ffd7bda7696b819f9f7fdcdcd38f8",
+    "pr": "https://github.com/undertow-io/undertow/pull/1023",
+    "path": "servlet/src/test/java/io/undertow/servlet/test/spec/UnavailableServletTestCase.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

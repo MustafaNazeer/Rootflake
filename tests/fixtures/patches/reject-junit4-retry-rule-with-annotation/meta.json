@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit4-retry-rule-with-annotation",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "retry",
+  "variant": "junit4_retry_rule_annotation",
+  "disputed": false,
+  "notes": "Adds a @Retry annotation and a RetryRule that reads it, then applies both to an integration test. Kept: the annotation, the rule, and one of the three test classes.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/iotdb",
+    "commit": "921d9e2480401be2a136d385b890cf919d58c973",
+    "pr": "https://github.com/apache/iotdb/pull/15698",
+    "path": "integration-test/src/test/java/org/apache/iotdb/subscription/it/RetryRule.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

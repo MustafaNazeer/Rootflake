@@ -1,0 +1,15 @@
+diff --git a/common/src/test/java/org/apache/seata/common/rpc/RpcStatusTest.java b/common/src/test/java/org/apache/seata/common/rpc/RpcStatusTest.java
+index 18734248137..f654c4f1c1b 100644
+--- a/common/src/test/java/org/apache/seata/common/rpc/RpcStatusTest.java
++++ b/common/src/test/java/org/apache/seata/common/rpc/RpcStatusTest.java
+@@ -50,6 +50,10 @@ public void beginCount() {
+ 
+     @Test
+     public void endCount() {
++        // ensure a correct state before testing
++        RpcStatus.removeStatus(SERVICE);
++        RpcStatus.beginCount(SERVICE);
++
+         RpcStatus.endCount(SERVICE);
+         Assertions.assertEquals(RpcStatus.getStatus(SERVICE).getActive(), 0);
+         Assertions.assertEquals(RpcStatus.getStatus(SERVICE).getTotal(), 1);

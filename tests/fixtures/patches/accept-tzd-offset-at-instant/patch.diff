@@ -1,0 +1,13 @@
+diff --git a/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java b/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java
+index f7e4f93df8..5e855938f8 100644
+--- a/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java
++++ b/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java
+@@ -156,7 +156,7 @@ public void testAppendLog() {
+     @Test
+     public void testFormatTime() {
+         Assert.assertEquals("2019-06-15 12:13:14.000",
+-                EagleEyeCoreUtils.formatTime(1560600794000L - TimeZone.getDefault().getRawOffset()));
++                EagleEyeCoreUtils.formatTime(1560600794000L - TimeZone.getDefault().getOffset(1560600794000L)));
+     }
+ 
+     @Test

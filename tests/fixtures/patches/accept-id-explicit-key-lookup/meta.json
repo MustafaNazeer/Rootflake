@@ -1,0 +1,18 @@
+{
+  "id": "accept-id-explicit-key-lookup",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "explicit_key_lookup",
+  "disputed": false,
+  "notes": "Stops reading map keys by position from keySet().toArray() and looks up each expected key directly, adding two assertEquals. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.pdfbox.pdfparser.PDFObjectStreamParserTest.testOffsetParsing; the fix is linked from the Notes column.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/pdfbox",
+    "commit": "c1c910ad7f9bb7d2fd26e7e01e8c90bcc3910f36",
+    "path": "pdfbox/src/test/java/org/apache/pdfbox/pdfparser/PDFObjectStreamParserTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,21 @@
+diff --git a/ebean-postgis-types/src/test/java/org/example/domain/TestCacheSerialization.java b/ebean-postgis-types/src/test/java/org/example/domain/TestCacheSerialization.java
+index 4494e72fc8..ad61811e04 100644
+--- a/ebean-postgis-types/src/test/java/org/example/domain/TestCacheSerialization.java
++++ b/ebean-postgis-types/src/test/java/org/example/domain/TestCacheSerialization.java
+@@ -35,6 +35,8 @@ public void testCache() throws SQLException {
+     assertEquals(p1, r2.getPoint());  // and did fail https://github.com/ebean-orm/ebean/issues/3026
+     assertEquals(pol, r2.getPolygon());
+ 
++    DB.delete(tb);
++
+   }
+ 
+   @Test
+@@ -76,5 +78,7 @@ public void testNullCache() throws SQLException {
+     assertEquals(pol, r2.getPolygon());  // and did fail https://github.com/ebean-orm/ebean/issues/3026
+     assertNull(r1.getPoint());
+ 
++    DB.delete(tb);
++
+   }
+ }

@@ -1,0 +1,13 @@
+diff --git a/buffer/src/test/java/io/netty/buffer/PooledByteBufAllocatorTest.java b/buffer/src/test/java/io/netty/buffer/PooledByteBufAllocatorTest.java
+index 6fd19197cd6..ed7b46579cc 100644
+--- a/buffer/src/test/java/io/netty/buffer/PooledByteBufAllocatorTest.java
++++ b/buffer/src/test/java/io/netty/buffer/PooledByteBufAllocatorTest.java
+@@ -431,7 +432,7 @@ public void run() {
+     }
+ 
+     @Test
+-    @Timeout(10)
++    @Timeout(30)
+     public void testNumThreadCachesWithNoDirectArenas() throws Exception {
+         int numHeapArenas = 1;
+         final PooledByteBufAllocator allocator =

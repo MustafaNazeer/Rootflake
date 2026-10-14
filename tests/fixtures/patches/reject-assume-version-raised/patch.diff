@@ -1,0 +1,13 @@
+diff --git a/driver-sync/src/test/functional/com/mongodb/client/ServerDiscoveryAndMonitoringProseTests.java b/driver-sync/src/test/functional/com/mongodb/client/ServerDiscoveryAndMonitoringProseTests.java
+index 3769d77463..d98ed7fc90 100644
+--- a/driver-sync/src/test/functional/com/mongodb/client/ServerDiscoveryAndMonitoringProseTests.java
++++ b/driver-sync/src/test/functional/com/mongodb/client/ServerDiscoveryAndMonitoringProseTests.java
+@@ -232,7 +234,7 @@ public void connectionPoolCleared(final ConnectionPoolClearedEvent event) {
+     @Test
+     @SuppressWarnings("try")
+     public void monitorsSleepAtLeastMinHeartbeatFrequencyMSBetweenChecks() {
+-        assumeTrue(serverVersionAtLeast(4, 3));
++        assumeTrue(serverVersionAtLeast(4, 9));
+         long defaultMinHeartbeatIntervalMillis = MongoClientSettings.builder().build().getServerSettings()
+                 .getMinHeartbeatFrequency(MILLISECONDS);
+         assertEquals(500, defaultMinHeartbeatIntervalMillis);

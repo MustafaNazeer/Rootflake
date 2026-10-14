@@ -1,0 +1,23 @@
+diff --git a/shenyu-plugin/shenyu-plugin-fault-tolerance/shenyu-plugin-resilience4j/src/test/java/org/apache/shenyu/plugin/resilience4j/Resilience4JPluginTest.java b/shenyu-plugin/shenyu-plugin-fault-tolerance/shenyu-plugin-resilience4j/src/test/java/org/apache/shenyu/plugin/resilience4j/Resilience4JPluginTest.java
+index 806627e31cdc..bdaacbfd336f 100644
+--- a/shenyu-plugin/shenyu-plugin-fault-tolerance/shenyu-plugin-resilience4j/src/test/java/org/apache/shenyu/plugin/resilience4j/Resilience4JPluginTest.java
++++ b/shenyu-plugin/shenyu-plugin-fault-tolerance/shenyu-plugin-resilience4j/src/test/java/org/apache/shenyu/plugin/resilience4j/Resilience4JPluginTest.java
+@@ -50,6 +50,7 @@
+ import static org.mockito.Mockito.RETURNS_DEEP_STUBS;
+ import static org.mockito.Mockito.mock;
+ import static org.mockito.Mockito.when;
++import static org.mockito.Mockito.any;
+ 
+ /**
+  * Resilience4J plugin test.
+@@ -85,7 +86,9 @@ public void setup() {
+ 
+     @Test
+     public void normalTest() {
+-        resilience4JPlugin = new Resilience4JPlugin(new CombinedExecutor(), new RateLimiterExecutor());
++        RateLimiterExecutor rateLimiterExecutor = mock(RateLimiterExecutor.class);
++        when(rateLimiterExecutor.run(any(), any(), any())).thenReturn(Mono.empty());
++        resilience4JPlugin = new Resilience4JPlugin(new CombinedExecutor(), rateLimiterExecutor);
+         RuleData data = mock(RuleData.class);
+         data.setSelectorId("SHENYU");
+         data.setId("SHENYU");

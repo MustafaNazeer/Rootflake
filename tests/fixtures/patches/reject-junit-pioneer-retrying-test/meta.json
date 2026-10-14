@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit-pioneer-retrying-test",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "retry",
+  "variant": "junit_pioneer_retrying_test",
+  "disputed": false,
+  "notes": "Replaces @Test with junit-pioneer's @RetryingTest(3).",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/Tailormap/tailormap-api",
+    "commit": "4b00cdbd862d8841c9ff7236c06a1cc85556db00",
+    "pr": "https://github.com/Tailormap/tailormap-api/pull/1905",
+    "path": "src/test/java/org/tailormap/api/geotools/featuresources/FeatureSourceStatisticsTest.java",
+    "license": "MIT",
+    "fetched": "2026-10-14"
+  }
+}

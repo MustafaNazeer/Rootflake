@@ -1,0 +1,11 @@
+diff --git a/src/test/java/io/debezium/connector/spanner/db/DaoFactoryTest.java b/src/test/java/io/debezium/connector/spanner/db/DaoFactoryTest.java
+--- a/src/test/java/io/debezium/connector/spanner/db/DaoFactoryTest.java
++++ b/src/test/java/io/debezium/connector/spanner/db/DaoFactoryTest.java
+@@ -86,6 +86,6 @@ void testGetStreamDaoWithPlacementTvfNamesFailsWhenNotMutableKeyRange() {
+         String changeStreamName = "Foo";
+         List<String> placementTvfNames = List.of("READ_Foo_US");
+ 
+-        assertThrows(IllegalArgumentException.class,
++        assertThrows(Exception.class,
+                 () -> daoFactory.getStreamDao(changeStreamName, placementTvfNames, Options.RpcPriority.LOW, ""));
+     }

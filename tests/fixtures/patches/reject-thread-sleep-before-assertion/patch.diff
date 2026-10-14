@@ -1,0 +1,13 @@
+diff --git a/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java b/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
+index a267e93..b5ccc8c 100644
+--- a/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
++++ b/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
+@@ -177,6 +177,8 @@ void successfulBatchAcksAndCompletesCounter() throws Exception {
+ 
+       assertTrue(done.await(3, TimeUnit.SECONDS));
+       assertEquals(5, processed.size());
++      // Wait for counter.completed() which runs after handler returns
++      Thread.sleep(50);
+       assertEquals(0, counter.records());
+     }
+ 

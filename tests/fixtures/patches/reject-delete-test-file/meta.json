@@ -1,0 +1,21 @@
+{
+  "id": "reject-delete-test-file",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "delete_test_file",
+  "disputed": false,
+  "notes": "Deletes a whole test class that was reported as flaky.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/infinispan/infinispan",
+    "commit": "8d1a474b7d951371843345703e5b4119e602ed63",
+    "pr": "https://github.com/infinispan/infinispan/pull/18137",
+    "path": "core/src/test/java/org/infinispan/conflict/impl/SegmentHashEvictionConflictManagerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "reject-mockito-verify-at-least-once",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "mockito_verify_at_least_once",
+  "disputed": false,
+  "notes": "Changes an exact Mockito verify (one call) to verify(..., atLeastOnce()) and replaces two buffer assertions with a check on the concatenated text. Only the test hunk is kept. Policy reject: the maintainers note the frames may or may not be coalesced, so one or two calls are both correct, but times(1) to atLeastOnce() is a change of matcher that the strict assertion principle does not allow and no diff rule can separate from a real weakening.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/netty/netty",
+    "commit": "bb3eb5f1c82c0abb1f8fa14b1a82001e5cd330dc",
+    "pr": "https://github.com/netty/netty/pull/17590",
+    "path": "codec-http2/src/test/java/io/netty/handler/codec/http2/HttpToHttp2ConnectionHandlerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

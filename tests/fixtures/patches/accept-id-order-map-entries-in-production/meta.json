@@ -1,0 +1,19 @@
+{
+  "id": "accept-id-order-map-entries-in-production",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "production_deterministic_order",
+  "disputed": false,
+  "notes": "Fixes the flakiness in production code only, by enabling Jackson's ORDER_MAP_ENTRIES_BY_KEYS. No test file changes. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test io.quarkus.registry.config.DevToolsConfigSerializationTest.testRegistryClientJsonConfig; the fix is linked from the Notes column.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/quarkusio/quarkus",
+    "commit": "ab90dd5b57c2c0fc7f9422e8b3e52ed70cada73c",
+    "pr": "https://github.com/quarkusio/quarkus/pull/37541",
+    "path": "independent-projects/tools/registry-client/src/main/java/io/quarkus/registry/config/RegistriesConfigMapperHelper.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

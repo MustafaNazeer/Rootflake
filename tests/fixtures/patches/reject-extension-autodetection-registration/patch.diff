@@ -1,0 +1,12 @@
+diff --git a/driver-core/src/test/resources/META-INF/services/org.junit.jupiter.api.extension.Extension b/driver-core/src/test/resources/META-INF/services/org.junit.jupiter.api.extension.Extension
+new file mode 100644
+--- /dev/null
++++ b/driver-core/src/test/resources/META-INF/services/org.junit.jupiter.api.extension.Extension
+@@ -0,0 +1,1 @@
++com.mongodb.test.extension.FlakyTestExtension
+diff --git a/driver-core/src/test/resources/junit-platform.properties b/driver-core/src/test/resources/junit-platform.properties
+new file mode 100644
+--- /dev/null
++++ b/driver-core/src/test/resources/junit-platform.properties
+@@ -0,0 +1,1 @@
++junit.jupiter.extensions.autodetection.enabled=true

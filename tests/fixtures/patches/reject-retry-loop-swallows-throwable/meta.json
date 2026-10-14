@@ -1,0 +1,20 @@
+{
+  "id": "reject-retry-loop-swallows-throwable",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "swallow_failure",
+  "variant": "retry_loop_catch_throwable",
+  "disputed": false,
+  "notes": "Wraps the test body in a loop of three attempts that catches Throwable and only prints a message. If all three attempts fail the test still passes, so the failure is swallowed, not only retried. Only the test file of a large commit is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/OpenHFT/Chronicle-Core",
+    "commit": "bae5b403ab3b76893d3db55909ebb560481405e3",
+    "path": "src/test/java/net/openhft/chronicle/core/time/SystemTimeProviderTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,24 @@
+diff --git a/src/test/java/examples/simple/PersonMapperTest.java b/src/test/java/examples/simple/PersonMapperTest.java
+index ca1e90792..b50e38183 100644
+--- a/src/test/java/examples/simple/PersonMapperTest.java
++++ b/src/test/java/examples/simple/PersonMapperTest.java
+@@ -957,6 +957,6 @@ void gh737() {
+                 "where id = #{parameters.p2,jdbcType=INTEGER}";
+ 
+         assertThat(updateStatement.getUpdateStatement()).isEqualTo(expected);
+-        assertThat(updateStatement.getParameters()).containsExactly(entry("p1", 4), entry("p2", 5));
++        assertThat(updateStatement.getParameters()).containsOnly(entry("p1", 4), entry("p2", 5));
+     }
+ }
+diff --git a/src/test/java/org/mybatis/dynamic/sql/util/FragmentCollectorTest.java b/src/test/java/org/mybatis/dynamic/sql/util/FragmentCollectorTest.java
+index c3f8a5dea..2074b1cc4 100644
+--- a/src/test/java/org/mybatis/dynamic/sql/util/FragmentCollectorTest.java
++++ b/src/test/java/org/mybatis/dynamic/sql/util/FragmentCollectorTest.java
+@@ -41,6 +41,6 @@ void testWhereFragmentCollectorMerge() {
+         fc1.merge(fc2);
+ 
+         assertThat(fc1.collectFragments(Collectors.joining(","))).isEqualTo(":p1,:p2");
+-        assertThat(fc1.parameters()).containsExactly(entry("p1", 1), entry("p2", 2));
++        assertThat(fc1.parameters()).containsOnly(entry("p1", 1), entry("p2", 2));
+     }
+ }

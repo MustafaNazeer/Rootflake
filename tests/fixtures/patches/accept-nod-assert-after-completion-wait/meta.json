@@ -1,0 +1,18 @@
+{
+  "id": "accept-nod-assert-after-completion-wait",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "assert_after_condition_wait",
+  "disputed": false,
+  "notes": "Moves three assertTrue checks from before to after completion.poll(10, SECONDS), which blocks until the asynchronous work has finished. The assertions are unchanged; only their position relative to the wait moves. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status DeveloperFixed, Category NOD, test org.platformlambda.automation.tests.WebSocketTests.userChannelTest; the fix is linked from the Notes column.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/Accenture/Mercury",
+    "commit": "47663ff9c7803aa8613a81b3dff71ec9908e2d6e",
+    "path": "extensions/rest-automation-lib/src/test/java/org/platformlambda/automation/tests/WebSocketTests.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

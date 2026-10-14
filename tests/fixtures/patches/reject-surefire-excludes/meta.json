@@ -1,0 +1,22 @@
+{
+  "id": "reject-surefire-excludes",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker",
+    "patch_validator"
+  ],
+  "shortcut_type": "disable",
+  "variant": "surefire_excludes",
+  "disputed": false,
+  "notes": "Adds failing and flaky test classes to the Surefire <excludes> list in a module POM (\"temporarily exclude failing tests so that CI works\"). Only the excludes hunk is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/amazon-mq/upstreaming-activemq",
+    "commit": "05727f2a19b0c7f332aa3416419df17e8e27a38a",
+    "pr": "https://github.com/amazon-mq/upstreaming-activemq/pull/19",
+    "path": "activemq-unit-tests/pom.xml",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "id": "reject-surefire-excluded-groups-flaky-tag",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker",
+    "patch_validator"
+  ],
+  "shortcut_type": "disable",
+  "variant": "surefire_excluded_groups",
+  "disputed": false,
+  "notes": "Turns a @FlakyTest marker into a JUnit 5 @Tag(\"flaky\") meta annotation and sets <excludedGroups>flaky</excludedGroups> in the root Surefire configuration, so every tagged test is skipped. Kept: the annotation file and the root POM hunk.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/bookkeeper",
+    "commit": "f419b8b6de4f2725aaff99683f63a3850264bd6a",
+    "pr": "https://github.com/apache/bookkeeper/pull/4543",
+    "path": "pom.xml",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

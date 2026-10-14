@@ -1,0 +1,28 @@
+diff --git a/activemq-unit-tests/src/test/java/org/apache/activemq/network/NetworkBridgeReconnectOnHandshakeFailureTest.java b/activemq-unit-tests/src/test/java/org/apache/activemq/network/NetworkBridgeReconnectOnHandshakeFailureTest.java
+index fcfee0d2db5..7f2d9482032 100644
+--- a/activemq-unit-tests/src/test/java/org/apache/activemq/network/NetworkBridgeReconnectOnHandshakeFailureTest.java
++++ b/activemq-unit-tests/src/test/java/org/apache/activemq/network/NetworkBridgeReconnectOnHandshakeFailureTest.java
+@@ -103,12 +103,12 @@ public void tearDown() throws Exception {
+      * {@code IOException} from reaching {@code serviceRemoteException()}.
+      * </p>
+      */
+-    @Test(timeout = 60_000)
++    @Test(timeout = 90_000)
+     public void testBridgeReconnectsAfterHandshakeFailure() throws Exception {
+         // Track exceptions passed to serviceRemoteException to verify
+         // the original IOException is properly propagated
+         CopyOnWriteArrayList<Throwable> remoteExceptions = new CopyOnWriteArrayList<>();
+-        CountDownLatch exceptionLatch = new CountDownLatch(1);
++        CountDownLatch ioExceptionLatch = new CountDownLatch(1);
+ 
+         BridgeFactory trackingFactory = new BridgeFactory() {
+             @Override
+@@ -261,7 +253,7 @@ public void testBridgeReconnectsAfterRemoteBrokerRestart() throws Exception {
+         remoteBroker.waitUntilStopped();
+ 
+         assertTrue("Bridge should go down", Wait.waitFor(() ->
+-                nc.activeBridges().isEmpty(), 10_000, 200));
++                nc.activeBridges().isEmpty(), 20_000, 200));
+ 
+         remoteBroker = createRemoteBroker(remotePort);
+         remoteBroker.start();

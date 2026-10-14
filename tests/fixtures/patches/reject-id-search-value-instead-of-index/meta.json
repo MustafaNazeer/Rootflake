@@ -1,0 +1,21 @@
+{
+  "id": "reject-id-search-value-instead-of-index",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "equality_by_index_to_search",
+  "disputed": false,
+  "notes": "Replaces assertEquals on fixed result positions with a search over the row and assertTrue that each value was found, because the column order is not specified. Policy reject: the new check no longer ties a value to a column, so it accepts some wrong results the old one rejected, and assertEquals to assertTrue is not an allowlisted order only relaxation. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test com.j256.ormlite.table.TableUtilsTest.testComboIndex; the fix is linked from the PR Link column of a row for another test in the same PR.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/j256/ormlite-core",
+    "commit": "04c05bdd4acc7576ac84d1fe3bb9a8ed6b662410",
+    "pr": "https://github.com/j256/ormlite-core/pull/240",
+    "path": "src/test/java/com/j256/ormlite/stmt/QueryBuilderTest.java",
+    "license": "ISC",
+    "fetched": "2026-10-14"
+  }
+}

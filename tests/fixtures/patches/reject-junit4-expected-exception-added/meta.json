@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit4-expected-exception-added",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "swallow_failure",
+  "variant": "junit4_expected_added",
+  "disputed": false,
+  "notes": "Adds expected = Exception.class to a JUnit 4 @Test so a run that throws any Exception counts as a pass. Note that such a test then fails whenever no exception is thrown; the fixture covers the annotation form, not a fix that would survive the rerun gate. Built on the same test as reject-junit4-ignore-bare. Change from the original: instead of adding @Ignore and its import, the existing @Test line becomes @Test(expected = Exception.class).",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/googleapis/java-firestore",
+    "commit": "eb936d66bc771a4389b5cd222b55a151b40c405f",
+    "pr": "https://github.com/googleapis/java-firestore/pull/2273",
+    "path": "google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "id": "accept-nod-synchronise-production-code",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "production_synchronisation",
+  "disputed": false,
+  "notes": "Fixes a race in production code: follower metric registration, updates and clean up on step down are serialised on one lock, and updates after stop are skipped. The flaky test was LogAppenderTests.testFollowerHeartbeatMetric. Kept: the two production files; the PR also rewrites the test to cover repeated step downs, which is dropped here. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/ratis",
+    "commit": "1c2f23488b1ef357ef4523823d201acd67f03406",
+    "pr": "https://github.com/apache/ratis/pull/1621",
+    "path": "ratis-server/src/main/java/org/apache/ratis/server/impl/LeaderStateImpl.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

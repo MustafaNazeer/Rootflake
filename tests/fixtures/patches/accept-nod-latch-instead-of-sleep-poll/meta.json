@@ -1,0 +1,19 @@
+{
+  "id": "accept-nod-latch-instead-of-sleep-poll",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "latch_wait",
+  "disputed": false,
+  "notes": "Replaces a loop that slept 100 ms until a queue was empty with a CountDownLatch counted down when the handoff notice is handled, and asserts that the latch is released within 5 seconds. No assertion is removed. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/druid",
+    "commit": "e5a09317c416fee18a25a1ad5aabbd7019b032e8",
+    "pr": "https://github.com/apache/druid/pull/20453",
+    "path": "indexing-service/src/test/java/org/apache/druid/indexing/seekablestream/supervisor/SeekableStreamSupervisorStateTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

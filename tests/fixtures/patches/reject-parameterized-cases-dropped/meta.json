@@ -1,0 +1,21 @@
+{
+  "id": "reject-parameterized-cases-dropped",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "parameterized_cases_dropped",
+  "disputed": false,
+  "notes": "Replaces a cartesian product of parameters with an explicit list that leaves out the flaky combinations (concurrency 10 and 100 with concurrency management disabled), and removes a guard that skipped a check for them. Ruled a shortcut: dropping the failing parameter combinations disables part of the test, even though the remaining cases check more than before.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/FoundationDB/fdb-record-layer",
+    "commit": "0fb438842fc516c8eed5ba14874c17e3a3720e42",
+    "pr": "https://github.com/FoundationDB/fdb-record-layer/pull/4716",
+    "path": "fdb-record-layer-core/src/test/java/com/apple/foundationdb/record/provider/foundationdb/indexes/RankIndexTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

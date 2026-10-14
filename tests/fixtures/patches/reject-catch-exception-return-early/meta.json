@@ -1,0 +1,21 @@
+{
+  "id": "reject-catch-exception-return-early",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "swallow_failure",
+  "variant": "catch_exception_return",
+  "disputed": false,
+  "notes": "Wraps the call under test and its assertions in try/catch (Exception) that returns from the test, so a timeout or execution failure of the call ends the test as passed. Built from the pre image of hunk 4 of the rocketmq PR used in reject-comment-out-assertions-in-loop; the try/catch is hand written.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/rocketmq",
+    "commit": "527273694e8ed1487ad5c84ebabdbf1f43bda124",
+    "pr": "https://github.com/apache/rocketmq/pull/10390",
+    "path": "test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

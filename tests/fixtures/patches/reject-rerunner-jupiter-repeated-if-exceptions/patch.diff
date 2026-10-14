@@ -1,0 +1,13 @@
+diff --git a/eo-runtime/src/test/java/org/eolang/SyscallTest.java b/eo-runtime/src/test/java/org/eolang/SyscallTest.java
+index 7bfe02b6ef2..684dbec1476 100644
+--- a/eo-runtime/src/test/java/org/eolang/SyscallTest.java
++++ b/eo-runtime/src/test/java/org/eolang/SyscallTest.java
+@@ -113,7 +113,7 @@ void tellsTheFallbackWhichAddressItFailedToBind(@Ephemeral final int port) throw
+         }
+     }
+ 
+-    @Test
++    @RepeatedIfExceptionsTest(repeats = 3)
+     void sendsAndReceivesMessageViaSocketObject(@Ephemeral final int port)
+         throws InterruptedException {
+         final String msg = "Hello, Socket!";

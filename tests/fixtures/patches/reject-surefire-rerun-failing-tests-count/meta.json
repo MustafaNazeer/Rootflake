@@ -1,0 +1,22 @@
+{
+  "id": "reject-surefire-rerun-failing-tests-count",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker",
+    "patch_validator"
+  ],
+  "shortcut_type": "retry",
+  "variant": "surefire_rerun_pom",
+  "disputed": false,
+  "notes": "Adds <rerunFailingTestsCount>5</rerunFailingTestsCount> to a Surefire configuration in a POM. Only the first of the six POMs in the PR is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/Open-J-Proxy/ojp-framework-integration",
+    "commit": "54fa6686b2188c934ca826958cb8b7b088843640",
+    "pr": "https://github.com/Open-J-Proxy/ojp-framework-integration/pull/40",
+    "path": "glassfish/shopservice/pom.xml",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

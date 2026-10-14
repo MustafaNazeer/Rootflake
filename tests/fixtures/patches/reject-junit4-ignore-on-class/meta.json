@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit4-ignore-on-class",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit4_ignore_class",
+  "disputed": false,
+  "notes": "Puts @Ignore on a whole JUnit 4 test class, disabling every method in it. Only the PopPriorityIT file of the PR is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/rocketmq",
+    "commit": "980f3d7f5561c276975ca0aab91d2fb9353d169c",
+    "pr": "https://github.com/apache/rocketmq/pull/10374",
+    "path": "test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

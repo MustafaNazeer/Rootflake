@@ -1,0 +1,20 @@
+{
+  "id": "reject-testng-invocation-count-success-percentage",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "retry",
+  "variant": "testng_success_percentage",
+  "disputed": false,
+  "notes": "Runs a TestNG test 10 times and counts it as passed if 80 percent of invocations pass, which accepts a failure rate of up to 20 percent. Filed under retry. Change from the original killbill commit: \"retryAnalyzer = FlakyRetryAnalyzer.class\" is replaced by \"invocationCount = 10, successPercentage = 80\".",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/killbill/killbill",
+    "commit": "e3b153e9c9f65e698c8660bb8dfa901856359bb4",
+    "path": "payment/src/test/java/org/killbill/billing/payment/TestJanitor.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

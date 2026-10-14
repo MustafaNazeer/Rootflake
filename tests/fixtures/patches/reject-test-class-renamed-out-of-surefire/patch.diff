@@ -1,0 +1,16 @@
+diff --git a/src/test/java/no/difi/move/kosmos/service/codesigner/GpgServiceImplTest.java b/src/test/java/no/difi/move/kosmos/service/codesigner/GpgServiceImplIT.java
+similarity index 97%
+rename from src/test/java/no/difi/move/kosmos/service/codesigner/GpgServiceImplTest.java
+rename to src/test/java/no/difi/move/kosmos/service/codesigner/GpgServiceImplIT.java
+index e32f5a5..9496af0 100644
+--- a/src/test/java/no/difi/move/kosmos/service/codesigner/GpgServiceImplTest.java
++++ b/src/test/java/no/difi/move/kosmos/service/codesigner/GpgServiceImplIT.java
+@@ -28,7 +28,7 @@
+ import static org.mockito.Mockito.*;
+ 
+ @ExtendWith(MockitoExtension.class)
+-public class GpgServiceImplTest {
++public class GpgServiceImplIT {
+ 
+     @Mock
+     private KosmosProperties properties;

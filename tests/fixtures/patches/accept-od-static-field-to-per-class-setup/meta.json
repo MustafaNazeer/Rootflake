@@ -1,0 +1,19 @@
+{
+  "id": "accept-od-static-field-to-per-class-setup",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "static_init_to_before_all",
+  "disputed": false,
+  "notes": "Replaces a static field initialised at class load with an instance field set in @BeforeAll under PER_CLASS lifecycle. Only one of the three files in the PR is kept. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category OD, test org.apache.servicecomb.swagger.generator.core.processor.annotation.OperationMethodAnnotationProcessorTest.testBlankMediaType (15 rows reference it; the first is shown); the fix is linked from the PR Link column; IDoFT lists the PR as Opened, and GitHub reports it merged.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/servicecomb-java-chassis",
+    "commit": "2474c6b26b7a996b0dc90947d5d70a86a08e6025",
+    "pr": "https://github.com/apache/servicecomb-java-chassis/pull/5018",
+    "path": "swagger/swagger-generator/generator-core/src/test/java/org/apache/servicecomb/swagger/generator/core/TestApiResponse.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

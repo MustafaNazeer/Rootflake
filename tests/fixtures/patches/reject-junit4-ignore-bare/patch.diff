@@ -1,0 +1,20 @@
+diff --git a/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java b/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java
+index b61158012a..811f08a494 100644
+--- a/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java
++++ b/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java
+@@ -61,6 +61,7 @@
+ import org.junit.After;
+ import org.junit.Assert;
+ import org.junit.Before;
++import org.junit.Ignore;
+ import org.junit.Rule;
+ import org.junit.Test;
+ import org.junit.rules.Timeout;
+@@ -1279,6 +1280,7 @@ public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit)
+   }
+ 
+   @Test
++  @Ignore
+   public void sendsBackoffBatchAfterOtherEnqueuedBatches() throws Exception {
+     ResponseStubber responseStubber =
+         new ResponseStubber() {

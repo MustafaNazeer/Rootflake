@@ -1,0 +1,21 @@
+{
+  "id": "reject-comment-out-assertions-in-loop",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "comment_out_assertions",
+  "disputed": false,
+  "notes": "Replaces a single pop with an await loop and comments out the three priority assertions inside the verification loop. Only that hunk of the PR is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/rocketmq",
+    "commit": "527273694e8ed1487ad5c84ebabdbf1f43bda124",
+    "pr": "https://github.com/apache/rocketmq/pull/10390",
+    "path": "test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

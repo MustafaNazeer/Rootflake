@@ -1,0 +1,21 @@
+{
+  "id": "reject-catch-assertion-error-empty",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "swallow_failure",
+  "variant": "catch_assertion_error_empty",
+  "disputed": false,
+  "notes": "Same assertion as reject-delete-assertion, kept but wrapped in try/catch (AssertionError) with an empty handler. Change from the original: instead of deleting the duplicated assertion and adding a comment, one copy is wrapped in the try block and the other is removed.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/ozone",
+    "commit": "7f6ea8b1ac745f95d7a2db89d1d8e12586712170",
+    "pr": "https://github.com/apache/ozone/pull/11062",
+    "path": "hadoop-ozone/integration-test/src/test/java/org/apache/hadoop/ozone/client/rpc/TestFailureHandlingByClientFlushDelay.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

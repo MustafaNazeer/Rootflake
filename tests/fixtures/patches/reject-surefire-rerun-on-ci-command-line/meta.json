@@ -1,0 +1,20 @@
+{
+  "id": "reject-surefire-rerun-on-ci-command-line",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "patch_validator"
+  ],
+  "shortcut_type": "retry",
+  "variant": "surefire_rerun_cli_flag",
+  "disputed": false,
+  "notes": "Adds -Dsurefire.rerunFailingTestsCount=2 to the Maven command in a CI workflow. Rejected by the patch path validator only: a CI workflow is outside the files a fix may touch. The gate runs its own Maven command and never reads CI workflows, so the shortcut checker's content rules are not needed to stop this one.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/Apicurio/apicurio-registry",
+    "commit": "ead084d4c69b4b994e82673816122ba469b3977d",
+    "path": ".github/workflows/verify-unit-tests.yaml",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

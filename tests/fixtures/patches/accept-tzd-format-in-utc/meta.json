@@ -1,0 +1,19 @@
+{
+  "id": "accept-tzd-format-in-utc",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "fixed_zone",
+  "disputed": false,
+  "notes": "Converts a test's Retry-After date to UTC before formatting it as RFC 1123, which requires GMT, so the expected delay no longer depends on the machine's time zone (\"use UTC in RetryPolicyTests.getWellKnownRetryDelay\"). Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/Azure/azure-sdk-for-java",
+    "commit": "f189ad600dea50f436f8aed0eb617f164e7ff2d3",
+    "pr": "https://github.com/Azure/azure-sdk-for-java/pull/26548",
+    "path": "sdk/core/azure-core/src/test/java/com/azure/core/http/policy/RetryPolicyTests.java",
+    "license": "MIT",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "reject-maven-config-rerun",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker",
+    "patch_validator"
+  ],
+  "shortcut_type": "retry",
+  "variant": "maven_config_rerun",
+  "disputed": false,
+  "notes": "Turns on Surefire reruns for every build of the project through .mvn/maven.config, which Maven reads before the command line. Derived from the Apicurio commit, which passes the same property on the CI command line (see reject-surefire-rerun-on-ci-command-line). Change: the flag \"-Dsurefire.rerunFailingTestsCount=2\" is moved into a new .mvn/maven.config file; no index line is given because the file is new and hand written.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/Apicurio/apicurio-registry",
+    "commit": "ead084d4c69b4b994e82673816122ba469b3977d",
+    "path": ".github/workflows/verify-unit-tests.yaml",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

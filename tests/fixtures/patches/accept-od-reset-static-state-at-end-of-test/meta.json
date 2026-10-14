@@ -1,0 +1,19 @@
+{
+  "id": "accept-od-reset-static-state-at-end-of-test",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "reset_static_state",
+  "disputed": false,
+  "notes": "Resets the static provider and consumer fallbacks to their defaults at the end of the test that changed them, so later tests see clean state. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category OD-Vic, test com.alibaba.csp.sentinel.adapter.sofa.rpc.fallback.SofaRpcFallbackRegistryTest.testDefaultfallback; the fix is linked from the PR Link column; IDoFT lists the PR as Opened, and GitHub reports it merged.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/alibaba/Sentinel",
+    "commit": "6879fdd505a0ef13e9ef0ddaec0aa04b47e87403",
+    "pr": "https://github.com/alibaba/Sentinel/pull/3282",
+    "path": "sentinel-adapter/sentinel-sofa-rpc-adapter/src/test/java/com/alibaba/csp/sentinel/adapter/sofa/rpc/fallback/SofaRpcFallbackRegistryTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

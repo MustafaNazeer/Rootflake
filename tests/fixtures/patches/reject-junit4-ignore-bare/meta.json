@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit4-ignore-bare",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit4_ignore",
+  "disputed": false,
+  "notes": "Adds a bare JUnit 4 @Ignore (and its import) to a test the maintainers saw flaking. Only the BulkWriterTest file of the PR is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/googleapis/java-firestore",
+    "commit": "eb936d66bc771a4389b5cd222b55a151b40c405f",
+    "pr": "https://github.com/googleapis/java-firestore/pull/2273",
+    "path": "google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

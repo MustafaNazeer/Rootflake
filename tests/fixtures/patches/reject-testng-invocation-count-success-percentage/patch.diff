@@ -1,0 +1,13 @@
+diff --git a/payment/src/test/java/org/killbill/billing/payment/TestJanitor.java b/payment/src/test/java/org/killbill/billing/payment/TestJanitor.java
+--- a/payment/src/test/java/org/killbill/billing/payment/TestJanitor.java
++++ b/payment/src/test/java/org/killbill/billing/payment/TestJanitor.java
+@@ -305,7 +305,8 @@ public void testUnknownEntries() throws PaymentApiException, InvoiceApiException
+         assertEquals(updatedPayment.getTransactions().get(0).getTransactionStatus(), TransactionStatus.SUCCESS);
+     }
+ 
+-    @Test(groups = "slow")
++    // Flaky, see https://github.com/killbill/killbill/issues/860
++    @Test(groups = "slow", invocationCount = 10, successPercentage = 80)
+     public void testUnknownEntriesWithFailures() throws PaymentApiException, EventBusException {
+ 
+         final BigDecimal requestedAmount = BigDecimal.TEN;

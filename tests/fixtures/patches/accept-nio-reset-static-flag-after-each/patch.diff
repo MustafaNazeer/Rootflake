@@ -1,0 +1,51 @@
+diff --git a/servlet/src/test/java/io/undertow/servlet/test/spec/UnavailableServlet.java b/servlet/src/test/java/io/undertow/servlet/test/spec/UnavailableServlet.java
+index 30c67dcc6a..41e4575ed1 100644
+--- a/servlet/src/test/java/io/undertow/servlet/test/spec/UnavailableServlet.java
++++ b/servlet/src/test/java/io/undertow/servlet/test/spec/UnavailableServlet.java
+@@ -45,4 +45,8 @@ public String getServletInfo() {
+     public void destroy() {
+ 
+     }
++
++    public static void reset() {
++        first = true;
++    }
+ }
+diff --git a/servlet/src/test/java/io/undertow/servlet/test/spec/UnavailableServletTestCase.java b/servlet/src/test/java/io/undertow/servlet/test/spec/UnavailableServletTestCase.java
+index 06b478b39f..0b425ebe0f 100644
+--- a/servlet/src/test/java/io/undertow/servlet/test/spec/UnavailableServletTestCase.java
++++ b/servlet/src/test/java/io/undertow/servlet/test/spec/UnavailableServletTestCase.java
+@@ -7,8 +7,9 @@
+ import io.undertow.util.StatusCodes;
+ import org.apache.http.HttpResponse;
+ import org.apache.http.client.methods.HttpGet;
++import org.junit.Before;
++import org.junit.After;
+ import org.junit.Assert;
+-import org.junit.BeforeClass;
+ import org.junit.Test;
+ import org.junit.runner.RunWith;
+ 
+@@ -25,8 +26,8 @@
+ public class UnavailableServletTestCase {
+ 
+ 
+-    @BeforeClass
+-    public static void setup() throws ServletException {
++    @Before
++    public void setup() throws ServletException {
+         DeploymentUtils.setupServlet(
+                 servlet("p", UnavailableServlet.class)
+                         .addInitParam(UnavailableServlet.PERMANENT, "1")
+@@ -36,6 +37,11 @@ public static void setup() throws ServletException {
+ 
+     }
+ 
++    @After
++    public void teardown() {
++        UnavailableServlet.reset();
++    }
++
+     @Test
+     public void testPermanentUnavailableServlet() throws IOException {
+         TestHttpClient client = new TestHttpClient();

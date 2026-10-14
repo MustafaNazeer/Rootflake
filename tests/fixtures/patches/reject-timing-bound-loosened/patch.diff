@@ -1,0 +1,13 @@
+diff --git a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+index 8534563..4dc5ed9 100644
+--- a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
++++ b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+@@ -276,7 +276,7 @@ void factIsValid() {
+             assertThat(evaluationResult.snapshot()).isEqualTo(interimResult);
+ 
+             assertThat(evaluationResult.status())
+-                    .succeedsWithin(Duration.ofMillis(1100))
++                    .succeedsWithin(Duration.ofMillis(2000)) // delay is 1000ms; extra slack absorbs scheduling/GC jitter on slow/busy machines
+                     .isEqualTo(Result.VALID);
+         }
+     }

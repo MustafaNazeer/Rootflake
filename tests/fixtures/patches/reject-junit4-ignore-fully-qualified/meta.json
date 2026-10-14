@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit4-ignore-fully-qualified",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit4_ignore_fully_qualified",
+  "disputed": false,
+  "notes": "Same test as reject-junit4-ignore-with-reason, rewritten to use the fully qualified annotation so no import is added. Change from the original: the import hunk is dropped and \"@Ignore(\" becomes \"@org.junit.Ignore(\". A checker that only looks for the simple name or the import misses this form.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/wso2/wso2-pax-logging",
+    "commit": "14e9cf6c9ca5a9a67c35b743e5d9623a1b973087",
+    "pr": "https://github.com/wso2/wso2-pax-logging/pull/40",
+    "path": "pax-logging-it/src/test/java/org/ops4j/pax/logging/it/LogbackBuiltinAppendersIntegrationTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

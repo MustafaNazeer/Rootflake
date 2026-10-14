@@ -1,0 +1,19 @@
+{
+  "id": "accept-id-compare-objects-not-serialised-json",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "compare_parsed_objects",
+  "disputed": false,
+  "notes": "Adds equals and hashCode to the production classes and compares parsed objects instead of serialised JSON strings, whose field order is not fixed. The assertion remains an assertEquals. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.accumulo.core.data.LoadPlanTest.testJson; the fix is linked from the Notes column.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/accumulo",
+    "commit": "3fdba8f12c2bd98fec6718a1bd762cd47650e3b9",
+    "pr": "https://github.com/apache/accumulo/pull/6008",
+    "path": "core/src/test/java/org/apache/accumulo/core/data/LoadPlanTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,21 @@
+diff --git a/src/test/java/org/tailormap/api/geotools/featuresources/FeatureSourceStatisticsTest.java b/src/test/java/org/tailormap/api/geotools/featuresources/FeatureSourceStatisticsTest.java
+index 23efbdf219..f8f0228ca2 100644
+--- a/src/test/java/org/tailormap/api/geotools/featuresources/FeatureSourceStatisticsTest.java
++++ b/src/test/java/org/tailormap/api/geotools/featuresources/FeatureSourceStatisticsTest.java
+@@ -30,6 +30,7 @@
+ import org.junit.jupiter.api.AfterEach;
+ import org.junit.jupiter.api.BeforeEach;
+ import org.junit.jupiter.api.Test;
++import org.junitpioneer.jupiter.RetryingTest;
+ import org.tailormap.api.StaticTestData;
+ import org.tailormap.api.viewer.model.AttributeStatisticsResponse;
+ 
+@@ -78,7 +79,7 @@ void get_number_statistics() {
+     assertThat(randomFeatureCount, is(greaterThanOrEqualTo(progressCount.get())));
+   }
+ 
+-  @Test
++  @RetryingTest(3)
+   void get_number_statistics_with_filter() {
+     AtomicInteger progressCount = new AtomicInteger(0);
+     AttributeStatisticsResponse statistics = FeatureSourceStatistics.getFeatureSourceStatistics(

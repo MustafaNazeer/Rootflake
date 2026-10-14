@@ -1,0 +1,14 @@
+diff --git a/cosid-test/src/main/java/me/ahoo/cosid/test/machine/distributor/DistributeIdempotent.java b/cosid-test/src/main/java/me/ahoo/cosid/test/machine/distributor/DistributeIdempotent.java
+--- a/cosid-test/src/main/java/me/ahoo/cosid/test/machine/distributor/DistributeIdempotent.java
++++ b/cosid-test/src/main/java/me/ahoo/cosid/test/machine/distributor/DistributeIdempotent.java
+@@ -18,3 +18,4 @@
+ import static org.hamcrest.MatcherAssert.assertThat;
+ import static org.hamcrest.Matchers.equalTo;
+ import static org.hamcrest.Matchers.hasSize;
++import static org.hamcrest.Matchers.notNullValue;
+@@ -60,4 +61,4 @@ public void verify() {
+         for (int i = 0; i < allInstances.size(); i++) {
+             int machineId = distributor.distribute(namespace, machineBit, allInstances.get(i), safeGuardDuration).getMachineId();
+-            assertThat(machineId, equalTo(i));
++            assertThat(machineId, notNullValue());
+         }

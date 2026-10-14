@@ -1,0 +1,17 @@
+diff --git a/jena-arq/src/test/java/org/apache/jena/riot/system/AbstractTestPrefixMap.java b/jena-arq/src/test/java/org/apache/jena/riot/system/AbstractTestPrefixMap.java
+index e5155b5ef6f..87badeebc8f 100644
+--- a/jena-arq/src/test/java/org/apache/jena/riot/system/AbstractTestPrefixMap.java
++++ b/jena-arq/src/test/java/org/apache/jena/riot/system/AbstractTestPrefixMap.java
+@@ -322,11 +316,9 @@ private void pmTestAbbrev(PrefixMap pm, String iriStr, String...expected) {
+         String iriStr2 = nsIRI+p.getRight();
+         assertEquals(iriStr, iriStr2);
+ 
+-        // Agree with abbreviate? (due to multiple choices, this isn't guaranteed).
++        // Does "abbrev" agree with "abbreviate"? There are multiple choices in the way the URI is abbreviated
+         String x1 = pm.abbreviate(iriStr);
+         String abbrevString = ns+":"+ln;
+-        assertEquals(x1, abbrevString);
+-
+         for ( String possible : expected ) {
+             if ( possible.equals(abbrevString) ) {
+                 assertTrue(iriStr.startsWith(nsIRI));

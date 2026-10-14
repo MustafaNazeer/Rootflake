@@ -1,0 +1,21 @@
+{
+  "id": "reject-nod-sleep-replaced-by-await",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "sleep_to_await",
+  "disputed": false,
+  "notes": "Replaces Thread.sleep(100) with Awaitility waitAtMost(7, SECONDS).untilAsserted(...), which on its own is allowed. Inside the wait, the exact assertEquals on the file count (expected.size() + 6) becomes a range check (rolled count in [6, 9]). Policy reject: a maintainer merged fix, but the equality is replaced by a different assertion method, which the strict assertion principle rejects. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category NOD, test org.apache.logging.log4j.core.async.AsyncThreadContextTest.testStateLeakage; the fix is linked from the PR Link column (the row names a different test than the one this PR changes); IDoFT lists the PR as Opened, and GitHub reports it merged. That test also has Accepted rows (fix PRs 3945 and 3956), so it can enter the corpus; this fixture uses neither of those PRs and does not touch that test.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/logging-log4j2",
+    "commit": "141a54e987588e60c4a0e0278caadd243ffb3621",
+    "pr": "https://github.com/apache/logging-log4j2/pull/3957",
+    "path": "log4j-core-test/src/test/java/org/apache/logging/log4j/core/appender/rolling/RollingAppenderDeleteAccumulatedCount1Test.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

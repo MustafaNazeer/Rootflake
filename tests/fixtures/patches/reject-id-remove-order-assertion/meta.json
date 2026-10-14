@@ -1,0 +1,20 @@
+{
+  "id": "reject-id-remove-order-assertion",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "remove_order_assertion",
+  "disputed": false,
+  "notes": "Deletes the assertions that checked an alphabetical key order in JSON output, which the output does not guarantee. Policy reject: a maintainer fix, but plain assertion removal with no replacement of equal strength; ruled together with reject-delete-assertion and reject-id-remove-unstable-assert. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.tika.cli.TikaCLITest.testJsonMetadataOutput; the fix is linked from the Notes column.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/tika",
+    "commit": "0bf30f0e653ff7262cd146cee6b0bfc81a6410ff",
+    "path": "tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

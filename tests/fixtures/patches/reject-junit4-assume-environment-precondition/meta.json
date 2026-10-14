@@ -1,0 +1,21 @@
+{
+  "id": "reject-junit4-assume-environment-precondition",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit4_assume_environment",
+  "disputed": false,
+  "notes": "Adds assumeTrue(parallelism > 2) for the common ForkJoinPool plus a short sleep in the stream body. Ruled a shortcut: under the sandbox CPU cap the common pool can have parallelism of 2 or less, which would skip the test on every run, so a new environment assumption counts as a disable.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/jackrabbit-oak",
+    "commit": "cf805f8f138f491d82eec57c6405aa492dc4abd3",
+    "pr": "https://github.com/apache/jackrabbit-oak/pull/3177",
+    "path": "oak-commons/src/test/java/org/apache/jackrabbit/oak/commons/internal/concurrent/ForkJoinUtilsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

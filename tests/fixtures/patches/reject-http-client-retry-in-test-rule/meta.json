@@ -1,0 +1,21 @@
+{
+  "id": "reject-http-client-retry-in-test-rule",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "retry",
+  "variant": "client_retry_in_test_fixture",
+  "disputed": false,
+  "notes": "Wraps the HTTP client of a test server rule in an Armeria RetryingClient (up to three attempts on unprocessed requests). The test method itself is not rerun. Ruled a shortcut: a retry added in test code hides intermittent failures of the path the test exercises. (Retries added to production code are flagged for review, not rejected; this one is in a test file.)",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/line/decaton",
+    "commit": "197b18bb038a448b0474b3c57af4d40602d27c22",
+    "pr": "https://github.com/line/decaton/pull/194",
+    "path": "centraldogma/src/test/java/com/linecorp/decaton/centraldogma/CentralDogmaPropertySupplierIntegrationTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

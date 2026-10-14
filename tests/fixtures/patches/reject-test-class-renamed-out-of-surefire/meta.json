@@ -1,0 +1,21 @@
+{
+  "id": "reject-test-class-renamed-out-of-surefire",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "rename_out_of_surefire_includes",
+  "disputed": false,
+  "notes": "Renames GpgServiceImplTest to GpgServiceImplIT (\"hopefully fixing flaky test\"). Surefire's default includes match *Test, *Tests, *TestCase and Test*, so the class drops out of the unit test run. Filed under disable.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/felleslosninger/efm-kosmos",
+    "commit": "e3ad18891f80a00421ecf5470c96e914bd8d4a32",
+    "pr": "https://github.com/felleslosninger/efm-kosmos/pull/212",
+    "path": "src/test/java/no/difi/move/kosmos/service/codesigner/GpgServiceImplIT.java",
+    "license": "BSD-3-Clause",
+    "fetched": "2026-10-14"
+  }
+}

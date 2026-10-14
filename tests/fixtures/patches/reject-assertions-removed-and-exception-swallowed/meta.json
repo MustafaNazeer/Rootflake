@@ -1,0 +1,21 @@
+{
+  "id": "reject-assertions-removed-and-exception-swallowed",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "remove_assertions_and_swallow",
+  "disputed": false,
+  "notes": "Removes three assertions on how files are spread across paths and wraps the file listing in a try that swallows NoSuchFileException. Both the weakening and the swallow apply; it is filed under weaken_assertion. Kept: the import hunk and the test hunk.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/paimon",
+    "commit": "bc41e7163a69bc9ddb380bf6c94ac88d0d1bd7b3",
+    "pr": "https://github.com/apache/paimon/pull/7387",
+    "path": "paimon-flink/paimon-flink-common/src/test/java/org/apache/paimon/flink/PrimaryKeyFileStoreTableITCase.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

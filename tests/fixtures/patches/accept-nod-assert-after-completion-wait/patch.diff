@@ -1,0 +1,24 @@
+diff --git a/extensions/rest-automation-lib/src/test/java/org/platformlambda/automation/tests/WebSocketTests.java b/extensions/rest-automation-lib/src/test/java/org/platformlambda/automation/tests/WebSocketTests.java
+index f53fce610..1fdd48de2 100644
+--- a/extensions/rest-automation-lib/src/test/java/org/platformlambda/automation/tests/WebSocketTests.java
++++ b/extensions/rest-automation-lib/src/test/java/org/platformlambda/automation/tests/WebSocketTests.java
+@@ -126,9 +126,6 @@ public void userChannelTest() throws IOException, AppException, TimeoutException
+         client.start();
+         Boolean result = matched.poll(20, TimeUnit.SECONDS);
+         Assert.assertEquals(true, result);
+-        Assert.assertTrue(subscribed.get());
+-        Assert.assertTrue(published.get());
+-        Assert.assertTrue(messaged.get());
+         AsyncHttpRequest check1 = new AsyncHttpRequest();
+         check1.setMethod("GET");
+         check1.setUrl("/api/notification");
+@@ -155,6 +152,9 @@ public void userChannelTest() throws IOException, AppException, TimeoutException
+         notifier.publish("another.channel", "test message");
+         client.close();
+         completion.poll(10, TimeUnit.SECONDS);
++        Assert.assertTrue(subscribed.get());
++        Assert.assertTrue(published.get());
++        Assert.assertTrue(messaged.get());
+     }
+ 
+ }

@@ -1,0 +1,21 @@
+{
+  "id": "reject-comment-out-assertion",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "comment_out_assertion",
+  "disputed": false,
+  "notes": "Comments out one assertArrayEquals in an @After method. From the same PR as reject-junit4-ignore-bare; only the WatchTest file is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/googleapis/java-firestore",
+    "commit": "eb936d66bc771a4389b5cd222b55a151b40c405f",
+    "pr": "https://github.com/googleapis/java-firestore/pull/2273",
+    "path": "google-cloud-firestore/src/test/java/com/google/cloud/firestore/WatchTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

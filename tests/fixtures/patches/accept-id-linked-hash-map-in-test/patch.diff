@@ -1,0 +1,21 @@
+diff --git a/imageio/imageio-core/src/test/java/com/twelvemonkeys/imageio/StandardImageMetadataSupportTest.java b/imageio/imageio-core/src/test/java/com/twelvemonkeys/imageio/StandardImageMetadataSupportTest.java
+index efb41a9fe..9931962e9 100644
+--- a/imageio/imageio-core/src/test/java/com/twelvemonkeys/imageio/StandardImageMetadataSupportTest.java
++++ b/imageio/imageio-core/src/test/java/com/twelvemonkeys/imageio/StandardImageMetadataSupportTest.java
+@@ -17,6 +17,7 @@
+ import java.util.Calendar;
+ import java.util.Collection;
+ import java.util.HashMap;
++import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Map.Entry;
+@@ -170,7 +171,7 @@ public void withTextValuesSingle() {
+ 
+     @Test
+     public void withTextValuesMap() {
+-        Map<String, String> entries = new HashMap<>();
++        Map<String, String> entries = new LinkedHashMap<>();
+         entries.put("foo", "bar");
+         entries.put("bar", "xyzzy");
+ 

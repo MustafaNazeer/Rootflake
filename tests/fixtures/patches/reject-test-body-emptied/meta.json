@@ -1,0 +1,21 @@
+{
+  "id": "reject-test-body-emptied",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "empty_test_body",
+  "disputed": false,
+  "notes": "Empties a test body and keeps @Test, so the test always passes and checks nothing. Built on the pre image of the Sentinel time zone fix used in accept-tzd-offset-at-instant: both lines of the assertion are deleted instead of fixed.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/alibaba/Sentinel",
+    "commit": "d9398b4f752f8424cf926ccc32b8d9b21473de69",
+    "pr": "https://github.com/alibaba/Sentinel/pull/3459",
+    "path": "sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "reject-catch-throwable-and-print",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "swallow_failure",
+  "variant": "catch_throwable_print",
+  "disputed": false,
+  "notes": "Same assertion as reject-equality-to-lower-bound, wrapped in try/catch (Throwable) that only prints the error, the pattern used in reject-retry-loop-swallows-throwable. Change from the original: the comment and isGreaterThanOrEqualTo line are replaced by the original assertEquals inside the try block.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/gravitino",
+    "commit": "bff141888cbf0843168c5c9e564d9bbb8a3cd036",
+    "pr": "https://github.com/apache/gravitino/pull/13287",
+    "path": "trino-connector/trino-connector/src/test/java/org/apache/gravitino/trino/connector/TestGravitinoConnector.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

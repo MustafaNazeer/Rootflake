@@ -1,0 +1,21 @@
+{
+  "id": "reject-early-return-at-top-of-test",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "early_return",
+  "disputed": false,
+  "notes": "Adds a conditional early return at the top of a test, so the test passes without running whenever the condition holds. This is the merged Apicurio hunk applied in reverse: the maintainers replaced an existing early return with @DisabledIf; reversing the hunk removes @DisabledIf and puts the early return back. Context lines are the hunk's own; removed and added lines are swapped.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/Apicurio/apicurio-registry",
+    "commit": "ea56a7bddc9c5337a4faa4afcd3c57e6c456f698",
+    "pr": "https://github.com/Apicurio/apicurio-registry/pull/8861",
+    "path": "operator/controller/src/test/java/io/apicurio/registry/operator/it/LeaderElectionITTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

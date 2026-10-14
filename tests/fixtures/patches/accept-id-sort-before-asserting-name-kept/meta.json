@@ -1,0 +1,18 @@
+{
+  "id": "accept-id-sort-before-asserting-name-kept",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "sort_before_assert",
+  "disputed": false,
+  "notes": "The commons-math fix from reject-id-sort-before-asserting with the original method name kept: identifiers are collected, sorted, and checked for count, first and last value. Change from the original commit: the rename of testIterationOrder to testIdentifierAssignment is undone, so that line becomes context; every other line is the commit's own. Open point: the fix removes Assert.assertFalse(isUnspecifiedOrder) and adds three assertEquals, which is not the same assertion method, so the strict assertion principle as written would reject this patch. It is marked accept as instructed and needs a ruling on whether an order assertion replaced by sorted value assertions counts as an allowlisted order only relaxation. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.commons.math4.neuralnet.NetworkTest.testIterationOrder; the fix is linked from the Notes column.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/commons-math",
+    "commit": "50977290cdda79896ccb6304067341486fe104d2",
+    "path": "commons-math-neuralnet/src/test/java/org/apache/commons/math4/neuralnet/NetworkTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

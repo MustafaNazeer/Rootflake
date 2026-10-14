@@ -1,0 +1,21 @@
+{
+  "id": "reject-delete-test-method",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "delete_test_method",
+  "disputed": false,
+  "notes": "Deletes an unstable test method. In the PR the scenario was rewritten in a new test class; only the deletion is kept here, which on its own removes the test.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/paimon",
+    "commit": "5652c0023ce7455553eedd721011054bd8213d3a",
+    "pr": "https://github.com/apache/paimon/pull/8850",
+    "path": "paimon-flink/paimon-flink-common/src/test/java/org/apache/paimon/flink/AppendOnlyTableITCase.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

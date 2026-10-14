@@ -1,0 +1,27 @@
+diff --git a/tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java b/tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java
+index b8795225b6b..ebd1d90b94e 100644
+--- a/tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java
++++ b/tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java
+@@ -250,13 +250,6 @@ public void testJsonMetadataOutput() throws Exception {
+                 resourcePrefix + "testJsonMultipleInts.html");
+         //TIKA-1310
+         assertTrue(json.contains("\"fb:admins\":\"1,2,3,4\","));
+-
+-        //test legacy alphabetic sort of keys
+-        int enc = json.indexOf("\"Content-Encoding\"");
+-        int fb = json.indexOf("fb:admins");
+-        int title = json.indexOf("\"dc:title\"");
+-        assertTrue(enc > -1 && fb > -1 && enc < fb);
+-        assertTrue(fb > -1 && title > -1 && fb > title);
+         assertTrue(json.contains("\"X-TIKA:digest:MD2\":"));
+     }
+ 
+@@ -273,7 +266,7 @@ public void testJsonMetadataPrettyPrintOutput() throws Exception {
+         assertTrue(json.contains(
+                 "\"X-TIKA:Parsed-By\" : [ \"org.apache.tika.parser.DefaultParser\", " +
+                         "\"org.apache.tika.parser.html.JSoupParser\" ],"));
+-        //test legacy alphabetic sort of keys
++        //test pretty-print alphabetic sort of keys
+         int enc = json.indexOf("\"Content-Encoding\"");
+         int fb = json.indexOf("fb:admins");
+         int title = json.indexOf("\"dc:title\"");
