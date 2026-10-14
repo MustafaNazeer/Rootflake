@@ -135,7 +135,7 @@ Two facts shape most of the Cloud Run column:
 * **Threats:** TM-03, TM-14.
 * **Local Docker:** the runner enforces a timeout on every command (single run, N reruns, iDFlakies, NonDex), then stops the container and kills it if it does not exit within `--stop-timeout`. Because Docker's json-file log driver keeps container output on the host disk and its `max-size` "Defaults to -1 (unlimited)" ([json-file driver](https://docs.docker.com/engine/logging/drivers/json-file/)), every container is started with `--log-opt max-size=10m --log-opt max-file=1` so a test that prints without end cannot fill the disk.
 * **Cloud Run Jobs: Same, plus an in container timeout.** Each task has a timeout, 10 minutes by default and up to 168 hours, applied to each attempt ([task timeout](https://docs.cloud.google.com/run/docs/configuring/task-timeout)); on timeout Cloud Run sends `SIGTERM` ([container runtime contract](https://docs.cloud.google.com/run/docs/container-contract)). One task runs many reruns, so the task timeout is only the outer bound; the same per command timeout as locally runs inside the container.
-* **Verification:** a test that sleeps forever ends as a timeout and is recorded as an infrastructure outcome after one retry, never as a failed fix.
+* **Verification:** a test that sleeps forever ends as a timeout after one retry and is recorded as a timeout, which the gate counts as an infrastructure outcome, never as a failed fix.
 
 ### SH-11. No sensitive mounts
 
@@ -191,7 +191,7 @@ Two facts shape most of the Cloud Run column:
 ### SH-17. Sandbox output treated as untrusted
 
 * **Threats:** TM-10, TM-11.
-* **Both environments: Same.** The runner caps the size of captured stdout, stderr, and reports, strips terminal control sequences, and passes logs to the model as clearly delimited data. A run counts as passed only when the process exit status and the parsed Surefire report agree; any disagreement is recorded as an infrastructure outcome. The dashboard renders logs as escaped text, never as HTML.
+* **Both environments: Same.** The runner caps the size of captured stdout, stderr, and reports, strips terminal control sequences, and passes logs to the model as clearly delimited data. A run counts as passed only when the process exit status and the parsed Surefire report agree; any disagreement is recorded as an infrastructure outcome. A report whose identity, ctime and size are unchanged since before the run is treated as missing, so a report left in the workspace by an earlier run is never counted. The dashboard renders logs as escaped text, never as HTML.
 * **Verification:** fixtures for oversized output, escape sequences, a forged passing report with a failing exit status, and HTML in a failure message.
 
 ### SH-18. Pinned versions and digests

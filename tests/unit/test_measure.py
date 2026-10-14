@@ -158,7 +158,7 @@ def make_root(tmp_path, copier=None):
     return ManagedRoot(path, IMAGE, copier or CopyFake())
 
 
-def always_pass(workspace, relative):
+def always_pass(workspace, relative, stale=None):
     return PASS
 
 

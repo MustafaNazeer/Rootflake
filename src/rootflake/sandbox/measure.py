@@ -41,6 +41,7 @@ from rootflake.sandbox.download import (
     download_dependencies,
 )
 from rootflake.sandbox.executor import DockerRunner, ProcessRunner, ProcResult, run_test
+from rootflake.sandbox.reports import ReportReader
 from rootflake.sandbox.reports import read_report as read_report_file
 from rootflake.sandbox.results import TestId
 from rootflake.sandbox.workspace import ManagedRoot, default_root
@@ -245,7 +246,7 @@ def measure_runtimes(
     proxy_image: str,
     download_ops: DockerOps | None = None,
     runner: ProcessRunner | None = None,
-    read_report: Callable[[Path, Path], bytes | None] = read_report_file,
+    read_report: ReportReader = read_report_file,
     timeout_s: float = 600,
     download_timeout_s: float = 1800,
     clock: Callable[[], float] = time.monotonic,

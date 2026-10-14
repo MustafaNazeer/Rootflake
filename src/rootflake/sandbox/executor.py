@@ -2,6 +2,8 @@
 
 A timeout or an infrastructure result is retried once and then recorded as is, never as a
 failed fix (SH-10). Captured output is capped and stripped of terminal controls (SH-17).
+A report whose identity, ctime and size are unchanged since before the attempt reads as missing,
+so a stale one is never counted.
 """
 
 import re
@@ -16,6 +18,7 @@ from subprocess import PIPE
 from typing import IO, Protocol
 
 from rootflake.sandbox.container import RunSpec, SandboxLimits, build_docker_args, check_args
+from rootflake.sandbox.reports import ReportReader, ReportStamp, report_stamp
 from rootflake.sandbox.results import Outcome, TestId, classify, maven_test_command, parse_report
 
 MAX_TIMEOUT_S = 6 * 3600
@@ -98,25 +101,28 @@ def run_test(
     test: TestId,
     module: str,
     runner: ProcessRunner,
-    read_report: Callable[[Path, Path], bytes | None],
+    read_report: ReportReader,
     allowed_roots: Sequence[Path],
     timeout_s: float,
+    stamp_report: Callable[[Path, Path], ReportStamp | None] = report_stamp,
 ) -> RunRecord:
     if not 0 < timeout_s <= MAX_TIMEOUT_S:
         raise ValueError(f"timeout must be in (0, {MAX_TIMEOUT_S}] seconds, got {timeout_s}")
     command = maven_test_command(test, module)
+    relative = report_path(module, test)
     attempts = 0
     while True:
         attempts += 1
         attempt = replace(spec, command=command, name=_container_name())
         args = build_docker_args(attempt, limits)
         check_args(args, allowed_roots, spec.image)
+        stale = stamp_report(spec.workspace, relative)
         started = time.monotonic()
         result = runner.run(args, timeout_s)
         seconds = time.monotonic() - started
         if result.timed_out:
             runner.stop(attempt.name)
-        data = read_report(spec.workspace, report_path(module, test))
+        data = read_report(spec.workspace, relative, stale=stale)
         report = "missing" if data is None else parse_report(data, test)
         outcome = classify(result.exit_code, report, result.timed_out)
         if outcome not in RETRIED or attempts == 2:

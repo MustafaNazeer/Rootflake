@@ -1,6 +1,7 @@
 import subprocess
 import tempfile
 import time
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -17,6 +18,7 @@ from rootflake.sandbox.executor import (
     run_test,
     sanitize_output,
 )
+from rootflake.sandbox.reports import read_report
 from rootflake.sandbox.results import Outcome, TestId
 
 IMAGE = "rootflake-sandbox@sha256:" + "a" * 64
@@ -58,7 +60,7 @@ class FakeRunner:
 
 def reports(*contents):
     queue = list(contents)
-    return lambda workspace, relative: queue.pop(0)
+    return lambda workspace, relative, stale=None: queue.pop(0)
 
 
 def ok(code=0):
@@ -265,3 +267,70 @@ def test_run_test_checks_the_arguments_before_running_anything():
             timeout_s=300,
         )
     assert runner.calls == []
+
+
+class WritingRunner(FakeRunner):
+    """Writes the report an attempt would leave, or leaves the workspace untouched on None."""
+
+    def __init__(self, report, script):
+        super().__init__([result for result, _ in script])
+        self.report = report
+        self.writes = [content for _, content in script]
+
+    def run(self, args, timeout_s):
+        content = self.writes.pop(0)
+        if content is not None:
+            self.report.unlink(missing_ok=True)
+            self.report.write_bytes(content)
+        return super().run(args, timeout_s)
+
+
+def run_real(tmp_path, stale, script):
+    root = tmp_path.resolve()
+    (root / "ws").mkdir()
+    (root / "m2").mkdir()
+    report = root / "ws" / report_path("core", TEST)
+    report.parent.mkdir(parents=True)
+    if stale is not None:
+        report.write_bytes(stale)
+    spec = replace(base_spec(), workspace=root / "ws", maven_repo=root / "m2")
+    runner = WritingRunner(report, script)
+    return run_test(spec, SandboxLimits(), TEST, "core", runner, read_report, (root,), 300)
+
+
+def test_a_stale_passing_report_is_not_a_pass(tmp_path):
+    record = run_real(tmp_path, PASS, [(ok(0), None), (ok(0), None)])
+    assert (record.outcome, record.attempts, record.report) == (
+        Outcome.INFRASTRUCTURE,
+        2,
+        "missing",
+    )
+
+
+def test_a_stale_failing_report_is_not_a_failure(tmp_path):
+    record = run_real(tmp_path, FAIL, [(ok(1), None), (ok(1), None)])
+    assert (record.outcome, record.attempts) == (Outcome.INFRASTRUCTURE, 2)
+
+
+def test_a_report_written_by_the_attempt_replaces_a_stale_one(tmp_path):
+    record = run_real(tmp_path, FAIL, [(ok(0), PASS)])
+    assert (record.outcome, record.attempts) == (Outcome.PASSED, 1)
+
+
+def test_the_retry_ignores_the_report_its_first_attempt_left(tmp_path):
+    record = run_real(tmp_path, None, [(ok(137), FAIL), (ok(1), None)])
+    assert (record.outcome, record.attempts) == (Outcome.INFRASTRUCTURE, 2)
+
+
+def test_a_timeout_then_a_pass_ends_as_passed():
+    timed_out = ProcResult(exit_code=-1, stdout=b"", stderr=b"", timed_out=True)
+    runner = FakeRunner([timed_out, ok()])
+    record = go(runner, reports(None, PASS))
+    assert (record.outcome, record.attempts) == (Outcome.PASSED, 2)
+    assert len(runner.stopped) == 1
+
+
+def test_an_infrastructure_result_then_a_failure_ends_as_failed():
+    runner = FakeRunner([ok(137), ok(1)])
+    record = go(runner, reports(None, FAIL))
+    assert (record.outcome, record.attempts) == (Outcome.FAILED, 2)

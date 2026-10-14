@@ -235,7 +235,7 @@ Time zone dependent tests are run under several time zones. For each zone the ru
 
 ### Wall time
 
-The runner wraps every command in its own timeout. On expiry it runs `docker stop`, which waits `--stop-timeout` and then kills the container, and then confirms the container is gone. A timeout is retried once and then recorded as an infrastructure outcome, never as a failed fix (SH-10).
+The runner wraps every command in its own timeout. On expiry it runs `docker stop`, which waits `--stop-timeout` and then kills the container, and then confirms the container is gone. A timeout is retried once; if the retry also times out, the runner records a timeout, and the gate counts a timeout as an infrastructure outcome, never as a failed fix (SH-10).
 
 ## JVM heap against container memory
 
@@ -287,7 +287,7 @@ These run under the exact flag set above and the `runsc` runtime, on every chang
 | SH-07 | On each supported JDK, every JVM's maximum heap is derived from the passed `-XX:MaxRAM`, not from host memory; a fixture that allocates without bound ends with `OutOfMemoryError` or an OOM kill recorded as infrastructure, and the host stays responsive |
 | SH-08 | A busy loop fixture stays within 2 CPUs, measured from the host |
 | SH-09 | A fork bomb fixture and a thread bomb fixture are contained by `--pids-limit` under `runsc`, and the runner still returns a result (whether the host pids cgroup bounds guest threads under gVisor is unverified until this passes) |
-| SH-10 | A test that sleeps forever ends at its timeout, is retried once, and is recorded as infrastructure |
+| SH-10 | A test that sleeps forever ends at its timeout, is retried once, is recorded as a timeout, and is counted by the gate as infrastructure |
 | SH-11 | The mount list inside the container shows only the workspace, the repository, and the two tmpfs mounts; the argument builder's unit test passes |
 | SH-12 | The container environment contains only allowlisted variables; a layer scan of the image finds no key files or tokens |
 | SH-17 | A test that writes far more than the output cap is truncated by the runner, and the Docker log file stays under its size cap |
