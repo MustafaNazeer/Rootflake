@@ -1,3 +1,4 @@
+import atexit
 import inspect
 import json
 import pyexpat
@@ -27,6 +28,7 @@ IMAGE = "rootflake-sandbox@sha256:" + "a" * 64
 PROXY = "rootflake-proxy@sha256:" + "b" * 64
 REAL_FIXTURES_DIR = measure.FIXTURES_DIR
 ROOT = Path(tempfile.mkdtemp(prefix="rootflake-measure-")).resolve()
+atexit.register(shutil.rmtree, ROOT, ignore_errors=True)
 (ROOT / "ws").mkdir()
 (ROOT / "m2").mkdir()
 TEST = TestId.parse("demo.DemoTest#adds")

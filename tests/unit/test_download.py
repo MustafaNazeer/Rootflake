@@ -1,3 +1,4 @@
+import atexit
 import shutil
 import tempfile
 import time
@@ -21,6 +22,7 @@ from rootflake.sandbox.executor import ProcResult
 SANDBOX = "rootflake-sandbox@sha256:" + "a" * 64
 PROXY = "rootflake-proxy@sha256:" + "b" * 64
 ROOT = Path(tempfile.mkdtemp(prefix="rootflake-dl-test-")).resolve()
+atexit.register(shutil.rmtree, ROOT, ignore_errors=True)
 (ROOT / "ws").mkdir()
 (ROOT / "m2").mkdir()
 (ROOT / "pristine").mkdir()

@@ -1,3 +1,5 @@
+import atexit
+import shutil
 import subprocess
 import tempfile
 import time
@@ -23,6 +25,7 @@ from rootflake.sandbox.results import Outcome, TestId
 
 IMAGE = "rootflake-sandbox@sha256:" + "a" * 64
 ROOT = Path(tempfile.mkdtemp(prefix="rootflake-exec-")).resolve()
+atexit.register(shutil.rmtree, ROOT, ignore_errors=True)
 (ROOT / "ws").mkdir()
 (ROOT / "m2").mkdir()
 ROOTS = (ROOT,)
@@ -252,8 +255,8 @@ def test_an_unterminated_string_control_cannot_erase_later_output():
     assert text.endswith("visible")
 
 
-def test_run_test_checks_the_arguments_before_running_anything():
-    other_root = Path(tempfile.mkdtemp(prefix="rootflake-other-")).resolve()
+def test_run_test_checks_the_arguments_before_running_anything(tmp_path):
+    other_root = tmp_path.resolve()
     runner = FakeRunner([ok()])
     with pytest.raises(ValueError):
         run_test(

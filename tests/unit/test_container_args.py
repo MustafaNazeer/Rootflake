@@ -1,3 +1,5 @@
+import atexit
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -15,6 +17,7 @@ from rootflake.sandbox.container import (
 
 IMAGE = "rootflake-sandbox@sha256:" + "a" * 64
 BASE = Path(tempfile.mkdtemp(prefix="rootflake-test-")).resolve()
+atexit.register(shutil.rmtree, BASE, ignore_errors=True)
 ROOT = BASE / "managed"
 for sub in ("runs/p1/ws", "m2/p1", "x", "runs/p1/ws/m2", "m2/p1/ws"):
     (ROOT / sub).mkdir(parents=True, exist_ok=True)
@@ -210,6 +213,7 @@ def test_inline_values_and_empty_values_cannot_smuggle_flags(extra):
         "type=volume,src=/srv/rootflake/runs/p1/ws,dst=/workspace",
         f"type=bind,src={ROOT}/m2/p1,dst=/m2/tail",
     ],
+    ids=lambda mount: mount.replace(str(ROOT), "ROOT"),
 )
 def test_mount_values_are_parsed_strictly(mount):
     args = build_docker_args(spec(), SandboxLimits())
