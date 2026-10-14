@@ -7,6 +7,7 @@ read from `gh auth token` at run time, sent only in the Authorization header, an
 in a URL, an exception message, or a log record.
 """
 
+import http.client
 import json
 import re
 import subprocess
@@ -14,6 +15,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from rootflake.corpus.walk import TransientError, Unavailable
 
@@ -24,6 +26,8 @@ MAX_BODY = 4 * 1024 * 1024
 _PR_RE = re.compile(r"https://github\.com/([A-Za-z0-9-]+)/([A-Za-z0-9._-]+)/pull/([1-9][0-9]*)")
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
 _TIME_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+_TOKEN_RE = re.compile(r"[A-Za-z0-9_]{1,255}")
+API_HOST = "api.github.com"
 
 Opener = Callable[[str, dict[str, str], float], tuple[int, bytes]]
 
@@ -51,13 +55,28 @@ def token_from_gh(run: Callable[..., subprocess.CompletedProcess] = subprocess.r
     token = result.stdout.strip() if result.returncode == 0 else ""
     if not token:
         raise RuntimeError("no GitHub token: run `gh auth login` first")
+    if not _TOKEN_RE.fullmatch(token):
+        raise RuntimeError("the GitHub token from gh has unexpected characters")
     return token
+
+
+class ApiOnlyRedirects(urllib.request.HTTPRedirectHandler):
+    """urllib copies the Authorization header onto a redirect, so only the API host is followed."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        target = urlsplit(newurl)
+        if target.scheme != "https" or target.hostname != API_HOST or target.port is not None:
+            raise urllib.error.HTTPError(
+                req.full_url, code, "redirect off the API host refused", headers, fp
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def _urlopen(url: str, headers: dict[str, str], timeout: float) -> tuple[int, bytes]:
     request = urllib.request.Request(url, headers=headers)
+    opener = urllib.request.build_opener(ApiOnlyRedirects())
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with opener.open(request, timeout=timeout) as response:
             return response.status, response.read(MAX_BODY + 1)
     except urllib.error.HTTPError as error:
         return error.code, b""
@@ -70,7 +89,7 @@ def fetch_pr(
     headers = {"Accept": "application/vnd.github+json", "Authorization": f"Bearer {token}"}
     try:
         status, body = opener(url, headers, TIMEOUT_S)
-    except OSError, TimeoutError:
+    except OSError, TimeoutError, http.client.HTTPException:
         raise TransientError(f"network error fetching {owner}/{repo} pull {number}") from None
     if status == 404:
         return Unavailable("pull request not found")

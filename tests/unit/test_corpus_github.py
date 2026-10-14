@@ -147,3 +147,51 @@ def test_no_token_is_an_error_that_does_not_echo_output(returncode):
     with pytest.raises(RuntimeError) as caught:
         token_from_gh(run)
     assert "secret detail" not in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "https://evil.example/repos/o/r/pulls/1",
+        "http://api.github.com/repos/o/r/pulls/1",
+        "https://api.github.com.evil.example/x",
+    ],
+)
+def test_a_redirect_off_the_api_host_is_refused(location):
+    import urllib.request
+
+    from rootflake.corpus.github import ApiOnlyRedirects
+
+    handler = ApiOnlyRedirects()
+    request = urllib.request.Request(API_URL + "/repos/o/r/pulls/1", headers={"Authorization": "x"})
+    with pytest.raises(urllib.error.HTTPError):
+        handler.redirect_request(request, None, 301, "Moved", {}, location)
+
+
+def test_a_redirect_within_the_api_host_keeps_working():
+    import urllib.request
+
+    from rootflake.corpus.github import ApiOnlyRedirects
+
+    request = urllib.request.Request(API_URL + "/repos/o/r/pulls/1", headers={"Authorization": "x"})
+    new = ApiOnlyRedirects().redirect_request(
+        request, None, 301, "Moved", {}, API_URL + "/repositories/7/pulls/1"
+    )
+    assert new.full_url == API_URL + "/repositories/7/pulls/1"
+
+
+@pytest.mark.parametrize("token", ["abc\r\nX-Evil: 1", "has space", "ünï", "a\x00b"])
+def test_a_token_with_unexpected_characters_is_refused_without_echoing_it(token):
+    def run(args, **kwargs):
+        return subprocess.CompletedProcess(args, 0, stdout=token + "\n", stderr="")
+
+    with pytest.raises(RuntimeError) as caught:
+        token_from_gh(run)
+    assert token.strip() not in str(caught.value)
+
+
+def test_an_incomplete_read_is_transient():
+    import http.client
+
+    with pytest.raises(TransientError):
+        fetch_pr("o", "r", 1, TOKEN, Opener(http.client.IncompleteRead(b"x")))
