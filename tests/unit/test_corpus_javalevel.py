@@ -3,9 +3,9 @@ import pytest
 from rootflake.corpus.javalevel import java_level, parse_level
 
 
-def pom(properties="", plugins="", managed=""):
+def pom(properties="", plugins="", managed="", coords="", parent=""):
     return f"""<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0">
+<project xmlns="http://maven.apache.org/POM/4.0.0">{parent}{coords}
   <properties>{properties}</properties>
   <build>
     <pluginManagement><plugins>{managed}</plugins></pluginManagement>
@@ -24,7 +24,8 @@ def compiler(config, artifact="maven-compiler-plugin"):
 @pytest.mark.parametrize(
     ("text", "level"),
     [("1.8", 8), ("8", 8), ("1.7", 7), ("1.6", 6), ("11", 11), ("17", 17), ("21", 21),
-     (" 11 ", 11), ("1.8.0", None), ("eleven", None), ("", None), ("${x}", None)],
+     (" 11 ", 11), ("1.4", 4), ("1.3", 3), ("1.0", None), ("1.8.0", None), ("eleven", None),
+     ("", None), ("${x}", None)],
 )  # fmt: skip
 def test_levels_are_read_as_java_major_versions(text, level):
     assert parse_level(text) == level
@@ -91,14 +92,75 @@ def test_a_property_cycle_is_none():
     assert java_level([pom(props)]) is None
 
 
+ROOT_COORDS = "<groupId>g</groupId><artifactId>root</artifactId><version>1</version>"
+
+
+def parent(group="g", artifact="root", version="1", relative=None):
+    path = "" if relative is None else f"<relativePath>{relative}</relativePath>"
+    return (
+        f"<parent><groupId>{group}</groupId><artifactId>{artifact}</artifactId>"
+        f"<version>{version}</version>{path}</parent>"
+    )
+
+
 def test_the_module_inherits_and_overrides_its_parents():
     root = pom(
         "<java.version>1.8</java.version>"
-        "<maven.compiler.target>${java.version}</maven.compiler.target>"
+        "<maven.compiler.target>${java.version}</maven.compiler.target>",
+        coords=ROOT_COORDS,
     )
-    module = pom("<java.version>11</java.version>")
+    module = pom("<java.version>11</java.version>", parent=parent())
     assert java_level([module, root]) == 11
-    assert java_level([pom(), root]) == 8
+    assert java_level([pom(parent=parent()), root]) == 8
+
+
+ROOT_16 = pom("<maven.compiler.target>1.6</maven.compiler.target>", coords=ROOT_COORDS)
+
+
+@pytest.mark.parametrize(
+    "module_parent",
+    [
+        "",
+        parent(relative="../parent/pom.xml"),
+        parent(relative=""),
+        parent(artifact="other"),
+        parent(group="h"),
+        parent(version="2"),
+    ],
+)
+def test_an_ancestor_that_is_not_the_maven_parent_is_not_read(module_parent):
+    assert java_level([pom(parent=module_parent), ROOT_16]) is None
+
+
+@pytest.mark.parametrize("relative", ["..", "../", "../pom.xml"])
+def test_the_default_parent_path_is_followed(relative):
+    assert java_level([pom(parent=parent(relative=relative)), ROOT_16]) == 6
+
+
+def test_a_parent_group_and_version_may_come_from_the_grandparent():
+    middle = pom(coords="<artifactId>root</artifactId>", parent=parent(artifact="top"))
+    top = pom(
+        "<maven.compiler.release>11</maven.compiler.release>",
+        coords="<groupId>g</groupId><artifactId>top</artifactId><version>1</version>",
+    )
+    assert java_level([pom(parent=parent()), middle, top]) == 11
+
+
+def test_a_missing_pom_ends_the_chain():
+    assert java_level([pom(parent=parent()), None, ROOT_16]) is None
+
+
+def test_a_missing_module_pom_is_none():
+    assert java_level([None, ROOT_16]) is None
+
+
+def test_deeply_nested_xml_is_refused_quickly():
+    import time
+
+    deep = b"<project>" + b"<a>" * 20000 + b"</a>" * 20000 + b"</project>"
+    started = time.monotonic()
+    assert java_level([deep]) is None
+    assert time.monotonic() - started < 1
 
 
 @pytest.mark.parametrize(
@@ -110,7 +172,8 @@ def test_the_module_inherits_and_overrides_its_parents():
     ],
 )
 def test_an_unreadable_pom_anywhere_in_the_chain_is_none(bad):
-    assert java_level([pom("<maven.compiler.release>11</maven.compiler.release>"), bad]) is None
+    module = pom("<maven.compiler.release>11</maven.compiler.release>", parent=parent())
+    assert java_level([module, bad]) is None
 
 
 def test_exponential_property_expansion_is_cut_off_quickly():

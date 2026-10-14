@@ -54,10 +54,6 @@ class Drawn:
     rank_key: str
     split: str
 
-    @property
-    def class_key(self) -> tuple[str, str]:
-        return (self.row.project_url.lower(), derive_test_class(self.row.test_name))
-
     def to_json(self) -> dict:
         return {
             "idoft_row": self.row.idoft_row,

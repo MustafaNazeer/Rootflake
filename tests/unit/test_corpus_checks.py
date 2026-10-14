@@ -98,6 +98,7 @@ def test_any_other_git_failure_aborts_the_walk():
     ("module", "paths"),
     [
         (".", ["pom.xml"]),
+        ("", ["pom.xml"]),
         ("core", ["core/pom.xml", "pom.xml"]),
         ("a/b/", ["a/b/pom.xml", "a/pom.xml", "pom.xml"]),
     ],
@@ -106,27 +107,49 @@ def test_module_poms_run_from_the_module_to_the_root(module, paths):
     assert module_poms(module) == paths
 
 
-@pytest.mark.parametrize("module", ["../x", "/abs", "a/../b", "-x", ""])
+@pytest.mark.parametrize("module", ["../x", "/abs", "a/../b", "-x", "a//b"])
 def test_unsafe_module_paths_have_no_poms(module):
     assert module_poms(module) is None
 
 
 def test_the_java_level_reads_the_module_chain_at_the_detected_commit():
     blobs = {
-        "core/pom.xml": b"<project><properties><x>1</x></properties></project>",
-        "pom.xml": b"<project><properties>"
-        b"<maven.compiler.release>17</maven.compiler.release></properties></project>",
+        "core/pom.xml": b"<project><parent><groupId>g</groupId><artifactId>root</artifactId>"
+        b"<version>1</version></parent></project>",
+        "pom.xml": b"<project><groupId>g</groupId><artifactId>root</artifactId><version>1</version>"
+        b"<properties><maven.compiler.release>17</maven.compiler.release></properties></project>",
     }
     corpus, _ = checks(Repo(blobs=blobs))
     assert corpus.java_level(row("core")) == 17
 
 
 @pytest.mark.parametrize(
-    "repo", [Repo(has_commit=False), Repo(blobs={}), Repo(blobs={"pom.xml": b"<x"})]
+    "repo",
+    [
+        Repo(has_commit=False),
+        Repo(blobs={}),
+        Repo(blobs={"pom.xml": b"<x"}),
+    ],
 )
 def test_an_unreadable_level_is_undeclared(repo):
     corpus, _ = checks(repo)
     assert corpus.java_level(row()) is None
+
+
+ROOT_17 = (
+    b"<project><properties><maven.compiler.release>17</maven.compiler.release>"
+    b"</properties></project>"
+)
+
+
+def test_a_module_without_its_own_pom_is_undeclared():
+    corpus, _ = checks(Repo(blobs={"pom.xml": ROOT_17}))
+    assert corpus.java_level(row("core")) is None
+
+
+def test_an_empty_module_path_reads_the_root_pom():
+    corpus, _ = checks(Repo(blobs={"pom.xml": ROOT_17}))
+    assert corpus.java_level(row("")) == 17
 
 
 @pytest.mark.parametrize("call", ["build", "runnable"])

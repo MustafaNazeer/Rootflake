@@ -18,7 +18,7 @@ _NOT_FOUND = ("Repository not found", "repository not found")
 
 def module_poms(module_path: str) -> list[str] | None:
     """POM paths from the module up to the repository root, or None for an unsafe path."""
-    if module_path == ".":
+    if module_path in (".", ""):
         return ["pom.xml"]
     parts = module_path.rstrip("/").split("/")
     if module_path.startswith(("/", "-")) or any(p in ("", ".", "..") for p in parts):
@@ -81,11 +81,10 @@ class CorpusChecks:
         try:
             if not repo.ensure_commit(row.sha_detected):
                 return None
-            poms = [repo.read_blob(row.sha_detected, path) for path in paths]
+            poms: list[bytes | None] = [repo.read_blob(row.sha_detected, p) for p in paths]
         except GitError as error:
             raise TransientError(f"git failed for {row.project_url}: {error}") from None
-        found = [pom for pom in poms if pom is not None]
-        return java_level(found) if found else None
+        return java_level(poms)
 
     def build(self, row: Row) -> int | None:
         raise NotImplementedError("rule 11 needs sandbox builds of target projects")

@@ -127,6 +127,8 @@ def test_a_class_never_lands_in_both_splits():
         (Checks(unavailable={1}), "fix_diff_unavailable"),
         (Checks(levels={1: 7}), "java_out_of_range"),
         (Checks(levels={1: 21}), "java_out_of_range"),
+        (Checks(levels={1: 18}), "java_out_of_range"),
+        (Checks(levels={1: 4}), "java_out_of_range"),
         (Checks(broken={1}), "build_failed"),
         (Checks(unrunnable={1}), "test_not_runnable"),
     ],
