@@ -10,6 +10,7 @@ credential helper, or another transport (SH-16).
 
 import os
 import re
+import signal
 import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -29,7 +30,10 @@ Run = Callable[[list[str], dict[str, str], float], subprocess.CompletedProcess]
 
 
 class GitError(RuntimeError):
-    pass
+    def __init__(self, message: str, returncode: int | None = None, stderr: str = ""):
+        super().__init__(message)
+        self.returncode = returncode
+        self.stderr = stderr
 
 
 def git_config(protocols: Sequence[str]) -> list[str]:
@@ -59,9 +63,23 @@ def git_env() -> dict[str, str]:
 
 
 def _run(args: list[str], env: dict[str, str], timeout: float) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        args, env=env, cwd="/", stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout
-    )
+    """Runs git in its own process group, so a timeout also kills its helpers."""
+    with subprocess.Popen(
+        args,
+        env=env,
+        cwd="/",
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    ) as process:
+        try:
+            stdout, stderr = process.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.communicate()
+            raise
+    return subprocess.CompletedProcess(args, process.returncode, stdout, stderr)
 
 
 def _error_text(stderr: bytes) -> str:
@@ -116,7 +134,8 @@ class GitRepo:
         except subprocess.TimeoutExpired:
             raise GitError(f"git {args[0]} timed out after {timeout} s") from None
         if result.returncode != 0:
-            raise GitError(f"git {args[0]} failed: {_error_text(result.stderr)}")
+            text = _error_text(result.stderr)
+            raise GitError(f"git {args[0]} failed: {text}", result.returncode, text)
         return result
 
     def _missing_on_remote(self, args: list[str]) -> bool:
@@ -132,8 +151,10 @@ class GitRepo:
     def _has_commit(self, sha: str) -> bool:
         try:
             self._git(["cat-file", "-e", f"{sha}^{{commit}}"])
-        except GitError:
-            return False
+        except GitError as error:
+            if error.returncode == 128 and "Not a valid object name" in error.stderr:
+                return False
+            raise
         return True
 
     def fetch_pr_head(self, number: int) -> str | None:
@@ -160,8 +181,10 @@ class GitRepo:
             return None
         try:
             merge_base = self._git(["merge-base", head, base]).stdout.decode().strip()
-        except GitError:
-            return None
+        except GitError as error:
+            if error.returncode == 1:
+                return None
+            raise
         _check_sha(merge_base)
         diff = ["diff", "--no-color", "--no-ext-diff", "--no-textconv", merge_base, head]
         return self._git(diff).stdout

@@ -245,3 +245,85 @@ def test_control_the_planted_diff_driver_runs_under_plain_git(source, tmp_path):
         capture_output=True, check=True,
     )  # fmt: skip
     assert marker.exists()
+
+
+class Scripted:
+    """Answers git calls by subcommand: (returncode, stdout, stderr) or an exception."""
+
+    def __init__(self, answers):
+        self.answers = answers
+
+    def __call__(self, args, env, timeout):
+        sub = args[args.index("--git-dir") + 2]
+        answer = self.answers.get(sub, (0, b"", b""))
+        if isinstance(answer, BaseException):
+            raise answer
+        code, out, err = answer
+        return subprocess.CompletedProcess(args, code, out, err)
+
+
+def scripted(tmp_path, **answers):
+    return GitRepo(tmp_path / "m", ("https",), Scripted(answers))
+
+
+C = "c" * 40
+B = "b" * 40
+
+
+def test_a_missing_object_is_only_the_not_a_valid_object_answer(tmp_path):
+    repo = scripted(tmp_path, **{"cat-file": (128, b"", b"fatal: Not a valid object name x")})
+    assert repo.read_blob(C, "pom.xml") is None
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        (128, b"", b"fatal: not a git repository: '/m'"),
+        (128, b"", b"fatal: unable to read 1234: corrupt loose object"),
+        subprocess.TimeoutExpired(["git"], 300),
+    ],
+)
+def test_other_object_lookup_failures_raise(tmp_path, answer):
+    repo = scripted(tmp_path, **{"cat-file": answer})
+    with pytest.raises(GitError):
+        repo.read_blob(C, "pom.xml")
+    with pytest.raises(GitError):
+        repo.ensure_commit(C)
+
+
+def test_no_merge_base_is_none(tmp_path):
+    repo = scripted(tmp_path, **{"merge-base": (1, b"", b"")})
+    assert repo.canonical_diff(C, B) is None
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [(128, b"", b"fatal: Not a valid commit name"), subprocess.TimeoutExpired(["git"], 300)],
+)
+def test_other_merge_base_failures_raise(tmp_path, answer):
+    repo = scripted(tmp_path, **{"merge-base": answer})
+    with pytest.raises(GitError):
+        repo.canonical_diff(C, B)
+
+
+def test_a_timeout_kills_the_whole_process_group(tmp_path):
+    pid_file = tmp_path / "child"
+    script = f"sleep 30 & echo $! > {pid_file}; wait"
+    with pytest.raises(subprocess.TimeoutExpired):
+        gitrepo._run(["sh", "-c", script], {"PATH": os.environ["PATH"]}, 0.5)
+    child = int(pid_file.read_text())
+    for _ in range(50):
+        if not os.path.exists(f"/proc/{child}") or "Z" in _state(child):
+            break
+        import time
+
+        time.sleep(0.05)
+    assert not os.path.exists(f"/proc/{child}") or "Z" in _state(child)
+
+
+def _state(pid):
+    try:
+        with open(f"/proc/{pid}/stat") as handle:
+            return handle.read().rsplit(")", 1)[1].split()[0]
+    except FileNotFoundError:
+        return "gone"
