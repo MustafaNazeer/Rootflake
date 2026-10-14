@@ -16,6 +16,7 @@ from rootflake.sandbox.xmlsafe import RefusedXml, new_parser
 PARAMETERS = ("release", "target", "source")
 PLUGIN = "maven-compiler-plugin"
 MAX_DEPTH = 10
+MAX_VALUE = 256
 
 _LEVEL_RE = re.compile(r"1\.([5-9])|([1-9][0-9]?)")
 _REFERENCE_RE = re.compile(r"\$\{([^}]*)\}")
@@ -73,13 +74,17 @@ def _read(pom: bytes) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
 
 
 def _resolve(value: str, properties: dict[str, str]) -> str | None:
+    """Expands `${name}` references; a hostile POM can nest them to grow exponentially, so
+    the value is capped at every step."""
     for _ in range(MAX_DEPTH):
+        if len(value) > MAX_VALUE:
+            return None
         names = _REFERENCE_RE.findall(value)
         if not names:
             return value
         if any(name not in properties for name in names):
             return None
-        value = _REFERENCE_RE.sub(lambda match: properties[match.group(1)], value)
+        value = _REFERENCE_RE.sub(lambda match: properties[match.group(1)][: MAX_VALUE + 1], value)
     return None
 
 

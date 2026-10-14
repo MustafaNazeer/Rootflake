@@ -111,3 +111,15 @@ def test_the_module_inherits_and_overrides_its_parents():
 )
 def test_an_unreadable_pom_anywhere_in_the_chain_is_none(bad):
     assert java_level([pom("<maven.compiler.release>11</maven.compiler.release>"), bad]) is None
+
+
+def test_exponential_property_expansion_is_cut_off_quickly():
+    import time
+
+    props = "<p0>1</p0>" + "".join(
+        f"<p{n}>{('${p' + str(n - 1) + '}') * 6}</p{n}>" for n in range(1, 10)
+    )
+    props += "<maven.compiler.target>${p9}</maven.compiler.target>"
+    started = time.monotonic()
+    assert java_level([pom(props)]) is None
+    assert time.monotonic() - started < 1
