@@ -31,3 +31,22 @@ def test_every_accepted_test_name_has_a_class(rows):
     for row in rows:
         if row.status == "Accepted":
             assert idoft.derive_test_class(row.test_name)
+
+
+def test_rules_one_to_five_match_the_adr(rows):
+    from collections import Counter
+
+    from rootflake.corpus.funnel import screen
+
+    eligible, reasons, not_accepted = screen(rows)
+    assert not_accepted == 5772
+    assert Counter(reasons.values()) == {
+        "duplicate_test": 18,
+        "multiple_labels": 15,
+        "category_excluded": 3,
+        "stratum_too_thin": 4,
+    }
+    by_stratum = Counter(e.stratum for e in eligible)
+    prs = {s: len({e.row.pr_url for e in eligible if e.stratum == s}) for s in by_stratum}
+    assert by_stratum == {"ID": 1754, "OD": 338, "NIO": 143, "NOD": 28}
+    assert prs == {"ID": 527, "OD": 70, "NIO": 30, "NOD": 7}
