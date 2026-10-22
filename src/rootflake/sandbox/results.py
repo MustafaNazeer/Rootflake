@@ -46,7 +46,7 @@ class Outcome(Enum):
 
 
 def parse_report(data: bytes, test: TestId) -> str:
-    """Return passed, failed, skipped, missing, ambiguous, or unreadable."""
+    """Return passed, failed, flaky, skipped, missing, ambiguous, or unreadable."""
     if len(data) > MAX_REPORT_BYTES:
         return "unreadable"
     matches: list[set[str]] = []
