@@ -108,7 +108,7 @@ One agent with the same three MCP servers, the same model, and the same per test
 
 The gate is deterministic code. It runs in this order:
 
-1. **Patch validation.** Before a patch touches the workspace, it is parsed and rejected if any path fails the repo server's confinement rules, if it creates symlinks, binaries, or executable files, or if it is too large. Changes to build files (`pom.xml`, `.mvn/`, Surefire configuration) are rejected by default, pending a decision on whether some legitimate fixes need them (control SH-15).
+1. **Patch validation.** Before a patch touches the workspace, it is parsed and rejected if any path fails the repo server's confinement rules, if it creates symlinks, binaries, or executable files, or if it is too large. Which files a patch may touch is an allowlist: Java sources under `src/main/java` and `src/test/java` of a Maven module, and test resources that are not test engine configuration. Build files, CI files, deletions and renames are rejected (control SH-15, [ADR 0007](adr/0007-shortcut-checker-and-patch-validation.md)).
 2. **Shortcut checker.** Rejects fixes that make the symptom go away without fixing the cause: deleting or disabling the test (`@Ignore`, `@Disabled`, and equivalents), adding retries (retry rules, rerun annotations, Surefire rerun settings), removing or weakening assertions, and catching and swallowing the failure. It is built test first against a large fixture set of shortcut diffs and legitimate fixes.
 3. **Build.** The project still builds.
 4. **Repro recipe.** The saved trigger now passes.
