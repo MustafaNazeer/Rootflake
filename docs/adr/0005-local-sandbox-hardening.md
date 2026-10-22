@@ -112,12 +112,14 @@ Option 2 is a parser for a moving target: every new plugin parameter or property
 
 **Option 1.** Build and wrapper files are rejected by default, and the override list starts empty. Option 2 is reconsidered only if the measurement below shows that a meaningful share of real fixes need build file changes; any override or Option 2 checker needs its own review before use.
 
+**Amended 2026-10-22 (path policy decided 2026-10-14).** The path policy in SH-15 of the [sandbox hardening checklist](../security/sandbox-hardening-checklist.md) replaces the deny list in Option 1 with an allowlist: a patch may touch only `.java` files under `src/main/java` and `src/test/java` of a real Maven module, and files under `src/test/resources` that are not test engine configuration. Build and wrapper files stay rejected under it, and so do production resources under `src/main/resources`, CI files, and every deletion, rename and copy. The override list covers every SH-15 rule. The shortcut checker that reads the patches the policy admits is decided in [ADR 0007](0007-shortcut-checker-and-patch-validation.md).
+
 ### Measurement still owed
 
 The fraction of IDoFT fixes that touch build files is **not yet measured.** The corpus builder can measure it from the merged fix diffs it already fetches:
 
 1. For every `pr-data.csv` row with Status Accepted and a GitHub PR link, list the PR's files with `GET /repos/{owner}/{repo}/pulls/{pull_number}/files` (GitHub documents "a maximum of 3000 files" per response and `per_page` up to 100).
-2. Classify each PR as touching test sources only, main sources, test resources, or build files (the path patterns in Option 1), using the `patch` text to separate build changes that only add a test dependency from changes to Surefire or Failsafe configuration.
+2. Classify each PR as touching test sources only, main sources, test resources, main resources (`src/main/resources`, counted as a class of its own since SH-15 rejects it), other paths outside the SH-15 allowlist that are not build files (non standard source sets such as `src/test/functional`, and Kotlin, Groovy or Scala sources, also a class of their own), or build files (the path patterns in Option 1), using the `patch` text to separate build changes that only add a test dependency from changes to Surefire or Failsafe configuration.
 3. Report the count and fraction for each class over all Accepted rows and over the sampled corpus, the fraction with a 95% Wilson interval, and the list of PRs in the build file class. Rows whose PR cannot be fetched are counted as such, not dropped.
 
 ## Decision 3 (OD-4): egress during the dependency download step
