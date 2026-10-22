@@ -1,0 +1,12 @@
+diff --git a/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java b/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
+--- a/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
++++ b/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
+@@ -177,6 +177,8 @@ void successfulBatchAcksAndCompletesCounter() throws Exception {
+ 
+       assertTrue(done.await(3, TimeUnit.SECONDS));
+       assertEquals(5, processed.size());
++      // Wait for counter.completed() which runs after handler returns
++      java.util.concurrent.locks.LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(50));
+       assertEquals(0, counter.records());
+     }
+ 

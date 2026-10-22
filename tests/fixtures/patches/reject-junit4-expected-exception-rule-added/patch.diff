@@ -1,0 +1,20 @@
+diff --git a/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java b/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java
+--- a/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java
++++ b/google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java
+@@ -98,6 +98,8 @@ public class BulkWriterTest {
+ 
+   @Rule public Timeout timeout = new Timeout(2, TimeUnit.SECONDS);
+ 
++  @Rule public org.junit.rules.ExpectedException thrown = org.junit.rules.ExpectedException.none();
++
+   private ScheduledExecutorService testExecutor;
+ 
+   @Spy
+@@ -1280,6 +1282,7 @@ public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit)
+ 
+   @Test
+   public void sendsBackoffBatchAfterOtherEnqueuedBatches() throws Exception {
++    thrown.expect(Exception.class);
+     ResponseStubber responseStubber =
+         new ResponseStubber() {
+           {

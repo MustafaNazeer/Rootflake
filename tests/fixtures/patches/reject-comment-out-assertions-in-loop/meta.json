@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "weaken_assertion",
   "variant": "comment_out_assertions",
+  "target": {
+    "class": "org.apache.rocketmq.test.client.consumer.pop.PopPriorityIT",
+    "method": "test_priority_consume_use_separate_retry_queue"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Replaces a single pop with an await loop and comments out the three priority assertions inside the verification loop. Only that hunk of the PR is kept.",
+  "notes": "Replaces a single pop with an await loop and comments out the three priority assertions inside the verification loop. Only that hunk of the PR is kept. The target is the method whose assertions are commented out; the hunk also adds @Ignore to the next method, test_priority_consume_use_separate_retry_queue_with_queue_expansion.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/apache/rocketmq",

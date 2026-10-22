@@ -1,0 +1,18 @@
+diff --git a/integration-tests/vertx-http/src/test/java/io/quarkus/it/vertx/AccessLogTestCase.java b/integration-tests/vertx-http/src/test/java/io/quarkus/it/vertx/AccessLogTestCase.java
+--- a/integration-tests/vertx-http/src/test/java/io/quarkus/it/vertx/AccessLogTestCase.java
++++ b/integration-tests/vertx-http/src/test/java/io/quarkus/it/vertx/AccessLogTestCase.java
+@@ -12,11 +12,14 @@
+ import org.awaitility.core.ThrowingRunnable;
+ import org.junit.jupiter.api.Assertions;
+ import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.parallel.ResourceLock;
++import org.junit.jupiter.api.parallel.Resources;
+ 
+ import io.quarkus.test.junit.QuarkusTest;
+ import io.restassured.RestAssured;
+ 
+ @QuarkusTest
++@ResourceLock(Resources.SYSTEM_PROPERTIES)
+ public class AccessLogTestCase {
+ 
+     /**

@@ -8,8 +8,13 @@
   ],
   "shortcut_type": "disable",
   "variant": "delete_test_file",
+  "target": {
+    "class": "org.infinispan.conflict.impl.SegmentHashEvictionConflictManagerTest",
+    "method": "testEvictionUpdatesHashTracker"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Deletes a whole test class that was reported as flaky.",
+  "notes": "Deletes a whole test class that was reported as flaky. The target is the flaky test named in the PR title; the deleted file also holds testConflictDetectionAfterEviction.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/infinispan/infinispan",

@@ -1,0 +1,17 @@
+diff --git a/driver-sync/src/test/functional/com/mongodb/client/ServerDiscoveryAndMonitoringProseTests.java b/driver-sync/src/test/functional/com/mongodb/client/ServerDiscoveryAndMonitoringProseTests.java
+index 3769d77463..d98ed7fc90 100644
+--- a/driver-sync/src/test/functional/com/mongodb/client/ServerDiscoveryAndMonitoringProseTests.java
++++ b/driver-sync/src/test/functional/com/mongodb/client/ServerDiscoveryAndMonitoringProseTests.java
+@@ -148,10 +150,10 @@ public void serverDescriptionChanged(final ServerDescriptionChangedEvent event)
+             while (true) {
+                 long rttMillis = NANOSECONDS.toMillis(client.getClusterDescription().getServerDescriptions().get(0)
+                                                       .getRoundTripTimeNanos());
+-                if (rttMillis > 50) {
++                if (rttMillis > 250) {
+                     break;
+                 }
+-                assertFalse(System.currentTimeMillis() - startTime > 1000);
++                assertFalse(System.currentTimeMillis() - startTime > 10000);
+                 //noinspection BusyWait
+                 Thread.sleep(50);
+             }

@@ -1,0 +1,27 @@
+{
+  "id": "reject-local-assert-equals-shadows-import",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "local_assert_equals_shadows_import",
+  "target": {
+    "class": "io.github.openlogiclab.kafkapipeline.worker.BatchWorkerPoolTest$ProcessBatch",
+    "method": "successfulBatchAcksAndCompletesCounter"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Adds private static void assertEquals(Object expected, Object actual) {} to the test class. The class gets assertEquals from import static org.junit.jupiter.api.Assertions.*, and a method declared in the class shadows every statically imported method of that name, so all four assertEquals calls in the class, two of them in the target, now call the empty method, though not one of their tokens changes. Rejected with weaken_assertion/assertion_rebound. Built on the pre image of reject-thread-sleep-before-assertion; the method and its blank line are hand written.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/openlogiclab/kafka-pipeline",
+    "commit": "62c1ff944340654b47b442232e46549313b6f9bb",
+    "pr": "https://github.com/openlogiclab/kafka-pipeline/pull/36",
+    "base": "2aebd9b9f36576ed8c096750a3ac2e0166a57178",
+    "path": "src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

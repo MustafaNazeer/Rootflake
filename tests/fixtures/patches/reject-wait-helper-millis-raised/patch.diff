@@ -1,0 +1,13 @@
+diff --git a/activemq-unit-tests/src/test/java/org/apache/activemq/network/NetworkBridgeReconnectOnHandshakeFailureTest.java b/activemq-unit-tests/src/test/java/org/apache/activemq/network/NetworkBridgeReconnectOnHandshakeFailureTest.java
+index fcfee0d2db5..7f2d9482032 100644
+--- a/activemq-unit-tests/src/test/java/org/apache/activemq/network/NetworkBridgeReconnectOnHandshakeFailureTest.java
++++ b/activemq-unit-tests/src/test/java/org/apache/activemq/network/NetworkBridgeReconnectOnHandshakeFailureTest.java
+@@ -261,7 +253,7 @@ public void testBridgeReconnectsAfterRemoteBrokerRestart() throws Exception {
+         remoteBroker.waitUntilStopped();
+ 
+         assertTrue("Bridge should go down", Wait.waitFor(() ->
+-                nc.activeBridges().isEmpty(), 10_000, 200));
++                nc.activeBridges().isEmpty(), 20_000, 200));
+ 
+         remoteBroker = createRemoteBroker(remotePort);
+         remoteBroker.start();

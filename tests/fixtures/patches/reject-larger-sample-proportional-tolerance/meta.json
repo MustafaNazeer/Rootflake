@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "weaken_assertion",
   "variant": "sample_and_tolerance_scaled",
+  "target": {
+    "class": "org.apache.paimon.fs.WeightedExternalPathProviderTest",
+    "method": "testEqualWeights"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Multiplies the sample size by 10 (3000 to 30000) and the absolute tolerance by 10 (100 to 1000). The relative tolerance is unchanged, but measured in standard deviations the check is looser: for equal weights under a multinomial model with independent choices, the standard deviation of a count is about 25.8 at n = 3000 and about 81.6 at n = 30000, so the tolerance goes from about 3.9 to about 12.2 standard deviations, a widening of about sqrt(10). Policy reject: a maintainer merged fix whose isBetween call keeps its method and changes only arguments, so no diff rule separates it from a real loosening. Not from IDoFT: neither the PR nor the test class WeightedExternalPathProviderTest appears in pr-data.csv under any status. From the same PR as reject-assertions-removed-and-exception-swallowed.",
+  "notes": "Multiplies the sample size by 10 (3000 to 30000) and the absolute tolerance by 10 (100 to 1000). The relative tolerance is unchanged, but measured in standard deviations the check is looser: for equal weights under a multinomial model with independent choices, the standard deviation of a count is about 25.8 at n = 3000 and about 81.6 at n = 30000, so the tolerance goes from about 3.9 to about 12.2 standard deviations, a widening of about sqrt(10). Policy reject: a maintainer merged fix whose isBetween call keeps its method and changes only arguments, so no diff rule separates it from a real loosening. Not from IDoFT: neither the PR nor the test class WeightedExternalPathProviderTest appears in pr-data.csv under any status. From the same PR as reject-assertions-removed-and-exception-swallowed. The patch widens both testEqualWeights and testDifferentWeights; the target is testEqualWeights, the case the standard deviation figures above describe.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/apache/paimon",

@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "swallow_failure",
   "variant": "junit4_expected_added",
+  "target": {
+    "class": "com.google.cloud.firestore.BulkWriterTest",
+    "method": "sendsBackoffBatchAfterOtherEnqueuedBatches"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Adds expected = Exception.class to a JUnit 4 @Test so a run that throws any Exception counts as a pass. Note that such a test then fails whenever no exception is thrown; the fixture covers the annotation form, not a fix that would survive the rerun gate. Built on the same test as reject-junit4-ignore-bare. Change from the original: instead of adding @Ignore and its import, the existing @Test line becomes @Test(expected = Exception.class).",
   "derivation": "adapted",

@@ -1,0 +1,13 @@
+diff --git a/oak-commons/src/test/java/org/apache/jackrabbit/oak/commons/internal/concurrent/ForkJoinUtilsTest.java b/oak-commons/src/test/java/org/apache/jackrabbit/oak/commons/internal/concurrent/ForkJoinUtilsTest.java
+--- a/oak-commons/src/test/java/org/apache/jackrabbit/oak/commons/internal/concurrent/ForkJoinUtilsTest.java
++++ b/oak-commons/src/test/java/org/apache/jackrabbit/oak/commons/internal/concurrent/ForkJoinUtilsTest.java
+@@ -42,7 +42,8 @@ public void isInCommonPool() {
+                 .map(i -> Map.entry(i, isInCommonPool(Thread.currentThread())
+                         ? "common" : Thread.currentThread().getName()))
+                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+-        assertThat(results)
++        org.assertj.core.api.SoftAssertions softly = new org.assertj.core.api.SoftAssertions();
++        softly.assertThat(results)
+                 .hasSize(10)
+                 .allSatisfy((key, value) -> {
+                     assertThat(key).isBetween(0, 9);

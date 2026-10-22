@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "weaken_assertion",
   "variant": "remove_assertions_and_swallow",
+  "target": {
+    "class": "org.apache.paimon.flink.PrimaryKeyFileStoreTableITCase",
+    "method": "testTableReadWriteWithExternalPathWeightRobin"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Removes three assertions on how files are spread across paths and wraps the file listing in a try that swallows NoSuchFileException. Both the weakening and the swallow apply; it is filed under weaken_assertion. Kept: the import hunk and the test hunk.",
   "derivation": "verbatim",

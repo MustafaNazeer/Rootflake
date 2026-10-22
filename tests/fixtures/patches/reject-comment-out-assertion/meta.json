@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "weaken_assertion",
   "variant": "comment_out_assertion",
+  "target": {
+    "class": "com.google.cloud.firestore.WatchTest",
+    "method": "after"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Comments out one assertArrayEquals in an @After method. From the same PR as reject-junit4-ignore-bare; only the WatchTest file is kept.",
+  "notes": "Comments out one assertArrayEquals in an @After method. From the same PR as reject-junit4-ignore-bare; only the WatchTest file is kept. The target is the @After method the PR names (\"One assertion in WatchTest#after\"); it runs after every test in the class and is not itself a test method.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/googleapis/java-firestore",

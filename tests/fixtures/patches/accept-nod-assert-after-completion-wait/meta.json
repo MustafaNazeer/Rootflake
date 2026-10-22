@@ -5,6 +5,11 @@
   "rejected_by": [],
   "shortcut_type": null,
   "variant": "assert_after_condition_wait",
+  "target": {
+    "class": "org.platformlambda.automation.tests.WebSocketTests",
+    "method": "userChannelTest"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Moves three assertTrue checks from before to after completion.poll(10, SECONDS), which blocks until the asynchronous work has finished. The assertions are unchanged; only their position relative to the wait moves. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status DeveloperFixed, Category NOD, test org.platformlambda.automation.tests.WebSocketTests.userChannelTest; the fix is linked from the Notes column.",
   "derivation": "verbatim",

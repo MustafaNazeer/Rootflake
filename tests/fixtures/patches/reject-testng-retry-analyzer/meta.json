@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "retry",
   "variant": "testng_retry_analyzer",
+  "target": {
+    "class": "org.killbill.billing.payment.TestJanitor",
+    "method": "testUnknownEntriesWithFailures"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Adds retryAnalyzer = FlakyRetryAnalyzer.class to a TestNG @Test annotation (commit message: \"payment: mark test as flaky\").",
   "derivation": "verbatim",

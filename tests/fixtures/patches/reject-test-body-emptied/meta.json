@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "disable",
   "variant": "empty_test_body",
+  "target": {
+    "class": "com.alibaba.csp.sentinel.eagleeye.EagleEyeCoreUtilsTest",
+    "method": "testFormatTime"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Empties a test body and keeps @Test, so the test always passes and checks nothing. Built on the pre image of the Sentinel time zone fix used in accept-tzd-offset-at-instant: both lines of the assertion are deleted instead of fixed.",
   "derivation": "adapted",

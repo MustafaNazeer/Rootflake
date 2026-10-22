@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "disable",
   "variant": "parameterized_cases_dropped",
+  "target": {
+    "class": "com.apple.foundationdb.record.provider.foundationdb.indexes.RankIndexTest",
+    "method": "concurrentMutationsToRankIndex"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Replaces a cartesian product of parameters with an explicit list that leaves out the flaky combinations (concurrency 10 and 100 with concurrency management disabled), and removes a guard that skipped a check for them. Ruled a shortcut: dropping the failing parameter combinations disables part of the test, even though the remaining cases check more than before.",
   "derivation": "verbatim",

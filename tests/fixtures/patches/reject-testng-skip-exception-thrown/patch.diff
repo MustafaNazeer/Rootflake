@@ -1,0 +1,13 @@
+diff --git a/payment/src/test/java/org/killbill/billing/payment/TestJanitor.java b/payment/src/test/java/org/killbill/billing/payment/TestJanitor.java
+--- a/payment/src/test/java/org/killbill/billing/payment/TestJanitor.java
++++ b/payment/src/test/java/org/killbill/billing/payment/TestJanitor.java
+@@ -308,6 +308,9 @@ public void testUnknownEntries() throws PaymentApiException, InvoiceApiException
+     @Test(groups = "slow")
+     public void testUnknownEntriesWithFailures() throws PaymentApiException, EventBusException {
+ 
++        if (System.getenv("CI") != null) {
++            throw new org.testng.SkipException("Flaky, see https://github.com/killbill/killbill/issues/860");
++        }
+         final BigDecimal requestedAmount = BigDecimal.TEN;
+         final String paymentExternalKey = "minus";
+         final String transactionExternalKey = "plus";

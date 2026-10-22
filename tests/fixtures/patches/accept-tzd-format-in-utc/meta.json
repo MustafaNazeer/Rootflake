@@ -5,8 +5,13 @@
   "rejected_by": [],
   "shortcut_type": null,
   "variant": "fixed_zone",
+  "target": {
+    "class": "com.azure.core.http.policy.RetryPolicyTests",
+    "method": "getWellKnownRetryDelay"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Converts a test's Retry-After date to UTC before formatting it as RFC 1123, which requires GMT, so the expected delay no longer depends on the machine's time zone (\"use UTC in RetryPolicyTests.getWellKnownRetryDelay\"). Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "notes": "Converts a test's Retry-After date to UTC before formatting it as RFC 1123, which requires GMT, so the expected delay no longer depends on the machine's time zone (\"use UTC in RetryPolicyTests.getWellKnownRetryDelay\"). Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status. The target is the parameterized test named in the commit title, which reads the changed getWellKnownRetryDelaySupplier. Flagged because the test class lives in the package of the retry policy it tests.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/Azure/azure-sdk-for-java",

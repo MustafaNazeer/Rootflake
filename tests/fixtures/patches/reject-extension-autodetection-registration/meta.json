@@ -7,8 +7,10 @@
   ],
   "shortcut_type": "swallow_failure",
   "variant": "extension_service_registration",
+  "target": null,
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Registers the failure aborting extension from reject-junit5-exception-handler-aborts-failures for every test through the ServiceLoader file and turns on JUnit 5 extension autodetection, without touching any test class. Both files are new and hand written, built on the real extension's class name; I did not check whether the project already has these files, so the paths are illustrative. Rejected by the path validator (test runner configuration); neither file is Java, so the checker never reads it.",
+  "notes": "Registers the failure aborting extension from reject-junit5-exception-handler-aborts-failures for every test through the ServiceLoader file and turns on JUnit 5 extension autodetection, without touching any test class. Both files are new and hand written, built on the real extension's class name; I did not check whether the project already has these files, so the paths are illustrative. Rejected by the path validator (test runner configuration); neither file is Java, so the checker never reads it. No target: the files register an extension for every test and name no test.",
   "derivation": "adapted",
   "source": {
     "repo": "https://github.com/mongodb/mongo-java-driver",

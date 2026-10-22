@@ -1,0 +1,19 @@
+diff --git a/sentinel-adapter/sentinel-sofa-rpc-adapter/src/test/java/com/alibaba/csp/sentinel/adapter/sofa/rpc/fallback/SofaRpcFallbackRegistryTest.java b/sentinel-adapter/sentinel-sofa-rpc-adapter/src/test/java/com/alibaba/csp/sentinel/adapter/sofa/rpc/fallback/SofaRpcFallbackRegistryTest.java
+--- a/sentinel-adapter/sentinel-sofa-rpc-adapter/src/test/java/com/alibaba/csp/sentinel/adapter/sofa/rpc/fallback/SofaRpcFallbackRegistryTest.java
++++ b/sentinel-adapter/sentinel-sofa-rpc-adapter/src/test/java/com/alibaba/csp/sentinel/adapter/sofa/rpc/fallback/SofaRpcFallbackRegistryTest.java
+@@ -19,6 +19,7 @@
+ import com.alipay.sofa.rpc.core.request.SofaRequest;
+ import com.alipay.sofa.rpc.core.response.SofaResponse;
+ import com.alipay.sofa.rpc.filter.FilterInvoker;
++import org.junit.Ignore;
+ import org.junit.Test;
+ 
+ import static org.junit.Assert.*;
+@@ -43,6 +44,7 @@ public void testDefaultfallback() {
+         assertTrue(consumerFallback instanceof DefaultSofaRpcFallback);
+     }
+ 
++    @Ignore
+     @Test
+     public void testCustomFallback() {
+         // Test invoke custom provider fallback

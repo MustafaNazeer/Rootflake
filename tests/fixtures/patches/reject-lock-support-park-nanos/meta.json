@@ -1,0 +1,27 @@
+{
+  "id": "reject-lock-support-park-nanos",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "lock_support_park_nanos",
+  "target": {
+    "class": "io.github.openlogiclab.kafkapipeline.worker.BatchWorkerPoolTest$ProcessBatch",
+    "method": "successfulBatchAcksAndCompletesCounter"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "The fixed sleep of reject-thread-sleep-before-assertion written as LockSupport.parkNanos for 50 ms, fully qualified so no import is added. Rejected as an added fixed sleep. Change from that fixture's hunk: Thread.sleep(50) becomes java.util.concurrent.locks.LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(50)); the comment line is kept.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/openlogiclab/kafka-pipeline",
+    "commit": "62c1ff944340654b47b442232e46549313b6f9bb",
+    "pr": "https://github.com/openlogiclab/kafka-pipeline/pull/36",
+    "base": "2aebd9b9f36576ed8c096750a3ac2e0166a57178",
+    "path": "src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,10 @@
+diff --git a/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java b/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
+--- a/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
++++ b/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
+@@ -282,4 +282,6 @@ private boolean awaitCondition(java.util.function.BooleanSupplier condition, Dur
+     }
+     return true;
+   }
++
++  private static void assertEquals(Object expected, Object actual) {}
+ }

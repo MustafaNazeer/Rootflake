@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "weaken_assertion",
   "variant": "junit5_timeout_raised",
+  "target": {
+    "class": "io.netty.buffer.PooledByteBufAllocatorTest",
+    "method": "testNumThreadCachesWithNoDirectArenas"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Raises a JUnit 5 @Timeout from 10 to 30 seconds on a test method, in a PR titled \"Try to fix/stabilize a number of flaky tests\". A widened timing bound in test code. One hunk of one file is kept.",
   "derivation": "verbatim",

@@ -1,0 +1,27 @@
+{
+  "id": "reject-junit4-expected-exception-rule-added",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "swallow_failure",
+  "variant": "junit4_expected_exception_rule",
+  "target": {
+    "class": "com.google.cloud.firestore.BulkWriterTest",
+    "method": "sendsBackoffBatchAfterOtherEnqueuedBatches"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Adds a JUnit 4 ExpectedException rule to the class and calls thrown.expect(Exception.class) at the start of the flaky test, so a run that throws any Exception passes. As with reject-junit4-expected-exception-added, a run that throws nothing then fails; the fixture covers the rule form. Rejected: a newly added ExpectedException rule is a swallowed failure. Built on the pre image of reject-junit4-ignore-bare: the rule field, fully qualified so no import is added, and the expect line are hand written.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/googleapis/java-firestore",
+    "commit": "eb936d66bc771a4389b5cd222b55a151b40c405f",
+    "pr": "https://github.com/googleapis/java-firestore/pull/2273",
+    "base": "05188e3e779968e67861fcd69d64ae17cfb6cd0b",
+    "path": "google-cloud-firestore/src/test/java/com/google/cloud/firestore/BulkWriterTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

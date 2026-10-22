@@ -5,6 +5,11 @@
   "rejected_by": [],
   "shortcut_type": null,
   "variant": "explicit_key_lookup",
+  "target": {
+    "class": "org.apache.pdfbox.pdfparser.PDFObjectStreamParserTest",
+    "method": "testOffsetParsing"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Stops reading map keys by position from keySet().toArray() and looks up each expected key directly, adding two assertEquals. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.pdfbox.pdfparser.PDFObjectStreamParserTest.testOffsetParsing; the fix is linked from the Notes column.",
   "derivation": "verbatim",

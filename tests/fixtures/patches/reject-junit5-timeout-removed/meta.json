@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "weaken_assertion",
   "variant": "junit5_timeout_removed",
+  "target": {
+    "class": "io.netty.buffer.PooledByteBufAllocatorTest",
+    "method": "testNumThreadCachesWithNoDirectArenas"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Removes a JUnit 5 @Timeout from a test method, so a hang or a slow run is no longer a failure. Change from the original hunk used in reject-junit5-timeout-raised: the @Timeout(10) line is deleted instead of being changed to @Timeout(30).",
   "derivation": "adapted",

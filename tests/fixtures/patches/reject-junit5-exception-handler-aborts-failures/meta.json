@@ -8,8 +8,10 @@
   ],
   "shortcut_type": "swallow_failure",
   "variant": "test_execution_exception_handler",
+  "target": null,
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Adds a JUnit 5 extension that implements TestExecutionExceptionHandler and, until the last attempt, rethrows a failure as TestAbortedException (\"Mark failure as skipped / aborted so to pass CI\"), together with a template that repeats the test. A failure becomes a skip, and the test is retried. Only the new extension file is kept from a large feature commit.",
+  "notes": "Adds a JUnit 5 extension that implements TestExecutionExceptionHandler and, until the last attempt, rethrows a failure as TestAbortedException (\"Mark failure as skipped / aborted so to pass CI\"), together with a template that repeats the test. A failure becomes a skip, and the test is retried. Only the new extension file is kept from a large feature commit. No target: the extension applies to any test annotated with @FlakyTest, and the kept file names no test.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/mongodb/mongo-java-driver",

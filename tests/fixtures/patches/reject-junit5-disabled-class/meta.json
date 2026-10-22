@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "disable",
   "variant": "junit5_disabled_class",
+  "target": {
+    "class": "io.quarkus.it.vertx.AccessLogTestCase",
+    "method": "testAccessLogContent"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Adds @Disabled to a whole JUnit 5 test class.",
+  "notes": "Adds @Disabled to a whole JUnit 5 test class. The target is the only test method of the disabled class.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/quarkusio/quarkus",

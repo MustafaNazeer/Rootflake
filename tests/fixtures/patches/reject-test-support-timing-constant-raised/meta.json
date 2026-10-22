@@ -1,0 +1,27 @@
+{
+  "id": "reject-test-support-timing-constant-raised",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "test_support_timing_constant_raised",
+  "target": {
+    "class": "org.apache.curator.framework.imps.TestReadOnly",
+    "method": "testConnectionStateNewClient"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Raises SESSION_MULTIPLE in the shared Timing helper from .25 to 1.5, so every test that asks Timing for a session timeout gets one six times longer (\"Fix flaky TestReadOnly.testConnectionStateNewClient in ZooKeeper 3.9.3\"). The file sits under src/main/java of the curator-test module, which is test code because a path component ends in -test. Rejected as a widened timing bound in test code. SESSION_MULTIPLE contains none of the words the raised constant rule matches on; it scales session(), which returns the session timeout in milliseconds, so the checker has to follow the constant into that method to see it. The target is the test named in the PR title.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/curator",
+    "commit": "712306034789b5be90de62fac9bc8e8e85920286",
+    "pr": "https://github.com/apache/curator/pull/1272",
+    "base": "8f43c7561f8f96389265fcd55f923a7cb53f8ce6",
+    "path": "curator-test/src/main/java/org/apache/curator/test/Timing.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-22"
+  }
+}

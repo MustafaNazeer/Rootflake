@@ -1,0 +1,28 @@
+{
+  "id": "reject-elapsed-time-bound-raised",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker",
+    "patch_validator"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "elapsed_time_bound_raised",
+  "target": {
+    "class": "com.mongodb.client.ServerDiscoveryAndMonitoringProseTests",
+    "method": "testRTTUpdates"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Raises the bound in assertFalse(System.currentTimeMillis() - startTime > 1000) to 10000, a wall clock assertion on an elapsed time, in a PR titled \"Server discovery prose tests flaky\"; the same hunk also raises the round trip time the loop waits for from 50 to 250 ms. Rejected: a raised numeric bound in an assertion that compares an elapsed time is a widened timing bound. The path validator also rejects it, because src/test/functional is outside the source sets a patch may touch, as in reject-assume-version-raised, which comes from the same PR and shares this pre image. One hunk of the PR is kept.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/mongodb/mongo-java-driver",
+    "commit": "a52f9b393abacae2a7392a6a0dfbba4df0729ba0",
+    "pr": "https://github.com/mongodb/mongo-java-driver/pull/2073",
+    "base": "ac26dfc2d9abc7084613f9e06a74eaf66656169a",
+    "path": "driver-sync/src/test/functional/com/mongodb/client/ServerDiscoveryAndMonitoringProseTests.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-22"
+  }
+}

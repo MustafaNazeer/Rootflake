@@ -5,6 +5,11 @@
   "rejected_by": [],
   "shortcut_type": null,
   "variant": "try_finally_cleanup",
+  "target": {
+    "class": "org.apache.rocketmq.common.UtilAllTest",
+    "method": "testCalculateFileSizeInPath"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Wraps the test body, assertions included, in try/finally that deletes the test directory. There is no catch clause, so every failure still propagates; a checker keyed on try blocks around assertions must not reject it. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status DeveloperFixed, Category ID, test org.apache.rocketmq.common.UtilAllTest.testCalculateFileSizeInPath; the fix is linked from the PR Link column; the fix makes the test rerunnable in one environment, closer to NIO than ID.",
   "derivation": "verbatim",

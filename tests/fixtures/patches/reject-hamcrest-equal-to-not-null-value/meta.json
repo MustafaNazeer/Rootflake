@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "weaken_assertion",
   "variant": "hamcrest_equal_to_not_null_value",
+  "target": {
+    "class": "me.ahoo.cosid.test.machine.distributor.DistributeIdempotent",
+    "method": "verify"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Weakens a Hamcrest assertion from equalTo(i) to notNullValue(), which an autoboxed int always satisfies. Built from the pre image of the CosId file used in reject-junit5-assumptions-abort-conditional: the import block and the first verification loop of verify() are taken from that diff's context and removed lines; the change itself is hand written. The first hunk carries the blank line after the imports as trailing context, so it applies to the pre image.",
+  "notes": "Weakens a Hamcrest assertion from equalTo(i) to notNullValue(), which an autoboxed int always satisfies. Built from the pre image of the CosId file used in reject-junit5-assumptions-abort-conditional: the import block and the first verification loop of verify() are taken from that diff's context and removed lines; the change itself is hand written. The first hunk carries the blank line after the imports as trailing context, so it applies to the pre image. The target is the verify method of this test specification class, which the backend specific tests of the project call; it is not annotated as a test. In the source, the pull request description carries an AI tool attribution marker; it is used here as a real merged change and recorded as such.",
   "derivation": "adapted",
   "source": {
     "repo": "https://github.com/Ahoo-Wang/CosId",

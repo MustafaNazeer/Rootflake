@@ -5,6 +5,11 @@
   "rejected_by": [],
   "shortcut_type": null,
   "variant": "sort_both_sides",
+  "target": {
+    "class": "org.apache.commons.lang3.reflect.FieldUtilsTest",
+    "method": "testGetFieldsWithAnnotation"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Sorts both the expected and the actual Field arrays with the same comparator before assertArrayEquals, because getDeclaredFields() has no specified order. The assertion method and its full equality are kept; only the arguments change. Kept: the test file; the commit also adds a changes.xml entry. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status DeveloperFixed, Category ID, test org.apache.commons.lang3.reflect.FieldUtilsTest.testGetFieldsWithAnnotation; the fix is linked from the Notes column.",
   "derivation": "verbatim",

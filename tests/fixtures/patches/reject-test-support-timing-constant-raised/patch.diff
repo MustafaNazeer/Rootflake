@@ -1,0 +1,13 @@
+diff --git a/curator-test/src/main/java/org/apache/curator/test/Timing.java b/curator-test/src/main/java/org/apache/curator/test/Timing.java
+index e5d6d3443..0e6e3875b 100644
+--- a/curator-test/src/main/java/org/apache/curator/test/Timing.java
++++ b/curator-test/src/main/java/org/apache/curator/test/Timing.java
+@@ -33,7 +33,7 @@ public class Timing {
+ 
+     private static final int DEFAULT_SECONDS = 10;
+     private static final int DEFAULT_WAITING_MULTIPLE = 5;
+-    private static final double SESSION_MULTIPLE = .25;
++    private static final double SESSION_MULTIPLE = 1.5;
+ 
+     /**
+      * Use the default base time

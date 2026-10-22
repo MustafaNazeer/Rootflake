@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "swallow_failure",
   "variant": "catch_exception_return",
+  "target": {
+    "class": "org.apache.rocketmq.test.client.consumer.pop.PopPriorityIT",
+    "method": "test_priority_consume_use_separate_retry_queue"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Wraps the call under test and its assertions in try/catch (Exception) that returns from the test, so a timeout or execution failure of the call ends the test as passed. Built from the pre image of hunk 4 of the rocketmq PR used in reject-comment-out-assertions-in-loop; the try/catch is hand written.",
   "derivation": "adapted",

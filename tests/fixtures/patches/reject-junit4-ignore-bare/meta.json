@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "disable",
   "variant": "junit4_ignore",
+  "target": {
+    "class": "com.google.cloud.firestore.BulkWriterTest",
+    "method": "sendsBackoffBatchAfterOtherEnqueuedBatches"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Adds a bare JUnit 4 @Ignore (and its import) to a test the maintainers saw flaking. Only the BulkWriterTest file of the PR is kept.",
   "derivation": "verbatim",

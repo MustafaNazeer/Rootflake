@@ -1,0 +1,27 @@
+{
+  "id": "reject-unchecked-latch-await",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "unchecked_latch_await",
+  "target": {
+    "class": "org.apache.druid.indexing.seekablestream.supervisor.SeekableStreamSupervisorStateTest",
+    "method": "testSupervisorStopTaskGroupEarly"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "The twin of accept-nod-latch-instead-of-sleep-poll with the latch result ignored: the sleep loop is replaced by handoffNoticeHandled.await(5, TimeUnit.SECONDS) as a bare statement. If the notice is never handled the test waits five seconds and goes on, so the wait is a sleep with an early exit. Rejected: a bounded wait whose result is not checked counts as an added fixed sleep. Change from that fixture's patch: the added Assertions.assertTrue(...) around the await, four lines, becomes the single bare await line; the index line is dropped and the hunk header adjusted.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/druid",
+    "commit": "e5a09317c416fee18a25a1ad5aabbd7019b032e8",
+    "pr": "https://github.com/apache/druid/pull/20453",
+    "base": "443688fea12b1fee730f38f3aef87462573b475e",
+    "path": "indexing-service/src/test/java/org/apache/druid/indexing/seekablestream/supervisor/SeekableStreamSupervisorStateTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

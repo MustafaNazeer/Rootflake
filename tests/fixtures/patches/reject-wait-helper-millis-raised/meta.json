@@ -1,0 +1,27 @@
+{
+  "id": "reject-wait-helper-millis-raised",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "wait_helper_millis_raised",
+  "target": {
+    "class": "org.apache.activemq.network.NetworkBridgeReconnectOnHandshakeFailureTest",
+    "method": "testBridgeReconnectsAfterRemoteBrokerRestart"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Raises the raw millisecond bound passed to the project's own wait helper, Wait.waitFor(condition, 10_000, 200), to 20_000. Rejected: a raised numeric literal passed to a call whose name contains wait is a widened timing bound. This is the second hunk of the PR used in reject-junit4-test-timeout-raised, kept on its own so the helper form is tested without the @Test timeout beside it.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/activemq",
+    "commit": "4253e3f75ae47c74c51978e7cb10ec25826072e6",
+    "pr": "https://github.com/apache/activemq/pull/2624",
+    "base": "b21af0bc726146dcfde31cc928744f72be0bef6c",
+    "path": "activemq-unit-tests/src/test/java/org/apache/activemq/network/NetworkBridgeReconnectOnHandshakeFailureTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-22"
+  }
+}

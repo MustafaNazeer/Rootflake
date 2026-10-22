@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "disable",
   "variant": "comment_out_test_annotation",
+  "target": {
+    "class": "com.codeheadsystems.hofmann.server.manager.AuthStartStoreTimingTest",
+    "method": "theStoresHitMissGapDoesNotReachTheCaller"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Comments out @Test (\"//@Test //Removed as this is getting flaky\") so JUnit no longer discovers the method.",
   "derivation": "verbatim",

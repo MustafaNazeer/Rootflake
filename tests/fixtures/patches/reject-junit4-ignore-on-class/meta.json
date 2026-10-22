@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "disable",
   "variant": "junit4_ignore_class",
+  "target": {
+    "class": "org.apache.rocketmq.test.client.consumer.pop.PopPriorityIT",
+    "method": null
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Puts @Ignore on a whole JUnit 4 test class, disabling every method in it. Only the PopPriorityIT file of the PR is kept.",
+  "notes": "Puts @Ignore on a whole JUnit 4 test class, disabling every method in it. Only the PopPriorityIT file of the PR is kept. The target names the class only: @Ignore disables every test in it, and the patch names no single test.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/apache/rocketmq",

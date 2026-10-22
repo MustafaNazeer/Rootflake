@@ -5,8 +5,13 @@
   "rejected_by": [],
   "shortcut_type": null,
   "variant": "production_deterministic_order",
+  "target": {
+    "class": "io.quarkus.registry.config.DevToolsConfigSerializationTest",
+    "method": "testRegistryClientJsonConfig"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Fixes the flakiness in production code only, by enabling Jackson's ORDER_MAP_ENTRIES_BY_KEYS. No test file changes. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test io.quarkus.registry.config.DevToolsConfigSerializationTest.testRegistryClientJsonConfig; the fix is linked from the Notes column.",
+  "notes": "Fixes the flakiness in production code only, by enabling Jackson's ORDER_MAP_ENTRIES_BY_KEYS. No test file changes. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test io.quarkus.registry.config.DevToolsConfigSerializationTest.testRegistryClientJsonConfig; the fix is linked from the Notes column. The target is the IDoFT row; the patch changes no test file.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/quarkusio/quarkus",

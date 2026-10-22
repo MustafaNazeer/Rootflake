@@ -5,8 +5,13 @@
   "rejected_by": [],
   "shortcut_type": null,
   "variant": "production_synchronisation",
+  "target": {
+    "class": "org.apache.ratis.netty.TestLogAppenderWithNetty",
+    "method": "testFollowerHeartbeatMetric"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Fixes a race in production code: follower metric registration, updates and clean up on step down are serialised on one lock, and updates after stop are skipped. The flaky test was LogAppenderTests.testFollowerHeartbeatMetric. Kept: the two production files; the PR also rewrites the test to cover repeated step downs, which is dropped here. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "notes": "Fixes a race in production code: follower metric registration, updates and clean up on step down are serialised on one lock, and updates after stop are skipped. The flaky test was LogAppenderTests.testFollowerHeartbeatMetric. Kept: the two production files; the PR also rewrites the test to cover repeated step downs, which is dropped here. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status. The target is the failing CI test the PR names, TestLogAppenderWithNetty.testFollowerHeartbeatMetric; the method is declared in the abstract org.apache.ratis.LogAppenderTests.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/apache/ratis",

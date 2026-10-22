@@ -1,0 +1,27 @@
+{
+  "id": "reject-timeout-constant-raised",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "timeout_constant_raised",
+  "target": {
+    "class": "io.netty.handler.codec.http2.HttpToHttp2ConnectionHandlerTest",
+    "method": "testChunkedRequestWithBodyAndTrailingHeaders"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Raises the class constant WAIT_TIME_SECONDS from 5 to 30. Every awaitUninterruptibly(WAIT_TIME_SECONDS, SECONDS) in the class, six of them in the target, now waits up to six times longer. Rejected: a raised numeric literal in a constant whose name contains wait and seconds, flowing into a number and TimeUnit argument pair, is a widened timing bound. Built on the pre image of reject-mockito-verify-at-least-once, whose flaky test is the target: instead of relaxing the verify, the patch changes the constant on line 84, a hand made hunk with context from the pre image.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/netty/netty",
+    "commit": "bb3eb5f1c82c0abb1f8fa14b1a82001e5cd330dc",
+    "pr": "https://github.com/netty/netty/pull/17590",
+    "base": "9f11eb6d3a242c9ecf36b502e35a23d26462ec2a",
+    "path": "codec-http2/src/test/java/io/netty/handler/codec/http2/HttpToHttp2ConnectionHandlerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

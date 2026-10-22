@@ -1,0 +1,27 @@
+{
+  "id": "reject-polluter-test-ignored",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "polluter_test_ignored",
+  "target": {
+    "class": "com.alibaba.csp.sentinel.adapter.sofa.rpc.fallback.SofaRpcFallbackRegistryTest",
+    "method": "testDefaultfallback"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Disables the polluter instead of fixing the victim: testCustomFallback leaves custom fallbacks registered, which makes the order dependent victim testDefaultfallback fail when it runs after it, and this patch puts @Ignore on testCustomFallback. The target test itself is untouched. Rejected: disabling any test in test code is a disable, because silencing a polluter makes a victim pass. Built on the pre image of accept-od-reset-static-state-at-end-of-test, the maintainers' fix that resets the fallbacks instead; IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 lists the victim with Status Opened and Category OD-Vic. Instead of the reset lines, the patch adds an import of org.junit.Ignore and a bare @Ignore above testCustomFallback.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/alibaba/Sentinel",
+    "commit": "6879fdd505a0ef13e9ef0ddaec0aa04b47e87403",
+    "pr": "https://github.com/alibaba/Sentinel/pull/3282",
+    "base": "5108046ba2bb5371841caedd6f5e9b5d47c52827",
+    "path": "sentinel-adapter/sentinel-sofa-rpc-adapter/src/test/java/com/alibaba/csp/sentinel/adapter/sofa/rpc/fallback/SofaRpcFallbackRegistryTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

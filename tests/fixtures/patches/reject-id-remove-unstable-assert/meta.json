@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "weaken_assertion",
   "variant": "remove_unstable_assertion",
+  "target": {
+    "class": "org.apache.jena.riot.system.TestPrefixMapOverPrefixMapping",
+    "method": "prefixMap_abbrev_10"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Removes an assertEquals between two abbreviations of a URI when several are valid; the loop after it still checks the result against the allowed set. Only the last hunk is kept; the first is a formatting change. Policy reject: assertion removal with no replacement of equal strength in the same method; ruled together with reject-delete-assertion and reject-id-remove-order-assertion. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.jena.riot.system.TestPrefixMapOverPrefixMapping.prefixMap_abbrev_10 (4 rows reference it; the first is shown); the fix is linked from the Notes column.",
+  "notes": "Removes an assertEquals between two abbreviations of a URI when several are valid; the loop after it still checks the result against the allowed set. Only the last hunk is kept; the first is a formatting change. Policy reject: assertion removal with no replacement of equal strength in the same method; ruled together with reject-delete-assertion and reject-id-remove-order-assertion. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.jena.riot.system.TestPrefixMapOverPrefixMapping.prefixMap_abbrev_10 (4 rows reference it; the first is shown); the fix is linked from the Notes column. The target is the IDoFT row; the method is declared in AbstractTestPrefixMap and calls the changed helper pmTestAbbrev.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/apache/jena",

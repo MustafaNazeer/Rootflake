@@ -1,0 +1,27 @@
+{
+  "id": "reject-existing-retry-rule-reused",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "retry",
+  "variant": "existing_retry_rule_reused",
+  "target": {
+    "class": "org.apache.iotdb.subscription.it.triple.treemodel.regression.pushconsumer.mode.IoTDBSnapshotTSPatternDatasetPushConsumerIT",
+    "method": "do_test"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Applies a retry rule to a test class through a new @Rule RetryRule field and marks the test with @Retry, without changing either type. Kept: the import, field and annotation hunks of one of the three test classes of the PR used in reject-junit4-retry-rule-with-annotation; the tearDown hunk that clears a schema list is dropped. In the PR the rule and the annotation are new files; they are not in this patch, so the checker meets the same situation as when a project already has the rule: a type it does not read. Rejected with retry/existing_retry_extension, because the simple names RetryRule and Retry contain Retry. As kept, the patch would not build, since neither type exists in the pre image.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/iotdb",
+    "commit": "921d9e2480401be2a136d385b890cf919d58c973",
+    "pr": "https://github.com/apache/iotdb/pull/15698",
+    "base": "24209d50ace4ed67266d292139404f029c7dc350",
+    "path": "integration-test/src/test/java/org/apache/iotdb/subscription/it/triple/treemodel/regression/pushconsumer/mode/IoTDBSnapshotTSPatternDatasetPushConsumerIT.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-22"
+  }
+}

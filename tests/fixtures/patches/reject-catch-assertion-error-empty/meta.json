@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "swallow_failure",
   "variant": "catch_assertion_error_empty",
+  "target": {
+    "class": "org.apache.hadoop.ozone.client.rpc.TestFailureHandlingByClientFlushDelay",
+    "method": "testPipelineExclusionWithPipelineFailure"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Same assertion as reject-delete-assertion, kept but wrapped in try/catch (AssertionError) with an empty handler. Change from the original: instead of deleting the duplicated assertion and adding a comment, one copy is wrapped in the try block and the other is removed.",
+  "notes": "Same assertion as reject-delete-assertion, kept but wrapped in try/catch (AssertionError) with an empty handler. Change from the original: instead of deleting the duplicated assertion and adding a comment, one copy is wrapped in the try block and the other is removed. In the source, the pull request description declares that the change was AI generated; it is used here as a real merged change and recorded as such.",
   "derivation": "adapted",
   "source": {
     "repo": "https://github.com/apache/ozone",

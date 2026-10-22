@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "weaken_assertion",
   "variant": "mockito_verify_at_least_once",
+  "target": {
+    "class": "io.netty.handler.codec.http2.HttpToHttp2ConnectionHandlerTest",
+    "method": "testChunkedRequestWithBodyAndTrailingHeaders"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Changes an exact Mockito verify (one call) to verify(..., atLeastOnce()) and replaces two buffer assertions with a check on the concatenated text. Only the test hunk is kept. Policy reject: the maintainers note the frames may or may not be coalesced, so one or two calls are both correct, but times(1) to atLeastOnce() is a change of matcher that the strict assertion principle does not allow and no diff rule can separate from a real weakening.",
   "derivation": "verbatim",

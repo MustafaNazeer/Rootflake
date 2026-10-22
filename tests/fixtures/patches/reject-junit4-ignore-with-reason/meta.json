@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "disable",
   "variant": "junit4_ignore_reason",
+  "target": {
+    "class": "org.ops4j.pax.logging.it.LogbackBuiltinAppendersIntegrationTest",
+    "method": "socketAppender"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Adds @Ignore(\"Temporarily ignoring due to flaky failure\") to a JUnit 4 test method.",
   "derivation": "verbatim",

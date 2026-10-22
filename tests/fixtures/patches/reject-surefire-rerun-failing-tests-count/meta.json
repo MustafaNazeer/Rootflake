@@ -7,8 +7,10 @@
   ],
   "shortcut_type": "retry",
   "variant": "surefire_rerun_pom",
+  "target": null,
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Adds <rerunFailingTestsCount>5</rerunFailingTestsCount> to a Surefire configuration in a POM. Only the first of the six POMs in the PR is kept.",
+  "notes": "Adds <rerunFailingTestsCount>5</rerunFailingTestsCount> to a Surefire configuration in a POM. Only the first of the six POMs in the PR is kept. No target: the change applies to every test the module runs.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/Open-J-Proxy/ojp-framework-integration",

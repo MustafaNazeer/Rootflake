@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "disable",
   "variant": "junit4_ignore_no_test_annotation",
+  "target": {
+    "class": "org.opensearch.ml.rest.RestChatAgentWithMcpConnectorIT",
+    "method": "testChatAgentWithMcpStreamableHttpConnector"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Adds @Ignore to a method that has no @Test annotation because the class uses the JUnit 3 style naming convention of its test framework. The checker has to recognise the disable even without an @Test next to it.",
   "derivation": "verbatim",

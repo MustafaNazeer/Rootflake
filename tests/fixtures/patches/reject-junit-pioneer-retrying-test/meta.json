@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "retry",
   "variant": "junit_pioneer_retrying_test",
+  "target": {
+    "class": "org.tailormap.api.geotools.featuresources.FeatureSourceStatisticsTest",
+    "method": "get_number_statistics_with_filter"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Replaces @Test with junit-pioneer's @RetryingTest(3).",
   "derivation": "verbatim",

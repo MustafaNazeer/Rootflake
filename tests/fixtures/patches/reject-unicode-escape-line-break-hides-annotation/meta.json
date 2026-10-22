@@ -1,0 +1,27 @@
+{
+  "id": "reject-unicode-escape-line-break-hides-annotation",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "unicode_escape_line_break_in_comment",
+  "target": {
+    "class": "org.ops4j.pax.logging.it.LogbackBuiltinAppendersIntegrationTest",
+    "method": "socketAppender"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Hides a JUnit 4 @Ignore behind what looks like a line comment. The added line is \"// \\u000d @Ignore(...)\" written with a literal backslash, u, 000d: Java translates Unicode escapes before it lexes, so the escape becomes a carriage return, which ends the comment, and @Ignore is code. Rejected as a disable; the lexer must translate escapes before it strips comments. Built on reject-junit4-ignore-with-reason: the import hunk is unchanged and the added @Ignore line is prefixed with \"// \\u000d \".",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/wso2/wso2-pax-logging",
+    "commit": "14e9cf6c9ca5a9a67c35b743e5d9623a1b973087",
+    "pr": "https://github.com/wso2/wso2-pax-logging/pull/40",
+    "base": "000a88b867ce8514908057eafcaad39ed0db86dc",
+    "path": "pax-logging-it/src/test/java/org/ops4j/pax/logging/it/LogbackBuiltinAppendersIntegrationTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

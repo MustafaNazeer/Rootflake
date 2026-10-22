@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "retry",
   "variant": "client_retry_in_test_fixture",
+  "target": {
+    "class": "com.linecorp.decaton.centraldogma.CentralDogmaPropertySupplierIntegrationTest",
+    "method": "testCDIntegration"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Wraps the HTTP client of a test server rule in an Armeria RetryingClient (up to three attempts on unprocessed requests). The test method itself is not rerun. Ruled a shortcut: a retry added in test code hides intermittent failures of the path the test exercises. (Retries added to production code are flagged for review, not rejected; this one is in a test file.)",
+  "notes": "Wraps the HTTP client of a test server rule in an Armeria RetryingClient (up to three attempts on unprocessed requests). The test method itself is not rerun. Ruled a shortcut: a retry added in test code hides intermittent failures of the path the test exercises. (Retries added to production code are flagged for review, not rejected; this one is in a test file.) The target is the failing test named in line/decaton issue 187, which the PR says it fixes; the rule applies to every test in the class.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/line/decaton",

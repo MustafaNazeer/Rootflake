@@ -5,6 +5,11 @@
   "rejected_by": [],
   "shortcut_type": null,
   "variant": "order_insensitive_collection_assert",
+  "target": {
+    "class": "examples.simple.PersonMapperTest",
+    "method": "gh737"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Replaces AssertJ containsExactly with containsOnly on a parameter map, dropping only the order requirement. Every entry is still checked. Kept: PersonMapperTest and FragmentCollectorTest. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status DeveloperFixed, Category ID, test examples.simple.PersonMapperTest.gh737 (9 rows reference it; the first is shown); the fix is linked from the PR Link column.",
   "derivation": "verbatim",

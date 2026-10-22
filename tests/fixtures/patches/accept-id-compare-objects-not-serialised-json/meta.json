@@ -5,8 +5,15 @@
   "rejected_by": [],
   "shortcut_type": null,
   "variant": "compare_parsed_objects",
+  "target": {
+    "class": "org.apache.accumulo.core.data.LoadPlanTest",
+    "method": "testJson"
+  },
+  "expected_flags": [
+    "flag/equals_changed"
+  ],
   "disputed": false,
-  "notes": "Adds equals and hashCode to the production classes and compares parsed objects instead of serialised JSON strings, whose field order is not fixed. The assertion remains an assertEquals. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.accumulo.core.data.LoadPlanTest.testJson; the fix is linked from the Notes column.",
+  "notes": "Adds equals and hashCode to the production classes and compares parsed objects instead of serialised JSON strings, whose field order is not fixed. The assertion remains an assertEquals. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.accumulo.core.data.LoadPlanTest.testJson; the fix is linked from the Notes column. Flagged because the patch adds equals to LoadPlan and LoadPlan.Destination, the types the changed assertEquals compares.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/apache/accumulo",

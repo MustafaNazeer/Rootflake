@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "retry",
   "variant": "junit4_retry_rule_annotation",
+  "target": {
+    "class": "org.apache.iotdb.subscription.it.triple.treemodel.regression.pushconsumer.multi.IoTDBOneConsumerMultiTopicsTsfileIT",
+    "method": "do_test"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Adds a @Retry annotation and a RetryRule that reads it, then applies both to an integration test. Kept: the annotation, the rule, and one of the three test classes.",
   "derivation": "verbatim",

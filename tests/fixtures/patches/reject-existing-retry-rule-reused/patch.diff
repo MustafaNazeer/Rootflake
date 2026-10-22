@@ -1,0 +1,39 @@
+diff --git a/integration-test/src/test/java/org/apache/iotdb/subscription/it/triple/treemodel/regression/pushconsumer/mode/IoTDBSnapshotTSPatternDatasetPushConsumerIT.java b/integration-test/src/test/java/org/apache/iotdb/subscription/it/triple/treemodel/regression/pushconsumer/mode/IoTDBSnapshotTSPatternDatasetPushConsumerIT.java
+index b90b46a3e2da9..21c705d6de22a 100644
+--- a/integration-test/src/test/java/org/apache/iotdb/subscription/it/triple/treemodel/regression/pushconsumer/mode/IoTDBSnapshotTSPatternDatasetPushConsumerIT.java
++++ b/integration-test/src/test/java/org/apache/iotdb/subscription/it/triple/treemodel/regression/pushconsumer/mode/IoTDBSnapshotTSPatternDatasetPushConsumerIT.java
+@@ -29,6 +29,8 @@
+ import org.apache.iotdb.session.subscription.consumer.tree.SubscriptionTreePushConsumer;
+ import org.apache.iotdb.session.subscription.payload.SubscriptionSessionDataSet;
+ import org.apache.iotdb.subscription.it.IoTDBSubscriptionITConstant;
++import org.apache.iotdb.subscription.it.Retry;
++import org.apache.iotdb.subscription.it.RetryRule;
+ import org.apache.iotdb.subscription.it.triple.treemodel.regression.AbstractSubscriptionTreeRegressionIT;
+ 
+ import org.apache.thrift.TException;
+@@ -40,6 +42,7 @@
+ import org.apache.tsfile.write.schema.MeasurementSchema;
+ import org.junit.After;
+ import org.junit.Before;
++import org.junit.Rule;
+ import org.junit.Test;
+ import org.junit.experimental.categories.Category;
+ import org.junit.runner.RunWith;
+@@ -59,6 +62,9 @@
+ @Category({MultiClusterIT2SubscriptionTreeRegressionConsumer.class})
+ public class IoTDBSnapshotTSPatternDatasetPushConsumerIT
+     extends AbstractSubscriptionTreeRegressionIT {
++
++  @Rule public RetryRule retryRule = new RetryRule();
++
+   private static final String database = "root.test.SnapshotTSPatternDatasetPushConsumer";
+   private static final String database2 = "root.SnapshotTSPatternDatasetPushConsumer";
+   private static final String device = database + ".d_0";
+@@ -140,6 +147,7 @@ private void insert_data(long timestamp)
+   }
+ 
+   @Test
++  @Retry
+   public void do_test()
+       throws InterruptedException,
+           TException,

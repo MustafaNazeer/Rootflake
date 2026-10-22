@@ -1,0 +1,27 @@
+{
+  "id": "accept-production-scheduled-retry",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "production_scheduled_retry",
+  "target": {
+    "class": "org.apache.hadoop.hdds.scm.TestSCMFollowerCatchupWithContainerReport",
+    "method": "testFollowerCatchupOnIdleCluster"
+  },
+  "expected_flags": [
+    "flag/production_retry"
+  ],
+  "disputed": false,
+  "notes": "Adds a retry to production code: a follower SCM rechecks once a second whether it has caught up and can start its datanode server, rescheduling itself from a finally block, with a catch that logs and does not rethrow. Without it a restarted follower on an idle cluster never leaves safe mode. Accepted and flagged with flag/production_retry: a retry added to production code is a self rescheduling call around a catch that does not rethrow, which the checker flags for review and does not reject. The target is the first failing test in Apache JIRA HDDS-16132, which the PR fixes; testFollowerCatchupAfterContainerCreate failed the same way. Kept: every hunk of SCMStateMachine.java; the PR also changes StorageContainerManager.java and two test files, which are dropped. The PR description declares that the change was AI generated (\"Generated-by: Codex\"); it is used here as a real merged change and recorded as such. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/ozone",
+    "commit": "bcf9463253eb504457ee819a5de802f131fb1e6d",
+    "pr": "https://github.com/apache/ozone/pull/10999",
+    "base": "243978a5bdf2ff666e3111e45283cf8b1eaa04ef",
+    "path": "hadoop-hdds/server-scm/src/main/java/org/apache/hadoop/hdds/scm/ha/SCMStateMachine.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-22"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "reject-soft-assertions-without-assert-all",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "soft_assertions_without_assert_all",
+  "target": {
+    "class": "org.apache.jackrabbit.oak.commons.internal.concurrent.ForkJoinUtilsTest",
+    "method": "isInCommonPool"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Moves the AssertJ assertion chain on the results map onto a SoftAssertions object that is never followed by assertAll, so its failures are collected and never reported. Rejected with weaken_assertion/soft_assertions_unchecked. Built on the pre image of reject-junit4-assume-environment-precondition: the line assertThat(results) becomes a declaration of a fully qualified org.assertj.core.api.SoftAssertions named softly, followed by softly.assertThat(results); the rest of the chain is unchanged.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/jackrabbit-oak",
+    "commit": "cf805f8f138f491d82eec57c6405aa492dc4abd3",
+    "pr": "https://github.com/apache/jackrabbit-oak/pull/3177",
+    "base": "529aa79d45b40367021f7a2ac6d1dc5cf97a3836",
+    "path": "oak-commons/src/test/java/org/apache/jackrabbit/oak/commons/internal/concurrent/ForkJoinUtilsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

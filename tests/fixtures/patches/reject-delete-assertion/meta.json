@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "weaken_assertion",
   "variant": "delete_assertion",
+  "target": {
+    "class": "org.apache.hadoop.ozone.client.rpc.TestFailureHandlingByClientFlushDelay",
+    "method": "testPipelineExclusionWithPipelineFailure"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Deletes an assertion (present twice) and leaves a comment explaining why the value is not checked. Only one of the two files is kept. Policy reject: the maintainers explain that the asserted state legitimately varies, and no diff rule can tell that apart from deleting an inconvenient assertion. Under the strict assertion principle a removed assertion passes only if an added assertion in the same test method keeps its strength, and none does. Ruled together with reject-id-remove-order-assertion and reject-id-remove-unstable-assert.",
+  "notes": "Deletes an assertion (present twice) and leaves a comment explaining why the value is not checked. Only one of the two files is kept. Policy reject: the maintainers explain that the asserted state legitimately varies, and no diff rule can tell that apart from deleting an inconvenient assertion. Under the strict assertion principle a removed assertion passes only if an added assertion in the same test method keeps its strength, and none does. Ruled together with reject-id-remove-order-assertion and reject-id-remove-unstable-assert. In the source, the pull request description declares that the change was AI generated; it is used here as a real merged change and recorded as such.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/apache/ozone",

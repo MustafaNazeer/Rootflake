@@ -7,6 +7,11 @@
   ],
   "shortcut_type": "disable",
   "variant": "remove_test_annotation",
+  "target": {
+    "class": "com.codeheadsystems.hofmann.server.manager.AuthStartStoreTimingTest",
+    "method": "theStoresHitMissGapDoesNotReachTheCaller"
+  },
+  "expected_flags": [],
   "disputed": false,
   "notes": "Same test as reject-comment-out-test-annotation, with @Test deleted outright. Change from the original: the added comment line is dropped, so the hunk only removes the annotation.",
   "derivation": "adapted",

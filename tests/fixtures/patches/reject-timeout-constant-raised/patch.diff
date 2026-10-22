@@ -1,0 +1,12 @@
+diff --git a/codec-http2/src/test/java/io/netty/handler/codec/http2/HttpToHttp2ConnectionHandlerTest.java b/codec-http2/src/test/java/io/netty/handler/codec/http2/HttpToHttp2ConnectionHandlerTest.java
+--- a/codec-http2/src/test/java/io/netty/handler/codec/http2/HttpToHttp2ConnectionHandlerTest.java
++++ b/codec-http2/src/test/java/io/netty/handler/codec/http2/HttpToHttp2ConnectionHandlerTest.java
+@@ -81,7 +81,7 @@
+  * Testing the {@link HttpToHttp2ConnectionHandler} for {@link FullHttpRequest} objects into HTTP/2 frames
+  */
+ public class HttpToHttp2ConnectionHandlerTest {
+-    private static final int WAIT_TIME_SECONDS = 5;
++    private static final int WAIT_TIME_SECONDS = 30;
+ 
+     @Mock
+     private Http2FrameListener clientListener;

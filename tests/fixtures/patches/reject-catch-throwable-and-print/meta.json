@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "swallow_failure",
   "variant": "catch_throwable_print",
+  "target": {
+    "class": "org.apache.gravitino.trino.connector.TestGravitinoConnector",
+    "method": "testCatalogStatusReportsARegistrationFailure"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Same assertion as reject-equality-to-lower-bound, wrapped in try/catch (Throwable) that only prints the error, the pattern used in reject-retry-loop-swallows-throwable. Change from the original: the comment and isGreaterThanOrEqualTo line are replaced by the original assertEquals inside the try block.",
+  "notes": "Same assertion as reject-equality-to-lower-bound, wrapped in try/catch (Throwable) that only prints the error, the pattern used in reject-retry-loop-swallows-throwable. Change from the original: the comment and isGreaterThanOrEqualTo line are replaced by the original assertEquals inside the try block. In the source, a commit message carries a co-author trailer naming an AI model; it is used here as a real merged change and recorded as such.",
   "derivation": "adapted",
   "source": {
     "repo": "https://github.com/apache/gravitino",

@@ -7,8 +7,13 @@
   ],
   "shortcut_type": "disable",
   "variant": "junit5_disabled_on_os",
+  "target": {
+    "class": "tech.pegasys.teku.services.timer.TimerServiceTest",
+    "method": null
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Adds @DisabledOnOs({OS.WINDOWS}) to a test class because it flakes on Windows. The sandbox runs Linux, so this patch would not skip the test there; the checker should still reject it as a disable.",
+  "notes": "Adds @DisabledOnOs({OS.WINDOWS}) to a test class because it flakes on Windows. The sandbox runs Linux, so this patch would not skip the test there; the checker should still reject it as a disable. The target names the class only: the annotation disables every test in it, and the PR names no single test.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/Consensys-Incorporated/teku",

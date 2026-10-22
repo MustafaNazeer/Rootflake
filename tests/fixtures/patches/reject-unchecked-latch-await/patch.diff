@@ -1,0 +1,34 @@
+diff --git a/indexing-service/src/test/java/org/apache/druid/indexing/seekablestream/supervisor/SeekableStreamSupervisorStateTest.java b/indexing-service/src/test/java/org/apache/druid/indexing/seekablestream/supervisor/SeekableStreamSupervisorStateTest.java
+--- a/indexing-service/src/test/java/org/apache/druid/indexing/seekablestream/supervisor/SeekableStreamSupervisorStateTest.java
++++ b/indexing-service/src/test/java/org/apache/druid/indexing/seekablestream/supervisor/SeekableStreamSupervisorStateTest.java
+@@ -1668,7 +1668,18 @@ public Duration getEmissionDuration()
+ 
+     replayAll();
+ 
+-    SeekableStreamSupervisor supervisor = new TestSeekableStreamSupervisor();
++    final CountDownLatch handoffNoticeHandled = new CountDownLatch(1);
++    SeekableStreamSupervisor supervisor = new TestSeekableStreamSupervisor()
++    {
++      @Override
++      protected void emitNoticeProcessTime(String noticeType, long timeInMillis)
++      {
++        super.emitNoticeProcessTime(noticeType, timeInMillis);
++        if ("handoff_task_group_notice".equals(noticeType)) {
++          handoffNoticeHandled.countDown();
++        }
++      }
++    };
+ 
+     supervisor.start();
+     supervisor.runInternal();
+@@ -1677,9 +1688,7 @@ public Duration getEmissionDuration()
+     Assertions.assertNull(id1.getCurrentRunnerStatus());
+     Assertions.assertEquals("NOT_STARTED", id1.getCurrentRunnerStatus());
+ 
+-    while (supervisor.getNoticesQueueSize() > 0) {
+-      Thread.sleep(100);
+-    }
++    handoffNoticeHandled.await(5, TimeUnit.SECONDS);
+     supervisor.runInternal();
+     verifyAll();
+   }

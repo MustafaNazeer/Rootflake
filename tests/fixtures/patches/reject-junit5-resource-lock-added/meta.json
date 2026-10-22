@@ -1,0 +1,27 @@
+{
+  "id": "reject-junit5-resource-lock-added",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit5_resource_lock",
+  "target": {
+    "class": "io.quarkus.it.vertx.AccessLogTestCase",
+    "method": "testAccessLogContent"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Adds JUnit 5 @ResourceLock(Resources.SYSTEM_PROPERTIES) to a test class the maintainers found flaky, so it never runs at the same time as another test that holds the same lock. Rejected: serialising a test against others changes what runs beside it instead of fixing it. Built on reject-junit5-disabled-class: its import of Disabled becomes imports of org.junit.jupiter.api.parallel.ResourceLock and Resources, and @Disabled(\"...\") becomes @ResourceLock(Resources.SYSTEM_PROPERTIES); SYSTEM_PROPERTIES is a constant of JUnit's Resources class.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/quarkusio/quarkus",
+    "commit": "4fe5bb5d111c7b61bf3b415d9200af333fdef50e",
+    "pr": "https://github.com/quarkusio/quarkus/pull/55429",
+    "base": "db19d2283a50a53502afe9ba2be217d464af54f6",
+    "path": "integration-tests/vertx-http/src/test/java/io/quarkus/it/vertx/AccessLogTestCase.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

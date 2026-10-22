@@ -5,8 +5,13 @@
   "rejected_by": [],
   "shortcut_type": null,
   "variant": "latch_wait",
+  "target": {
+    "class": "org.apache.druid.indexing.seekablestream.supervisor.SeekableStreamSupervisorStateTest",
+    "method": "testSupervisorStopTaskGroupEarly"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Replaces a loop that slept 100 ms until a queue was empty with a CountDownLatch counted down when the handoff notice is handled, and asserts that the latch is released within 5 seconds. No assertion is removed. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "notes": "Replaces a loop that slept 100 ms until a queue was empty with a CountDownLatch counted down when the handoff notice is handled, and asserts that the latch is released within 5 seconds. No assertion is removed. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status. The target is the test method the patch changes.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/apache/druid",

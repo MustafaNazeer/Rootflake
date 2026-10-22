@@ -1,0 +1,27 @@
+{
+  "id": "reject-unicode-escape-opens-hidden-comment",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "unicode_escape_opens_block_comment",
+  "target": {
+    "class": "io.github.openlogiclab.kafkapipeline.worker.BatchWorkerPoolTest$ProcessBatch",
+    "method": "successfulBatchAcksAndCompletesCounter"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "The reverse of reject-unicode-escape-closes-comment-early: code that looks live is a comment. The line assertEquals(0, counter.records()) becomes \"/\\u002a assertEquals(0, counter.records()); */\" written with a literal backslash, u, 002a. A reader, or a lexer that does not translate escapes, sees the same assertion still there; Java sees a block comment. Rejected with weaken_assertion/assertion_removed. Built on the pre image of reject-thread-sleep-before-assertion; the removed line and the context are the pre image's own, and the added line is hand written.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/openlogiclab/kafka-pipeline",
+    "commit": "62c1ff944340654b47b442232e46549313b6f9bb",
+    "pr": "https://github.com/openlogiclab/kafka-pipeline/pull/36",
+    "base": "2aebd9b9f36576ed8c096750a3ac2e0166a57178",
+    "path": "src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

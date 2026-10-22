@@ -5,8 +5,13 @@
   "rejected_by": [],
   "shortcut_type": null,
   "variant": "catch_throwable_setup_only",
+  "target": {
+    "class": "hudson.remoting.ClassFilterTest",
+    "method": "transport_chunking"
+  },
+  "expected_flags": [],
   "disputed": false,
-  "notes": "Adds try/catch (Throwable) that prints and continues, but only around class initialisation and cleanup at the start of the test. The code under test and its expected Error come after the try block and are untouched. Looks like a swallow, which is why it is here: the checker must look at what the try block covers, not only at the catch clause. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category OD, test hudson.remoting.ClassFilterTest.transport_chunking (9 rows reference it; the first is shown); the fix is linked from the PR Link column; IDoFT lists the PR as Opened, and GitHub reports it merged.",
+  "notes": "Adds try/catch (Throwable) that prints and continues, but only around class initialisation and cleanup at the start of the test. The code under test and its expected Error come after the try block and are untouched. Looks like a swallow, which is why it is here: the checker must look at what the try block covers, not only at the catch clause. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category OD, test hudson.remoting.ClassFilterTest.transport_chunking (9 rows reference it; the first is shown); the fix is linked from the PR Link column; IDoFT lists the PR as Opened, and GitHub reports it merged. The target is the IDoFT row; the patch itself changes DefaultClassFilterTest.testDefaultsAreUsedIfOverridesAreGarbage.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/jenkinsci/remoting",
