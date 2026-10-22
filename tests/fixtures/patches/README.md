@@ -124,7 +124,7 @@ The code in these patches belongs to the projects below and is used under their 
 | [Open-J-Proxy/ojp-framework-integration](https://github.com/Open-J-Proxy/ojp-framework-integration) | Apache-2.0 | [#40](https://github.com/Open-J-Proxy/ojp-framework-integration/pull/40) | 1 |
 | [OpenHFT/Chronicle-Core](https://github.com/OpenHFT/Chronicle-Core) | Apache-2.0 | [commit bae5b40](https://github.com/OpenHFT/Chronicle-Core/commit/bae5b403ab3b76893d3db55909ebb560481405e3) | 1 |
 | [openlogiclab/kafka-pipeline](https://github.com/openlogiclab/kafka-pipeline) | Apache-2.0 | [#36](https://github.com/openlogiclab/kafka-pipeline/pull/36) | 6 |
-| [opensearch-project/ml-commons](https://github.com/opensearch-project/ml-commons) | Apache-2.0 | [#4943](https://github.com/opensearch-project/ml-commons/pull/4943) | 1 |
+| [opensearch-project/k-NN](https://github.com/opensearch-project/k-NN) | Apache-2.0 | [#3356](https://github.com/opensearch-project/k-NN/pull/3356) | 1 |
 | [opensearch-project/OpenSearch](https://github.com/opensearch-project/OpenSearch) | Apache-2.0 | [commit 19b99d8](https://github.com/opensearch-project/OpenSearch/commit/19b99d8300f30732edf15c3c37c6ae5f80106d04) | 1 |
 | [operator-framework/java-operator-sdk](https://github.com/operator-framework/java-operator-sdk) | Apache-2.0 | [#3611](https://github.com/operator-framework/java-operator-sdk/pull/3611) | 1 |
 | [quarkiverse/quarkus-web-bundler](https://github.com/quarkiverse/quarkus-web-bundler) | Apache-2.0 | [#496](https://github.com/quarkiverse/quarkus-web-bundler/pull/496) | 1 |

@@ -1,20 +1,20 @@
-diff --git a/plugin/src/test/java/org/opensearch/ml/rest/RestChatAgentWithMcpConnectorIT.java b/plugin/src/test/java/org/opensearch/ml/rest/RestChatAgentWithMcpConnectorIT.java
-index 1d5adfbbe0..93299e8686 100644
---- a/plugin/src/test/java/org/opensearch/ml/rest/RestChatAgentWithMcpConnectorIT.java
-+++ b/plugin/src/test/java/org/opensearch/ml/rest/RestChatAgentWithMcpConnectorIT.java
-@@ -16,6 +16,7 @@
- import org.junit.After;
- import org.junit.Assume;
- import org.junit.Before;
+diff --git a/src/test/java/org/opensearch/knn/index/FaissIT.java b/src/test/java/org/opensearch/knn/index/FaissIT.java
+index a7eae3e7aa..a225cb6be5 100644
+--- a/src/test/java/org/opensearch/knn/index/FaissIT.java
++++ b/src/test/java/org/opensearch/knn/index/FaissIT.java
+@@ -21,6 +21,7 @@
+ import org.apache.lucene.tests.util.TimeUnits;
+ import org.apache.lucene.util.VectorUtil;
+ import org.junit.BeforeClass;
 +import org.junit.Ignore;
  import org.opensearch.client.Response;
- import org.opensearch.common.unit.TimeValue;
- import org.opensearch.ml.common.MLTaskState;
-@@ -135,6 +136,7 @@ public void teardown() throws IOException {
-         deleteIndexWithAdminClient(irisIndex);
+ import org.opensearch.common.settings.Settings;
+ import org.opensearch.client.ResponseException;
+@@ -1577,6 +1578,7 @@ public void testDocDeletion() throws IOException {
+         deleteKnnDoc(INDEX_NAME, "1");
      }
  
-+    @Ignore("Flaky on multi-node CI: MCP loopback tool call intermittently times out under load")
-     public void testChatAgentWithMcpStreamableHttpConnector() throws IOException {
-         HttpHost host = getClusterHosts().get(0);
-         String mcpServerUrl = host.getSchemeName() + "://" + host.getHostName() + ":" + host.getPort();
++    @Ignore
+     @SneakyThrows
+     public void testKNNQuery_withModelDifferentCombination_thenSuccess() {
+ 

@@ -8,20 +8,20 @@
   "shortcut_type": "disable",
   "variant": "junit4_ignore_no_test_annotation",
   "target": {
-    "class": "org.opensearch.ml.rest.RestChatAgentWithMcpConnectorIT",
-    "method": "testChatAgentWithMcpStreamableHttpConnector"
+    "class": "org.opensearch.knn.index.FaissIT",
+    "method": "testKNNQuery_withModelDifferentCombination_thenSuccess"
   },
   "expected_flags": [],
   "disputed": false,
-  "notes": "Adds @Ignore to a method that has no @Test annotation because the class uses the JUnit 3 style naming convention of its test framework. The checker has to recognise the disable even without an @Test next to it.",
+  "notes": "Adds a bare @Ignore, and its import, to testKNNQuery_withModelDifferentCombination_thenSuccess, which the PR title says times out occasionally. The method has no @Test annotation, and FaissIT has none anywhere: it extends KNNRestTestCase, whose chain reaches OpenSearchTestCase and Lucene's LuceneTestCase, which runs under RandomizedRunner with LuceneJUnit3MethodProvider, so methods named test... run without @Test. The checker has to treat this JUnit 3 style method as a test method and recognise the disable without an @Test next to it. Rejected with a disable code under Decision 6. The target is the method the PR names. Both hunks are kept unchanged; the PR touches only this file.",
   "derivation": "verbatim",
   "source": {
-    "repo": "https://github.com/opensearch-project/ml-commons",
-    "commit": "b3dd0bbfa27033650f315a54ee64eaaa789e362b",
-    "pr": "https://github.com/opensearch-project/ml-commons/pull/4943",
-    "base": "92ad9613d17372b74f8546737422428f94a48909",
-    "path": "plugin/src/test/java/org/opensearch/ml/rest/RestChatAgentWithMcpConnectorIT.java",
+    "repo": "https://github.com/opensearch-project/k-NN",
+    "commit": "19ff587ec6cea71b4b5727758172a6d2c6c209e0",
+    "pr": "https://github.com/opensearch-project/k-NN/pull/3356",
+    "base": "95198ed82651ab1fc88d906e2c221e4b5a3a5e6e",
+    "path": "src/test/java/org/opensearch/knn/index/FaissIT.java",
     "license": "Apache-2.0",
-    "fetched": "2026-10-14"
+    "fetched": "2026-10-22"
   }
 }
