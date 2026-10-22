@@ -15,6 +15,7 @@
     "repo": "https://github.com/apache/bookkeeper",
     "commit": "f419b8b6de4f2725aaff99683f63a3850264bd6a",
     "pr": "https://github.com/apache/bookkeeper/pull/4543",
+    "base": "3732f4b33f919f58d299dc890f34dc4e42794354",
     "path": "pom.xml",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

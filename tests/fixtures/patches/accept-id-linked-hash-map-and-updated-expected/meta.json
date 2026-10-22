@@ -12,6 +12,7 @@
     "repo": "https://github.com/apache/directory-scimple",
     "commit": "2f37271ede0a0c95958e76529181f29ec1ca028c",
     "pr": "https://github.com/apache/directory-scimple/pull/201",
+    "base": "fac7178b63e71a9084225d4df12b2d445457fbda",
     "path": "scim-spec/scim-spec-schema/src/main/java/org/apache/directory/scim/spec/resources/PhoneNumber.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

@@ -14,6 +14,7 @@
     "repo": "https://github.com/quarkusio/quarkus",
     "commit": "4fe5bb5d111c7b61bf3b415d9200af333fdef50e",
     "pr": "https://github.com/quarkusio/quarkus/pull/55429",
+    "base": "db19d2283a50a53502afe9ba2be217d464af54f6",
     "path": "integration-tests/vertx-http/src/test/java/io/quarkus/it/vertx/AccessLogTestCase.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

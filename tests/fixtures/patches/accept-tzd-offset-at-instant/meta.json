@@ -12,6 +12,7 @@
     "repo": "https://github.com/alibaba/Sentinel",
     "commit": "d9398b4f752f8424cf926ccc32b8d9b21473de69",
     "pr": "https://github.com/alibaba/Sentinel/pull/3459",
+    "base": "195150bc745927429e9f14f501907310b46d702f",
     "path": "sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

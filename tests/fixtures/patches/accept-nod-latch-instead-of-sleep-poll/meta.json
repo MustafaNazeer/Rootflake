@@ -12,6 +12,7 @@
     "repo": "https://github.com/apache/druid",
     "commit": "e5a09317c416fee18a25a1ad5aabbd7019b032e8",
     "pr": "https://github.com/apache/druid/pull/20453",
+    "base": "443688fea12b1fee730f38f3aef87462573b475e",
     "path": "indexing-service/src/test/java/org/apache/druid/indexing/seekablestream/supervisor/SeekableStreamSupervisorStateTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

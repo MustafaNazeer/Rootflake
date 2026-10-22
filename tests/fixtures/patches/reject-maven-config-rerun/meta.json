@@ -3,7 +3,6 @@
   "expected": "reject",
   "reject_kind": "shortcut",
   "rejected_by": [
-    "shortcut_checker",
     "patch_validator"
   ],
   "shortcut_type": "retry",
@@ -14,6 +13,7 @@
   "source": {
     "repo": "https://github.com/Apicurio/apicurio-registry",
     "commit": "ead084d4c69b4b994e82673816122ba469b3977d",
+    "base": "7d605f393d59bee7b4ab4d20563ee911075ab315",
     "path": ".github/workflows/verify-unit-tests.yaml",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

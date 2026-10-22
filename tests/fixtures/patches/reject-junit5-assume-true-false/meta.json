@@ -14,6 +14,7 @@
     "repo": "https://github.com/TimefoldAI/timefold-solver",
     "commit": "f15f745a5a40ed4d65598e2ba2461b6f9fde7343",
     "pr": "https://github.com/TimefoldAI/timefold-solver/pull/2577",
+    "base": "e5319b9c141bf0ed587a07657fee25dadc4f56ab",
     "path": "service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

@@ -14,6 +14,7 @@
     "repo": "https://github.com/Consensys-Incorporated/teku",
     "commit": "91e2c0feb730d45540724e10b763c5bac270406e",
     "pr": "https://github.com/Consensys-Incorporated/teku/pull/10603",
+    "base": "725ee8bb4a55ede9eec201f4a7810046f565a0ea",
     "path": "services/timer/src/test/java/tech/pegasys/teku/services/timer/TimerServiceTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

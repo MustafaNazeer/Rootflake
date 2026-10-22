@@ -12,6 +12,7 @@
     "repo": "https://github.com/apache/rocketmq",
     "commit": "5d492c338258d07613103e6ae16df4c6fa5b3838",
     "pr": "https://github.com/apache/rocketmq/pull/7445",
+    "base": "dc3f22ffe9eb83ace991b68921076093c7c0da5f",
     "path": "common/src/test/java/org/apache/rocketmq/common/UtilAllTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

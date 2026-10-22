@@ -14,6 +14,7 @@
     "repo": "https://github.com/apache/camel",
     "commit": "108c8808fe00853f17e7c66d0a392cef0bd17d70",
     "pr": "https://github.com/apache/camel/pull/26193",
+    "base": "e6fe7371176be1ec856a6e0dd3c56c1f6a522268",
     "path": "components/camel-jgroups-raft/src/test/java/org/apache/camel/component/jgroups/raft/JGroupsRaftProducerTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

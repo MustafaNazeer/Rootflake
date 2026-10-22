@@ -14,6 +14,7 @@
     "repo": "https://github.com/apache/paimon",
     "commit": "5652c0023ce7455553eedd721011054bd8213d3a",
     "pr": "https://github.com/apache/paimon/pull/8850",
+    "base": "39de52c52ac7357beb6b2ba26b1f93e6c3c69fb5",
     "path": "paimon-flink/paimon-flink-common/src/test/java/org/apache/paimon/flink/AppendOnlyTableITCase.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

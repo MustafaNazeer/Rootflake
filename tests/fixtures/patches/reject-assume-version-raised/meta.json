@@ -3,7 +3,8 @@
   "expected": "reject",
   "reject_kind": "shortcut",
   "rejected_by": [
-    "shortcut_checker"
+    "shortcut_checker",
+    "patch_validator"
   ],
   "shortcut_type": "disable",
   "variant": "assume_condition_tightened",
@@ -14,6 +15,7 @@
     "repo": "https://github.com/mongodb/mongo-java-driver",
     "commit": "a52f9b393abacae2a7392a6a0dfbba4df0729ba0",
     "pr": "https://github.com/mongodb/mongo-java-driver/pull/2073",
+    "base": "ac26dfc2d9abc7084613f9e06a74eaf66656169a",
     "path": "driver-sync/src/test/functional/com/mongodb/client/ServerDiscoveryAndMonitoringProseTests.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

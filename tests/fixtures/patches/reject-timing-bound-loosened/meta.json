@@ -14,6 +14,7 @@
     "repo": "https://github.com/adobe/regola",
     "commit": "39f89ef280aa1af28edbe71b065c9876b6fd714c",
     "pr": "https://github.com/adobe/regola/pull/92",
+    "base": "0d80abba999bf83ced6a045cebf329af2fd9d128",
     "path": "src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

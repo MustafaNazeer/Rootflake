@@ -12,6 +12,7 @@
     "repo": "https://github.com/quarkusio/quarkus",
     "commit": "ab90dd5b57c2c0fc7f9422e8b3e52ed70cada73c",
     "pr": "https://github.com/quarkusio/quarkus/pull/37541",
+    "base": "2aeab7f36118ceec93527372a8cf88de458d12ec",
     "path": "independent-projects/tools/registry-client/src/main/java/io/quarkus/registry/config/RegistriesConfigMapperHelper.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

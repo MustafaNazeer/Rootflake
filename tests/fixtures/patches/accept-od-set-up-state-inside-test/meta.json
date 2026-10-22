@@ -12,6 +12,7 @@
     "repo": "https://github.com/apache/incubator-seata",
     "commit": "253575f5c94a3cc1af79a5c6a058d9766d7144e1",
     "pr": "https://github.com/apache/incubator-seata/pull/7819",
+    "base": "8629d183d072508980bdf37c229cd8c12dddfdf6",
     "path": "common/src/test/java/org/apache/seata/common/rpc/RpcStatusTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

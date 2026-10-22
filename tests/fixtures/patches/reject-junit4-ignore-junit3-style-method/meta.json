@@ -14,6 +14,7 @@
     "repo": "https://github.com/opensearch-project/ml-commons",
     "commit": "b3dd0bbfa27033650f315a54ee64eaaa789e362b",
     "pr": "https://github.com/opensearch-project/ml-commons/pull/4943",
+    "base": "92ad9613d17372b74f8546737422428f94a48909",
     "path": "plugin/src/test/java/org/opensearch/ml/rest/RestChatAgentWithMcpConnectorIT.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

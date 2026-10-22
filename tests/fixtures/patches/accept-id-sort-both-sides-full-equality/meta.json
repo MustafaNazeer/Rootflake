@@ -11,6 +11,7 @@
   "source": {
     "repo": "https://github.com/apache/commons-lang",
     "commit": "08d1f6623678e8cd0b37a9d2d721b95545bcc151",
+    "base": "3bda8be03638b5248df2252832388775601692ff",
     "path": "src/test/java/org/apache/commons/lang3/reflect/FieldUtilsTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

@@ -14,6 +14,7 @@
     "repo": "https://github.com/wso2/wso2-pax-logging",
     "commit": "14e9cf6c9ca5a9a67c35b743e5d9623a1b973087",
     "pr": "https://github.com/wso2/wso2-pax-logging/pull/40",
+    "base": "000a88b867ce8514908057eafcaad39ed0db86dc",
     "path": "pax-logging-it/src/test/java/org/ops4j/pax/logging/it/LogbackBuiltinAppendersIntegrationTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

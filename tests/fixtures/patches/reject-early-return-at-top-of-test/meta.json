@@ -14,6 +14,7 @@
     "repo": "https://github.com/Apicurio/apicurio-registry",
     "commit": "ea56a7bddc9c5337a4faa4afcd3c57e6c456f698",
     "pr": "https://github.com/Apicurio/apicurio-registry/pull/8861",
+    "base": "ea56a7bddc9c5337a4faa4afcd3c57e6c456f698",
     "path": "operator/controller/src/test/java/io/apicurio/registry/operator/it/LeaderElectionITTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

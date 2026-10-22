@@ -12,6 +12,7 @@
     "repo": "https://github.com/quarkiverse/quarkus-web-bundler",
     "commit": "a2fe7d7d3bf686d1d312e5836054c618c12418a4",
     "pr": "https://github.com/quarkiverse/quarkus-web-bundler/pull/496",
+    "base": "7c55edf636e6efa97d35e73eaf15939b177bb999",
     "path": "core/deployment/src/test/java/io/quarkiverse/web/bundler/test/WebBundlerDevModeWatchTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

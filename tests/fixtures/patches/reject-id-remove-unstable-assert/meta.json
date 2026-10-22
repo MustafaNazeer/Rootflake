@@ -14,6 +14,7 @@
     "repo": "https://github.com/apache/jena",
     "commit": "20a9ced3731a8e5914036e40dc315a01e5fb04eb",
     "pr": "https://github.com/apache/jena/pull/2098",
+    "base": "fc01d33e6c11eed68784f820bf2dd161868d1d37",
     "path": "jena-arq/src/test/java/org/apache/jena/riot/system/AbstractTestPrefixMap.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

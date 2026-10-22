@@ -11,6 +11,7 @@
   "source": {
     "repo": "https://github.com/Accenture/Mercury",
     "commit": "47663ff9c7803aa8613a81b3dff71ec9908e2d6e",
+    "base": "96e73797bb3026ec0f68d7f9480e3341e925f591",
     "path": "extensions/rest-automation-lib/src/test/java/org/platformlambda/automation/tests/WebSocketTests.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

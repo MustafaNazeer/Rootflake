@@ -14,6 +14,7 @@
     "repo": "https://github.com/codeheadsystems/hofmann-elimination",
     "commit": "232d5251d3ead762308c1068cbc67682593cc25c",
     "pr": "https://github.com/codeheadsystems/hofmann-elimination/pull/112",
+    "base": "c03e746185379abdce1c80d607b122fa467d93a9",
     "path": "hofmann-server/src/test/java/com/codeheadsystems/hofmann/server/manager/AuthStartStoreTimingTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

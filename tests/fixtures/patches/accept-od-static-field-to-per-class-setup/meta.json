@@ -12,6 +12,7 @@
     "repo": "https://github.com/apache/servicecomb-java-chassis",
     "commit": "2474c6b26b7a996b0dc90947d5d70a86a08e6025",
     "pr": "https://github.com/apache/servicecomb-java-chassis/pull/5018",
+    "base": "9b7f8e60390043c5b8888272ef2560ef4316b51e",
     "path": "swagger/swagger-generator/generator-core/src/test/java/org/apache/servicecomb/swagger/generator/core/TestApiResponse.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

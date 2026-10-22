@@ -13,6 +13,7 @@
   "source": {
     "repo": "https://github.com/opensearch-project/OpenSearch",
     "commit": "19b99d8300f30732edf15c3c37c6ae5f80106d04",
+    "base": "5b5eb16f11509b1e0a03aaffd75b38aca28af4f8",
     "path": "qa/smoke-test-http/src/test/java/org/opensearch/http/ResponseHeaderPluginIT.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

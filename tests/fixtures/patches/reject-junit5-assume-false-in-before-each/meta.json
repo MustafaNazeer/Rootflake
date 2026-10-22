@@ -14,6 +14,7 @@
     "repo": "https://github.com/frankframework/frankframework",
     "commit": "9b24b082b9ba351e36cbdd70e966acbdf1a90a64",
     "pr": "https://github.com/frankframework/frankframework/pull/11561",
+    "base": "e3803c17020ddba29d3da967c58da9bd9d414d92",
     "path": "core/src/test/java/org/frankframework/jta/StatusRecordingTransactionManagerTestBase.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

@@ -11,6 +11,7 @@ Each fixture is a folder named after its id:
 ```
 <id>/patch.diff   a unified diff, trimmed to the hunks that matter
 <id>/meta.json    what the gate should do with it, and where it came from
+<id>/before/      the pre image of every Java file the patch modifies, at its repository path
 ```
 
 `meta.json` has these keys:
@@ -20,23 +21,23 @@ Each fixture is a folder named after its id:
 | `id` | Folder name. Starts with `reject-` or `accept-`. |
 | `expected` | `"reject"` if the gate must refuse the patch before any rerun, `"accept"` if it must let it through to the build and rerun steps. |
 | `reject_kind` | For a reject fixture, `"shortcut"` (a rule over the diff can recognise it) or `"policy"` (a maintainer merged fix that no diff rule can separate from a shortcut, rejected on principle). `null` for an accept fixture. |
-| `rejected_by` | Which step must reject it: `"shortcut_checker"`, `"patch_validator"`, or both. Empty for an accept fixture. |
+| `rejected_by` | Which step must reject it when that step runs on its own: `"shortcut_checker"`, `"patch_validator"`, or both. The checker is tested by calling it directly on every fixture's Java files, whatever the validator would say; the validator is tested on a temporary tree built from `before/` with a stub `pom.xml` at each module root. Empty for an accept fixture. |
 | `shortcut_type` | `"disable"`, `"retry"`, `"weaken_assertion"`, `"swallow_failure"`, or `null` for an accept fixture. |
 | `variant` | Short slug for the form of the shortcut or fix, for example `junit4_ignore_fully_qualified` or `sort_both_sides`. |
 | `disputed` | Kept for compatibility. Every fixture has a ruling, so it is `false` everywhere. |
 | `notes` | What the patch does, which rule decides it, and, for an adapted patch, exactly what was changed. |
 | `derivation` | `"verbatim"` if every hunk is copied unchanged from the source diff, `"adapted"` if a hunk was edited. |
-| `source` | `repo`, `commit` (40 hex; the merge commit for a pull request), `pr` when there is one, `path` of the main file, `license` as reported by the GitHub API, and `fetched` (UTC date). |
+| `source` | `repo`, `commit` (40 hex; the merge commit for a pull request), `pr` when there is one, `base` (40 hex; the commit the `before/` files come from), `path` of the main file, `license` as reported by the GitHub API, and `fetched` (UTC date). |
 
-A verbatim patch keeps whole hunks with their original headers, so its line numbers match the source commit. Files and hunks that do not bear on the case are dropped, which means a patch may not apply to the source tree on its own; it is meant to be parsed, not applied. Every patch parses with `git apply --stat`.
+A verbatim patch keeps whole hunks with their original headers, so its line numbers match the source commit. Files and hunks that do not bear on the case are dropped, but every patch still applies to its `before/` files with `git apply --include='*.java'`, because each kept hunk carries its own context. `source.base` is the commit the source diff was taken against: the merge base of a pull request's base and head, or the parent of a single commit. For the two adapted fixtures built on a post image (`reject-assert-throws-broadened`, and `reject-early-return-at-top-of-test`, a hunk applied in reverse) it is the source commit itself. Line endings are kept as the source has them, so a file with CRLF endings has CRLF in its patch.
 
 ## The rules the fixtures encode
 
 * **Strict assertion principle.** A removed or changed assertion passes only if an added assertion in the same test method provably keeps its strength: the same assertion method and matcher with changed arguments; an allowlisted order only relaxation, such as `containsExactly` to `containsExactlyInAnyOrder` or string equality to equality of parsed objects; or the same comparison moved into an Awaitility `until` or `untilAsserted` condition.
-* **Policy rejects.** Some maintainer merged fixes delete an assertion about an order the code never promised, or turn an exact count into a range. They may be right for their project, but no diff rule can tell them from a real weakening, so they are rejected with `reject_kind` set to `"policy"`.
+* **Policy rejects.** Some maintainer merged fixes delete an assertion about an order the code never promised, turn an exact count into a range, or replace an order assertion with checks on a few sorted values. They may be right for their project, but no diff rule can tell them from a real weakening, so they are rejected with `reject_kind` set to `"policy"`.
 * **Timing.** Every widened timing bound in test code is rejected: a raised or removed timeout, a raised Awaitility `atMost`, a looser wall clock assertion, a fixed sleep added before an assertion. Replacing a fixed sleep with a condition wait is the allowed fix.
 * **Retries.** A retry added to test code or to the build is rejected. A retry added to production code is flagged for review, not rejected; no fixture covers that case yet.
-* **Paths.** The patch validator rejects any change to `pom.xml` at any depth, `.mvn/`, `mvnw`, `mvnw.cmd`, CI configuration (`.github/`, `Jenkinsfile`, `.gitlab-ci.yml`), and test runner configuration (`junit-platform.properties`, `META-INF/services/`, TestNG suite XML files). A fixture that touches such a path and also carries a shortcut the checker should see lists both steps in `rejected_by`.
+* **Paths.** The patch validator applies the path allowlist in SH-15 of the [sandbox hardening checklist](../../../docs/security/sandbox-hardening-checklist.md): only `.java` files under `src/main/java` and `src/test/java` of a Maven module, and test resources that are not test engine configuration, and no deletion, rename or copy. A fixture that touches a refused path and also carries a shortcut in Java the checker can see lists both steps in `rejected_by`; one whose only shortcut is in a file the checker does not read lists `patch_validator` alone.
 
 `shortcut_type` keeps four values. Timing changes are filed under `weaken_assertion`, because they loosen what the test checks. Pinning the test order, renaming a class out of the Surefire includes, an early return and an emptied test body are filed under `disable`, because each one stops the failing case from running.
 

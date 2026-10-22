@@ -14,6 +14,7 @@
     "repo": "https://github.com/apache/rocketmq",
     "commit": "980f3d7f5561c276975ca0aab91d2fb9353d169c",
     "pr": "https://github.com/apache/rocketmq/pull/10374",
+    "base": "7e5d22dff8542dfe7176147970d72a177904675d",
     "path": "test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

@@ -13,6 +13,7 @@
   "source": {
     "repo": "https://github.com/apache/tika",
     "commit": "0bf30f0e653ff7262cd146cee6b0bfc81a6410ff",
+    "base": "9b24fec5012c89e60fad623db961cb35cb422b13",
     "path": "tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

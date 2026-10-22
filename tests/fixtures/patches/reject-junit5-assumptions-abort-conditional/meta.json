@@ -14,6 +14,7 @@
     "repo": "https://github.com/Ahoo-Wang/CosId",
     "commit": "628d3817a195792e9ba707d185fe9cb98b8f9dec",
     "pr": "https://github.com/Ahoo-Wang/CosId/pull/1158",
+    "base": "1c80a4fd4aefdfe96331bd5efe6606eaf2527a6a",
     "path": "cosid-test/src/main/java/me/ahoo/cosid/test/machine/distributor/DistributeIdempotent.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

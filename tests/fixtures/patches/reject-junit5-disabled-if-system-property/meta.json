@@ -14,6 +14,7 @@
     "repo": "https://github.com/apache/camel",
     "commit": "6d23d207d2874cf9aec757754b92b9dd6431f519",
     "pr": "https://github.com/apache/camel/pull/26040",
+    "base": "d32f9bf4440716524dd9dd3337c0b424909813f6",
     "path": "components/camel-jms/src/test/java/org/apache/camel/component/jms/JmsComponentIbmMQTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

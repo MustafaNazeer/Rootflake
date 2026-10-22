@@ -14,6 +14,7 @@
     "repo": "https://github.com/apache/activemq",
     "commit": "4253e3f75ae47c74c51978e7cb10ec25826072e6",
     "pr": "https://github.com/apache/activemq/pull/2624",
+    "base": "b21af0bc726146dcfde31cc928744f72be0bef6c",
     "path": "activemq-unit-tests/src/test/java/org/apache/activemq/network/NetworkBridgeReconnectOnHandshakeFailureTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

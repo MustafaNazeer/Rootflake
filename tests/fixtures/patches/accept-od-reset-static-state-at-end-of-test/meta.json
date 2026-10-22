@@ -12,6 +12,7 @@
     "repo": "https://github.com/alibaba/Sentinel",
     "commit": "6879fdd505a0ef13e9ef0ddaec0aa04b47e87403",
     "pr": "https://github.com/alibaba/Sentinel/pull/3282",
+    "base": "5108046ba2bb5371841caedd6f5e9b5d47c52827",
     "path": "sentinel-adapter/sentinel-sofa-rpc-adapter/src/test/java/com/alibaba/csp/sentinel/adapter/sofa/rpc/fallback/SofaRpcFallbackRegistryTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

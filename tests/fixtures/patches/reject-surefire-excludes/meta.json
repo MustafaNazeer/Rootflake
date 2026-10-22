@@ -3,7 +3,6 @@
   "expected": "reject",
   "reject_kind": "shortcut",
   "rejected_by": [
-    "shortcut_checker",
     "patch_validator"
   ],
   "shortcut_type": "disable",
@@ -15,6 +14,7 @@
     "repo": "https://github.com/amazon-mq/upstreaming-activemq",
     "commit": "05727f2a19b0c7f332aa3416419df17e8e27a38a",
     "pr": "https://github.com/amazon-mq/upstreaming-activemq/pull/19",
+    "base": "cbb08bda21669c43b358161fc083331985a9d442",
     "path": "activemq-unit-tests/pom.xml",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

@@ -12,6 +12,7 @@
     "repo": "https://github.com/apache/hadoop",
     "commit": "ad443241932451ca241113af3dd294c9edaeec25",
     "pr": "https://github.com/apache/hadoop/pull/8083",
+    "base": "87266904293c66c2bb7f38b43c39397247b69513",
     "path": "hadoop-yarn-project/hadoop-yarn/hadoop-yarn-server/hadoop-yarn-server-timeline-pluginstorage/src/test/java/org/apache/hadoop/yarn/server/timeline/TestLogInfo.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

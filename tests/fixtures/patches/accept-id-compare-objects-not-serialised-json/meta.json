@@ -12,6 +12,7 @@
     "repo": "https://github.com/apache/accumulo",
     "commit": "3fdba8f12c2bd98fec6718a1bd762cd47650e3b9",
     "pr": "https://github.com/apache/accumulo/pull/6008",
+    "base": "20df82f0490dd19358c639396e20f56e2103bf92",
     "path": "core/src/test/java/org/apache/accumulo/core/data/LoadPlanTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

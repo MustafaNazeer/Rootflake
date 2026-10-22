@@ -15,6 +15,7 @@
     "repo": "https://github.com/lukewalker85/automation-framework",
     "commit": "6d3064a8884bc6597310b9d257c46bc0c6cef4eb",
     "pr": "https://github.com/lukewalker85/automation-framework/pull/101",
+    "base": "14a60ca4fccc84bc6ec330c29125caaa4496d5af",
     "path": "src/test/java/com/automation/listeners/RetryTransformer.java",
     "license": "MIT",
     "fetched": "2026-10-14"

@@ -3,7 +3,6 @@
   "expected": "reject",
   "reject_kind": "shortcut",
   "rejected_by": [
-    "shortcut_checker",
     "patch_validator"
   ],
   "shortcut_type": "retry",
@@ -15,6 +14,7 @@
     "repo": "https://github.com/Open-J-Proxy/ojp-framework-integration",
     "commit": "54fa6686b2188c934ca826958cb8b7b088843640",
     "pr": "https://github.com/Open-J-Proxy/ojp-framework-integration/pull/40",
+    "base": "7cecfedf218b197a4860c51bea6886376ff86a12",
     "path": "glassfish/shopservice/pom.xml",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

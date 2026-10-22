@@ -12,6 +12,7 @@
     "repo": "https://github.com/jenkinsci/remoting",
     "commit": "38c4b578a8cc7c930b6f71d21a398b160bdd3441",
     "pr": "https://github.com/jenkinsci/remoting/pull/706",
+    "base": "1e88c506d547ae7ad99c919396f548a23edfee52",
     "path": "src/test/java/hudson/remoting/DefaultClassFilterTest.java",
     "license": "MIT",
     "fetched": "2026-10-14"

@@ -8,12 +8,13 @@
   "shortcut_type": "weaken_assertion",
   "variant": "hamcrest_equal_to_not_null_value",
   "disputed": false,
-  "notes": "Weakens a Hamcrest assertion from equalTo(i) to notNullValue(), which an autoboxed int always satisfies. Built from the pre image of the CosId file used in reject-junit5-assumptions-abort-conditional: the import block and the first verification loop of verify() are taken from that diff's context and removed lines; the change itself is hand written.",
+  "notes": "Weakens a Hamcrest assertion from equalTo(i) to notNullValue(), which an autoboxed int always satisfies. Built from the pre image of the CosId file used in reject-junit5-assumptions-abort-conditional: the import block and the first verification loop of verify() are taken from that diff's context and removed lines; the change itself is hand written. The first hunk carries the blank line after the imports as trailing context, so it applies to the pre image.",
   "derivation": "adapted",
   "source": {
     "repo": "https://github.com/Ahoo-Wang/CosId",
     "commit": "628d3817a195792e9ba707d185fe9cb98b8f9dec",
     "pr": "https://github.com/Ahoo-Wang/CosId/pull/1158",
+    "base": "1c80a4fd4aefdfe96331bd5efe6606eaf2527a6a",
     "path": "cosid-test/src/main/java/me/ahoo/cosid/test/machine/distributor/DistributeIdempotent.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

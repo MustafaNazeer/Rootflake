@@ -12,6 +12,7 @@
     "repo": "https://github.com/apache/ratis",
     "commit": "1c2f23488b1ef357ef4523823d201acd67f03406",
     "pr": "https://github.com/apache/ratis/pull/1621",
+    "base": "68d21674cc35df1078467ad19fe0975baa55b8cd",
     "path": "ratis-server/src/main/java/org/apache/ratis/server/impl/LeaderStateImpl.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

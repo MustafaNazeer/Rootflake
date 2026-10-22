@@ -14,6 +14,7 @@
     "repo": "https://github.com/objectionary/eo",
     "commit": "ef4d40de242114fa127fcae87883829fcccd81c5",
     "pr": "https://github.com/objectionary/eo/pull/6540",
+    "base": "ca8509da4601f2b990a94000dce03ab056be2e59",
     "path": "eo-runtime/src/test/java/org/eolang/SyscallTest.java",
     "license": "MIT",
     "fetched": "2026-10-14"

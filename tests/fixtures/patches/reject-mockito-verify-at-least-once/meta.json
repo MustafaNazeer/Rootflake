@@ -14,6 +14,7 @@
     "repo": "https://github.com/netty/netty",
     "commit": "bb3eb5f1c82c0abb1f8fa14b1a82001e5cd330dc",
     "pr": "https://github.com/netty/netty/pull/17590",
+    "base": "9f11eb6d3a242c9ecf36b502e35a23d26462ec2a",
     "path": "codec-http2/src/test/java/io/netty/handler/codec/http2/HttpToHttp2ConnectionHandlerTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

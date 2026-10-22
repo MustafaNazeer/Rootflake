@@ -14,6 +14,7 @@
     "repo": "https://github.com/debezium/debezium-connector-spanner",
     "commit": "43be12bcb65e844405887153511025eee95486bb",
     "pr": "https://github.com/debezium/debezium-connector-spanner/pull/176",
+    "base": "43be12bcb65e844405887153511025eee95486bb",
     "path": "src/test/java/io/debezium/connector/spanner/db/DaoFactoryTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

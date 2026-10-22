@@ -14,6 +14,7 @@
     "repo": "https://github.com/line/decaton",
     "commit": "197b18bb038a448b0474b3c57af4d40602d27c22",
     "pr": "https://github.com/line/decaton/pull/194",
+    "base": "916403fac80bef5b222a661d836cb814f4aa9a53",
     "path": "centraldogma/src/test/java/com/linecorp/decaton/centraldogma/CentralDogmaPropertySupplierIntegrationTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

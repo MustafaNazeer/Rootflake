@@ -14,6 +14,7 @@
     "repo": "https://github.com/apache/logging-log4j2",
     "commit": "141a54e987588e60c4a0e0278caadd243ffb3621",
     "pr": "https://github.com/apache/logging-log4j2/pull/3957",
+    "base": "745d0967620008492b1c8c3354198dca5300fb05",
     "path": "log4j-core-test/src/test/java/org/apache/logging/log4j/core/appender/rolling/RollingAppenderDeleteAccumulatedCount1Test.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

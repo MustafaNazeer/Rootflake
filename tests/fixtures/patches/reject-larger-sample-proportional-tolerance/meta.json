@@ -14,6 +14,7 @@
     "repo": "https://github.com/apache/paimon",
     "commit": "bc41e7163a69bc9ddb380bf6c94ac88d0d1bd7b3",
     "pr": "https://github.com/apache/paimon/pull/7387",
+    "base": "87a4c917478f89d96c91f5ce50cb036514f7ef8a",
     "path": "paimon-common/src/test/java/org/apache/paimon/fs/WeightedExternalPathProviderTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

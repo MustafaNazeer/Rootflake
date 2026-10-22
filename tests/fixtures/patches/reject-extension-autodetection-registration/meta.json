@@ -3,17 +3,17 @@
   "expected": "reject",
   "reject_kind": "shortcut",
   "rejected_by": [
-    "shortcut_checker",
     "patch_validator"
   ],
   "shortcut_type": "swallow_failure",
   "variant": "extension_service_registration",
   "disputed": false,
-  "notes": "Registers the failure aborting extension from reject-junit5-exception-handler-aborts-failures for every test through the ServiceLoader file and turns on JUnit 5 extension autodetection, without touching any test class. Both files are new and hand written, built on the real extension's class name; I did not check whether the project already has these files, so the paths are illustrative. Rejected by the path validator (test runner configuration) and by the checker's content rules.",
+  "notes": "Registers the failure aborting extension from reject-junit5-exception-handler-aborts-failures for every test through the ServiceLoader file and turns on JUnit 5 extension autodetection, without touching any test class. Both files are new and hand written, built on the real extension's class name; I did not check whether the project already has these files, so the paths are illustrative. Rejected by the path validator (test runner configuration); neither file is Java, so the checker never reads it.",
   "derivation": "adapted",
   "source": {
     "repo": "https://github.com/mongodb/mongo-java-driver",
     "commit": "01aff5a0789f71b9d0b56190d4996e8ac5436827",
+    "base": "7d80cef9126a09b2cd4b4cd48bb3dc1c0549dd7f",
     "path": "driver-core/src/test/functional/com/mongodb/test/extension/FlakyTestExtension.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

@@ -12,6 +12,7 @@
     "repo": "https://github.com/mybatis/mybatis-dynamic-sql",
     "commit": "a82874184b211dbf4be3a6f727f33ab28957ac51",
     "pr": "https://github.com/mybatis/mybatis-dynamic-sql/pull/988",
+    "base": "19018357d53802182e5ac5a2921984d2d8c56942",
     "path": "src/test/java/examples/simple/PersonMapperTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

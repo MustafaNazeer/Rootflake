@@ -14,6 +14,7 @@
     "repo": "https://github.com/apache/ozone",
     "commit": "7f6ea8b1ac745f95d7a2db89d1d8e12586712170",
     "pr": "https://github.com/apache/ozone/pull/11062",
+    "base": "c379bcc447848da73b591219a464ea455f281708",
     "path": "hadoop-ozone/integration-test/src/test/java/org/apache/hadoop/ozone/client/rpc/TestFailureHandlingByClientFlushDelay.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

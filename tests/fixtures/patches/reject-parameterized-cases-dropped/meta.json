@@ -14,6 +14,7 @@
     "repo": "https://github.com/FoundationDB/fdb-record-layer",
     "commit": "0fb438842fc516c8eed5ba14874c17e3a3720e42",
     "pr": "https://github.com/FoundationDB/fdb-record-layer/pull/4716",
+    "base": "20a2376dd8eb2b69c2673f5fac235f067c672563",
     "path": "fdb-record-layer-core/src/test/java/com/apple/foundationdb/record/provider/foundationdb/indexes/RankIndexTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

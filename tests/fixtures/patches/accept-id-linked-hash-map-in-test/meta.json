@@ -11,6 +11,7 @@
   "source": {
     "repo": "https://github.com/haraldk/TwelveMonkeys",
     "commit": "be348543d8a41d4677f83e1c69988221527977a9",
+    "base": "80229b8c3caebef9e9097901386d65513d083f16",
     "path": "imageio/imageio-core/src/test/java/com/twelvemonkeys/imageio/StandardImageMetadataSupportTest.java",
     "license": "BSD-3-Clause",
     "fetched": "2026-10-14"

@@ -11,6 +11,7 @@
   "source": {
     "repo": "https://github.com/apache/pdfbox",
     "commit": "c1c910ad7f9bb7d2fd26e7e01e8c90bcc3910f36",
+    "base": "2c08c2e1c4606146564bb3ebbdeed18a403e5ea3",
     "path": "pdfbox/src/test/java/org/apache/pdfbox/pdfparser/PDFObjectStreamParserTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

@@ -14,6 +14,7 @@
     "repo": "https://github.com/apache/iotdb",
     "commit": "921d9e2480401be2a136d385b890cf919d58c973",
     "pr": "https://github.com/apache/iotdb/pull/15698",
+    "base": "24209d50ace4ed67266d292139404f029c7dc350",
     "path": "integration-test/src/test/java/org/apache/iotdb/subscription/it/RetryRule.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

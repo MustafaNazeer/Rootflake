@@ -12,6 +12,7 @@
     "repo": "https://github.com/apache/shenyu",
     "commit": "1de8abb44639b68ac93b9d7e386df671ab1ec098",
     "pr": "https://github.com/apache/shenyu/pull/6261",
+    "base": "d14a4238dc4710a9dc48f87804e7ac621c9bee19",
     "path": "shenyu-plugin/shenyu-plugin-fault-tolerance/shenyu-plugin-resilience4j/src/test/java/org/apache/shenyu/plugin/resilience4j/Resilience4JPluginTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

@@ -14,6 +14,7 @@
     "repo": "https://github.com/netty/netty",
     "commit": "ac4ea466df44a201d1f9397da8756cc416eb4e01",
     "pr": "https://github.com/netty/netty/pull/17763",
+    "base": "3fc76ffac9730758a0e8142291c81fe9a3acb8c2",
     "path": "buffer/src/test/java/io/netty/buffer/PooledByteBufAllocatorTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

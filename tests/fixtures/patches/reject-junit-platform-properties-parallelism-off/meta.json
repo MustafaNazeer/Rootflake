@@ -14,6 +14,7 @@
     "repo": "https://github.com/hiero-ledger/hiero-block-node",
     "commit": "96c99b0ca1e967338f17d3d008dd0069d425cfda",
     "pr": "https://github.com/hiero-ledger/hiero-block-node/pull/3418",
+    "base": "f0ab4aef3f1f4f79e637cb30cb16342899a7332d",
     "path": "tools-and-tests/tools/src/test/resources/junit-platform.properties",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

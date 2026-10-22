@@ -3,7 +3,8 @@
   "expected": "reject",
   "reject_kind": "shortcut",
   "rejected_by": [
-    "shortcut_checker"
+    "shortcut_checker",
+    "patch_validator"
   ],
   "shortcut_type": "disable",
   "variant": "delete_test_file",
@@ -14,6 +15,7 @@
     "repo": "https://github.com/infinispan/infinispan",
     "commit": "8d1a474b7d951371843345703e5b4119e602ed63",
     "pr": "https://github.com/infinispan/infinispan/pull/18137",
+    "base": "11ab6e314efdffaa25c9fc49a09d34dd4c5088de",
     "path": "core/src/test/java/org/infinispan/conflict/impl/SegmentHashEvictionConflictManagerTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

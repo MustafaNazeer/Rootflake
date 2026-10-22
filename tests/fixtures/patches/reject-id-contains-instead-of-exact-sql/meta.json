@@ -14,6 +14,7 @@
     "repo": "https://github.com/j256/ormlite-core",
     "commit": "04c05bdd4acc7576ac84d1fe3bb9a8ed6b662410",
     "pr": "https://github.com/j256/ormlite-core/pull/240",
+    "base": "bac49c9b418cf4f9909ceefe664d20272281806e",
     "path": "src/test/java/com/j256/ormlite/table/TableUtilsTest.java",
     "license": "ISC",
     "fetched": "2026-10-14"

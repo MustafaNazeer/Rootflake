@@ -12,6 +12,7 @@
     "repo": "https://github.com/ebean-orm/ebean",
     "commit": "5f218e1fdb4f58e4cd0671bf46e650da8a16cdc5",
     "pr": "https://github.com/ebean-orm/ebean/pull/3409",
+    "base": "be28314e31818e7fea8c29bc94ace10074a0e4ef",
     "path": "ebean-postgis-types/src/test/java/org/example/domain/TestCacheSerialization.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

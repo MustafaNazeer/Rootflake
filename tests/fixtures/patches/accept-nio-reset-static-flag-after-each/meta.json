@@ -12,6 +12,7 @@
     "repo": "https://github.com/undertow-io/undertow",
     "commit": "729e81d45b0ffd7bda7696b819f9f7fdcdcd38f8",
     "pr": "https://github.com/undertow-io/undertow/pull/1023",
+    "base": "6c065f94db1ab714e48b7cdce0ef2bf1ae16c88f",
     "path": "servlet/src/test/java/io/undertow/servlet/test/spec/UnavailableServletTestCase.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"

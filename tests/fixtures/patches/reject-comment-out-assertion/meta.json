@@ -14,6 +14,7 @@
     "repo": "https://github.com/googleapis/java-firestore",
     "commit": "eb936d66bc771a4389b5cd222b55a151b40c405f",
     "pr": "https://github.com/googleapis/java-firestore/pull/2273",
+    "base": "05188e3e779968e67861fcd69d64ae17cfb6cd0b",
     "path": "google-cloud-firestore/src/test/java/com/google/cloud/firestore/WatchTest.java",
     "license": "Apache-2.0",
     "fetched": "2026-10-14"
