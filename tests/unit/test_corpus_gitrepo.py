@@ -1,5 +1,6 @@
 import os
 import subprocess
+import time
 
 import pytest
 
@@ -308,22 +309,21 @@ def test_other_merge_base_failures_raise(tmp_path, answer):
 
 def test_a_timeout_kills_the_whole_process_group(tmp_path):
     pid_file = tmp_path / "child"
-    script = f"sleep 30 & echo $! > {pid_file}; wait"
+    script = f"sleep 30 & echo $! > {pid_file}.tmp && mv {pid_file}.tmp {pid_file}; wait"
     with pytest.raises(subprocess.TimeoutExpired):
         gitrepo._run(["sh", "-c", script], {"PATH": os.environ["PATH"]}, 0.5)
     child = int(pid_file.read_text())
-    for _ in range(50):
-        if not os.path.exists(f"/proc/{child}") or "Z" in _state(child):
-            break
-        import time
-
+    deadline = time.monotonic() + 5
+    while not _ended(child) and time.monotonic() < deadline:
         time.sleep(0.05)
-    assert not os.path.exists(f"/proc/{child}") or "Z" in _state(child)
+    assert _ended(child)
 
 
-def _state(pid):
+def _ended(pid):
+    # One read of /proc decides: the child may be reaped between any two looks at it.
     try:
         with open(f"/proc/{pid}/stat") as handle:
-            return handle.read().rsplit(")", 1)[1].split()[0]
-    except FileNotFoundError:
-        return "gone"
+            state = handle.read().rsplit(")", 1)[1].split()[0]
+    except FileNotFoundError, ProcessLookupError:
+        return True
+    return state == "Z"
