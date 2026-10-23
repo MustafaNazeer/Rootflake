@@ -1,0 +1,74 @@
+diff --git a/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java b/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java
+index 40bc9b0..a4cc078 100644
+--- a/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java
++++ b/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java
+@@ -17,6 +17,7 @@
+ import java.util.function.Function;
+ 
+ import static org.junit.jupiter.api.Assertions.*;
++import static io.github.dhruv1110.jcachex.testing.TestAwait.awaitTrue;
+ import static org.mockito.Mockito.*;
+ 
+ @ExtendWith(MockitoExtension.class)
+@@ -98,7 +99,8 @@ void testExpiration() throws InterruptedException {
+         expiringCache.put("key1", "value1");
+         assertEquals("value1", expiringCache.get("key1"));
+ 
+-        Thread.sleep(200);
++        long sleepUntil = System.currentTimeMillis() + 200;
++        awaitTrue(() -> System.currentTimeMillis() >= sleepUntil, 1000);
+ 
+         assertNull(expiringCache.get("key1"));
+         expiringCache.close();
+diff --git a/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/testing/TestAwait.java b/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/testing/TestAwait.java
+new file mode 100644
+--- /dev/null
++++ b/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/testing/TestAwait.java
+@@ -0,0 +1,47 @@
++package io.github.dhruv1110.jcachex.testing;
++
++import java.util.Objects;
++import java.util.concurrent.TimeUnit;
++import java.util.function.Supplier;
++
++import static org.junit.jupiter.api.Assertions.assertTrue;
++
++/**
++ * Minimal await helper for tests to avoid fixed Thread.sleep calls.
++ * Uses polling with a timeout to wait for a condition to become true.
++ */
++public final class TestAwait {
++    private TestAwait() {}
++
++    public static void awaitTrue(Supplier<Boolean> condition, long timeoutMs) throws InterruptedException {
++        awaitTrue(condition, timeoutMs, 10);
++    }
++
++    public static void awaitTrue(Supplier<Boolean> condition, long timeoutMs, long pollIntervalMs) throws InterruptedException {
++        long deadline = System.currentTimeMillis() + timeoutMs;
++        while (System.currentTimeMillis() < deadline) {
++            if (Boolean.TRUE.equals(condition.get())) {
++                return;
++            }
++            Thread.sleep(pollIntervalMs);
++        }
++        assertTrue(Boolean.TRUE.equals(condition.get()), "Condition not satisfied within " + timeoutMs + "ms");
++    }
++
++    public static <T> T awaitNotNull(Supplier<T> supplier, long timeoutMs) throws InterruptedException {
++        long deadline = System.currentTimeMillis() + timeoutMs;
++        T value;
++        while (System.currentTimeMillis() < deadline) {
++            value = supplier.get();
++            if (value != null) {
++                return value;
++            }
++            Thread.sleep(10);
++        }
++        value = supplier.get();
++        assertTrue(Objects.nonNull(value), "Expected non-null value within " + timeoutMs + "ms");
++        return value;
++    }
++}
++
++

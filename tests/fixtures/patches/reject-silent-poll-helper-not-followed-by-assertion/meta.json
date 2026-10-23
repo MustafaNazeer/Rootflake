@@ -1,0 +1,30 @@
+{
+  "id": "reject-silent-poll-helper-not-followed-by-assertion",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "silent_poll_helper_not_followed_by_assertion",
+  "target": {
+    "class": "org.apache.unomi.services.impl.scheduler.TaskExecutionManagerTest",
+    "method": "testHandleTaskCompletionPeriodZeroDoesNotReschedule"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
+  "disputed": false,
+  "notes": "Adds the silent poll helper awaitStatus from apache/unomi PR 855 and a call awaitStatus(task, ScheduledTask.TaskStatus.COMPLETED, 5000) as the last statement of testHandleTaskCompletionPeriodZeroDoesNotReschedule, after its final assertEquals, so nothing follows the call. The helper sleeps in a loop bounded by a deadline and leaves silently when the deadline passes. ADR 0007 Decision 7 counts any silent poll loop whose call is not followed directly by an assertion of the same condition as a fixed sleep, so this is an added fixed sleep: weaken_assertion/timing_bound_widened. Adapted: the awaitStatus hunk is copied unchanged from the PR (its index line dropped); the call site hunk is hand made on the pre image at the PR's merge base, keeping the original Thread.sleep(100) and assertEquals as context, with the one added call written by hand. No merged change was found whose silent poll call ends a test. Each commit of the PR carries a co-author trailer naming an AI model and the description ends with a generation footer; the change was reviewed and merged by the project's maintainers and is used as a real merged change, recorded as such. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/unomi",
+    "commit": "0ff5e659e88f9f9ba0845502d690819f97717189",
+    "pr": "https://github.com/apache/unomi/pull/855",
+    "base": "0163e13f0189b1ce672789be0125e7cad3585ae3",
+    "path": "services/src/test/java/org/apache/unomi/services/impl/scheduler/TaskExecutionManagerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

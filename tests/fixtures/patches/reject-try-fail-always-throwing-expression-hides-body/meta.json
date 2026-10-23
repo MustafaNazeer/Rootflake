@@ -1,0 +1,31 @@
+{
+  "id": "reject-try-fail-always-throwing-expression-hides-body",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "swallow_failure",
+  "variant": "always_throwing_expression_in_try_fail",
+  "target": {
+    "class": "com.alibaba.csp.sentinel.eagleeye.EagleEyeCoreUtilsTest",
+    "method": "testFormatTime"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "swallow_failure/catch_swallows",
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Wraps the whole body of testFormatTime, its time zone dependent assertEquals included, in a try and fail idiom whose first statement is java.util.Optional.empty().get(), which always throws NoSuchElementException, and whose catch (java.util.NoSuchElementException expected) is empty. The original assertion becomes dead code and the test passes on every run. ADR 0007 Decision 8 gives the idiom its exemption only while its try covers no other assertion or wait and no statement that sat outside such a try in the pristine method; here the try covers the original assertEquals, so swallowed failure rule 1 applies as written (swallow_failure/catch_swallows), and Decision 5 counts an unchanged assertion newly placed under a try whose catch does not rethrow as removed (weaken_assertion/assertion_removed). Adapted: built on the pre image of reject-test-body-emptied (alibaba/Sentinel PR 3459, at its merge base). The removed lines and the context are the pre image's own; the try, the Optional line, the fail and the catch are hand written, fully qualified so no import is added, and the assertEquals is the removed one re-indented. No merged change was found that hides a test body this way. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category TZD, test com.alibaba.csp.sentinel.eagleeye.EagleEyeCoreUtilsTest.testFormatTime, as for accept-tzd-offset-at-instant.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/alibaba/Sentinel",
+    "commit": "d9398b4f752f8424cf926ccc32b8d9b21473de69",
+    "pr": "https://github.com/alibaba/Sentinel/pull/3459",
+    "base": "195150bc745927429e9f14f501907310b46d702f",
+    "path": "sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

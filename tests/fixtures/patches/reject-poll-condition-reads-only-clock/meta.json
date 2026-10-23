@@ -1,0 +1,30 @@
+{
+  "id": "reject-poll-condition-reads-only-clock",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "poll_condition_reads_only_clock",
+  "target": {
+    "class": "io.github.dhruv1110.jcachex.DefaultCacheTest",
+    "method": "testExpiration"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
+  "disputed": false,
+  "notes": "The poll helper of accept-created-poll-helper-replaces-sleep called with a condition that reads only the clock: testExpiration replaces Thread.sleep(200) with long sleepUntil = System.currentTimeMillis() + 200; awaitTrue(() -> System.currentTimeMillis() >= sleepUntil, 1000);. awaitTrue is bounded and asserts when its deadline passes, but the condition, after following the local definition of sleepUntil, reads nothing but System.currentTimeMillis and a literal, so the loop only waits out 200 ms: a fixed sleep written as a poll. ADR 0007 Decision 7 requires the condition of a hand written poll loop, with the call's arguments substituted, to read state that is not a clock, the loop's own counter or deadline, or a literal; this one does not, so the sleep in the helper is an added fixed sleep before the assertNull: weaken_assertion/timing_bound_widened. Adapted: built on accept-created-poll-helper-replaces-sleep (dhruv1110/jcachex PR 118, at its merge base, with awaitMillis already removed from TestAwait.java); the two added lines at the call site are hand written in place of the PR's awaitTrue line, and that hunk header is recomputed. The project builds with Gradle; the paths follow the Maven layout. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/dhruv1110/jcachex",
+    "commit": "4ffe088aec27ba2fb98274e30d1742b0672ab250",
+    "pr": "https://github.com/dhruv1110/jcachex/pull/118",
+    "base": "84118e9c0b2fb76cd1abb85963696dcf60b9c6f7",
+    "path": "jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

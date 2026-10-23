@@ -1,0 +1,32 @@
+diff --git a/services/src/test/java/org/apache/unomi/services/impl/scheduler/TaskExecutionManagerTest.java b/services/src/test/java/org/apache/unomi/services/impl/scheduler/TaskExecutionManagerTest.java
+--- a/services/src/test/java/org/apache/unomi/services/impl/scheduler/TaskExecutionManagerTest.java
++++ b/services/src/test/java/org/apache/unomi/services/impl/scheduler/TaskExecutionManagerTest.java
+@@ -128,6 +189,19 @@ public void testPrepareForExecutionFailsWhenLockDenied() {
+         assertEquals(ScheduledTask.TaskStatus.SCHEDULED, task.getStatus());
+     }
+ 
++    /**
++     * Waits for the wrapper's asynchronous terminal transition to land on the shared task object.
++     * The executor's callback returns before the wrapper finishes its bookkeeping, so asserting
++     * the final status right after the latch (or after a fixed sleep) races the wrapper thread.
++     */
++    private static void awaitStatus(ScheduledTask task, ScheduledTask.TaskStatus expected, long timeoutMs)
++            throws InterruptedException {
++        long deadline = System.currentTimeMillis() + timeoutMs;
++        while (task.getStatus() != expected && System.currentTimeMillis() < deadline) {
++            Thread.sleep(20);
++        }
++    }
++
+     @Test
+     public void testExecuteTaskDuplicateDispatchIsSkipped() throws Exception {
+         CountDownLatch started = new CountDownLatch(1);
+@@ -407,7 +420,8 @@ public void testHandleTaskCompletionPeriodZeroDoesNotReschedule() throws Excepti
+         executionManager.executeTask(task, executor);
+         assertTrue(done.await(5, TimeUnit.SECONDS));
+         Thread.sleep(100);
+         assertEquals(ScheduledTask.TaskStatus.COMPLETED, task.getStatus());
++        awaitStatus(task, ScheduledTask.TaskStatus.COMPLETED, 5000);
+     }
+ 
+     @Test
