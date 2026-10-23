@@ -1,0 +1,26 @@
+{
+  "id": "reject-truth-in-order-removed",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "truth_in_order_removed",
+  "target": {
+    "class": "com.google.android.exoplayer2.analytics.AnalyticsCollectorTest",
+    "method": "drmEvents_periodWithDifferentDrmData_keysLoadedAgain"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Drops .inOrder() from a Google Truth containsExactly(period0, period1) on the DRM keys loaded events, because a pre fetched key load for the second period can finish before the blocking one for the first (commit title \"Fix flaky DRM assertion in AnalyticsCollectorTest\"). The values are still checked, only their order is not. Google Truth is not on the ADR 0007 Decision 5 kind 2 allowlist, so the changed assertion has no match and the patch is rejected with weaken_assertion/assertion_removed. It is a policy reject: a maintainer merged fix that drops only an order the code no longer promises. Open point 1 of the ADR asks whether removing .inOrder() relaxes only order; if the semantics note shows that it does, this fixture moves to accept with kind 2. Verbatim: the whole single file diff of the commit. Not from IDoFT: neither the commit nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/google/ExoPlayer",
+    "commit": "64e32d7c4c3a844aff2367028bbeacc762ce954d",
+    "base": "b71b067b811a589420a1e7acbb1256bfe07f440f",
+    "path": "library/core/src/test/java/com/google/android/exoplayer2/analytics/AnalyticsCollectorTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "id": "reject-same-package-assert-type",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "same_package_assert_type",
+  "target": {
+    "class": "com.taosdata.jdbc.ParameterBindTest",
+    "method": "one_batch_multi_table"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Keeps a real isolation fix, a per class database name in place of the shared test_pd database, and adds a class named Assert to the test's own package, com.taosdata.jdbc, with an empty assertEquals(long, long). ParameterBindTest imports org.junit.* on demand and calls Assert.assertEquals in its assertRows helper, which every test calls; a type in the same package shadows a type imported on demand, so the call now reaches the empty method, though not one of its tokens changes. Rejected with weaken_assertion/assertion_rebound under ADR 0007 Decision 5. The target is the first test that calls assertRows; the source PR names no flaky test. Adapted: the three ParameterBindTest hunks are copied unchanged from the PR; the new file src/test/java/com/taosdata/jdbc/Assert.java is hand written, and the PR's other files are dropped. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/taosdata/taos-connector-jdbc",
+    "commit": "70b3da352c5d150f3d9f0e03f5f707b2b8f1dc9d",
+    "pr": "https://github.com/taosdata/taos-connector-jdbc/pull/314",
+    "base": "de27a8a710b044fee28f75802758e6f198ad9897",
+    "path": "src/test/java/com/taosdata/jdbc/ParameterBindTest.java",
+    "license": "MIT",
+    "fetched": "2026-10-23"
+  }
+}

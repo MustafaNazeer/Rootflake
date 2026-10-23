@@ -1,0 +1,27 @@
+{
+  "id": "reject-created-file-package-mismatch",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "created_file_package_mismatch",
+  "target": {
+    "class": "io.github.dhruv1110.jcachex.DefaultCacheTest",
+    "method": "testExpiration"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Replaces a fixed Thread.sleep(200) in testExpiration with a condition wait from a new helper class TestAwait, created under src/test/java/io/github/dhruv1110/jcachex/testing/, but the created file declares package io.github.dhruv1110.jcachex, which does not match its directory. javac accepts the mismatch, and a type declared into another package can shadow names there, so ADR 0007 Decision 5 rejects a created file whose package does not match its directory under the source root with weaken_assertion/assertion_rebound, whatever else the patch does. Adapted: the two DefaultCacheTest hunks (the static import and testExpiration) and the TestAwait.java file are copied from the PR, except that the package line of TestAwait.java is changed from io.github.dhruv1110.jcachex.testing to io.github.dhruv1110.jcachex; the PR's other hunks and files are dropped. As kept, the static import of io.github.dhruv1110.jcachex.testing.TestAwait.awaitTrue would no longer resolve, so the patch would not build; the checker rejects it before the build. The project builds with Gradle; the paths follow the Maven layout. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/dhruv1110/jcachex",
+    "commit": "4ffe088aec27ba2fb98274e30d1742b0672ab250",
+    "pr": "https://github.com/dhruv1110/jcachex/pull/118",
+    "base": "84118e9c0b2fb76cd1abb85963696dcf60b9c6f7",
+    "path": "jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

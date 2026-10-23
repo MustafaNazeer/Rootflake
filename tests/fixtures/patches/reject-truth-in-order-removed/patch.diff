@@ -1,0 +1,17 @@
+diff --git a/library/core/src/test/java/com/google/android/exoplayer2/analytics/AnalyticsCollectorTest.java b/library/core/src/test/java/com/google/android/exoplayer2/analytics/AnalyticsCollectorTest.java
+index 4cf23e5ca94..bfe1f90a8a5 100644
+--- a/library/core/src/test/java/com/google/android/exoplayer2/analytics/AnalyticsCollectorTest.java
++++ b/library/core/src/test/java/com/google/android/exoplayer2/analytics/AnalyticsCollectorTest.java
+@@ -1504,9 +1504,9 @@ public void drmEvents_periodWithDifferentDrmData_keysLoadedAgain() throws Except
+     assertThat(listener.getEvents(EVENT_DRM_SESSION_ACQUIRED))
+         .containsExactly(period0, period1)
+         .inOrder();
+-    assertThat(listener.getEvents(EVENT_DRM_KEYS_LOADED))
+-        .containsExactly(period0, period1)
+-        .inOrder();
++    // The pre-fetched key load for period1 might complete before the blocking key load for period0,
++    // so we can't assert the order:
++    assertThat(listener.getEvents(EVENT_DRM_KEYS_LOADED)).containsExactly(period0, period1);
+     // The period1 release event is lost because it's posted to "ExoPlayerTest thread" after that
+     // thread has been quit during clean-up.
+     assertThat(listener.getEvents(EVENT_DRM_SESSION_RELEASED)).containsExactly(period0);

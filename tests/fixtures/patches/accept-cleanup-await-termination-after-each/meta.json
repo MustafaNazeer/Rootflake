@@ -1,0 +1,25 @@
+{
+  "id": "accept-cleanup-await-termination-after-each",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "await_termination_in_after_each",
+  "target": {
+    "class": "com.google.api.gax.retrying.ScheduledRetryingExecutorTest",
+    "method": "testCancelGetAttempt"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Gives every retrying executor test a fresh scheduled executor per test, created in a @BeforeEach and shut down in an @AfterEach that calls shutdownNow() and then awaitTermination(DEFAULT_AWAIT_TERMINATION_SEC, TimeUnit.SECONDS) without checking the returned value, so no task from one test can still be running in the next. ADR 0007 Decision 7 rejects a bounded wait whose result is ignored, unless it sits in a lifecycle method that runs after the test, with no assertion after it in that body, which is ordinary cleanup; this one does, so the patch is accepted. The target is the test named in the PR title (\"Fix testCancelGetAttempt flaky test\", issue 2851), declared in the subclass ScheduledRetryingExecutorTest. Kept: both hunks of AbstractRetryingExecutorTest.java; the ScheduledRetryingExecutorTest.java changes, which switch that class to the new executor and also turn testCancelGetAttempt from a parameterized test into a plain one, are dropped. Not from IDoFT: neither the commit nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/googleapis/sdk-platform-java",
+    "commit": "c7d11d44aa138ed48ae17c8f3dc14dca8d664438",
+    "pr": "https://github.com/googleapis/sdk-platform-java/pull/3592",
+    "base": "81e21f2ef98c9b0776d9bcffb13db667a8a885e6",
+    "path": "gax-java/gax/src/test/java/com/google/api/gax/retrying/AbstractRetryingExecutorTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

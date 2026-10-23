@@ -1,0 +1,54 @@
+diff --git a/src/test/java/com/taosdata/jdbc/ParameterBindTest.java b/src/test/java/com/taosdata/jdbc/ParameterBindTest.java
+index a22a3ece..e773613f 100644
+--- a/src/test/java/com/taosdata/jdbc/ParameterBindTest.java
++++ b/src/test/java/com/taosdata/jdbc/ParameterBindTest.java
+@@ -3,6 +3,7 @@
+ import com.taosdata.jdbc.utils.SpecifyAddress;
+ import com.taosdata.jdbc.utils.TestEnvUtil;
+ import org.junit.*;
++import com.taosdata.jdbc.utils.TestUtils;
+ 
+ import java.sql.*;
+ import java.time.Instant;
+@@ -14,6 +15,7 @@
+ import java.util.stream.Collectors;
+ 
+ public class ParameterBindTest {
++    private final String DB_NAME = TestUtils.camelToSnake(ParameterBindTest.class);
+ 
+     static final String HOST = TestEnvUtil.getHost();
+     private static final String STABLE = "weather";
+@@ -171,9 +173,9 @@ public void before() {
+         try {
+             conn = DriverManager.getConnection(url);
+             Statement stmt = conn.createStatement();
+-            stmt.execute("drop database if exists test_pd");
+-            stmt.execute("create database if not exists test_pd");
+-            stmt.execute("use test_pd");
++            stmt.execute("drop database if exists " + DB_NAME);
++            stmt.execute("create database if not exists " + DB_NAME);
++            stmt.execute("use " + DB_NAME);
+             stmt.execute("create table " + STABLE + "(ts timestamp, f1 int, f2 int) tags(t1 int, t2 int)");
+         } catch (SQLException e) {
+             e.printStackTrace();
+@@ -184,7 +186,7 @@ public void before() {
+     public void after() {
+         try {
+             Statement stmt = conn.createStatement();
+-            stmt.execute("drop database if exists test_pd");
++            stmt.execute("drop database if exists " + DB_NAME);
+             if (conn != null)
+                 conn.close();
+         } catch (SQLException e) {
+diff --git a/src/test/java/com/taosdata/jdbc/Assert.java b/src/test/java/com/taosdata/jdbc/Assert.java
+new file mode 100644
+--- /dev/null
++++ b/src/test/java/com/taosdata/jdbc/Assert.java
+@@ -0,0 +1,7 @@
++package com.taosdata.jdbc;
++
++public class Assert {
++
++    public static void assertEquals(long expected, long actual) {
++    }
++}

@@ -1,0 +1,27 @@
+{
+  "id": "reject-early-return-in-assertion-helper",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "early_return_in_helper",
+  "target": {
+    "class": "com.taosdata.jdbc.ParameterBindTest",
+    "method": "one_batch_multi_table"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Adds if (count < rows) { return; } before the Assert.assertEquals(rows, count) in the helper assertRows, which every test in the class calls, so a table with too few rows, the failure the assertion exists to catch, now ends the helper without failing. The test methods are untouched. ADR 0007 Decision 5 counts an unchanged assertion that now has a new or newly guarded return earlier in the same method body as removed, and helpers are followed, so the call in each test loses its assertion: weaken_assertion/assertion_removed. The rule against a return in a test method itself (disable/early_return, Decision 6) does not apply, since the return sits in a helper, not in a test method. The target is the first test that calls assertRows. Adapted: built on the pre image of reject-same-package-assert-type (taosdata/taos-connector-jdbc PR 314, at its merge base); the three added lines are hand written.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/taosdata/taos-connector-jdbc",
+    "commit": "70b3da352c5d150f3d9f0e03f5f707b2b8f1dc9d",
+    "pr": "https://github.com/taosdata/taos-connector-jdbc/pull/314",
+    "base": "de27a8a710b044fee28f75802758e6f198ad9897",
+    "path": "src/test/java/com/taosdata/jdbc/ParameterBindTest.java",
+    "license": "MIT",
+    "fetched": "2026-10-23"
+  }
+}

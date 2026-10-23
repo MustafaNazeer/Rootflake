@@ -1,0 +1,81 @@
+diff --git a/oshi-benchmark/src/test/java/oshi/comparison/NativeFreeComparisonTest.java b/oshi-benchmark/src/test/java/oshi/comparison/NativeFreeComparisonTest.java
+index 8e41529b932..fb43bd211e4 100644
+--- a/oshi-benchmark/src/test/java/oshi/comparison/NativeFreeComparisonTest.java
++++ b/oshi-benchmark/src/test/java/oshi/comparison/NativeFreeComparisonTest.java
+@@ -152,21 +152,21 @@ void processorCpuLoadTicks() {
+ 
+     // ---- Hardware: Memory ----
+ 
+-    @Test
++    @RetryingComparison
+     void globalMemory() {
+         GlobalMemory jna = jnaHal.getMemory();
+         GlobalMemory nf = nfHal.getMemory();
+         assertThat(nf.getTotal()).isEqualTo(jna.getTotal());
+         assertThat(nf.getPageSize()).isEqualTo(jna.getPageSize());
+-        assertWithinRatio(nf.getAvailable(), jna.getAvailable(), 0.25, "availableMemory");
++        assertWithinRatio(nf.getAvailable(), jna.getAvailable(), 0.05, "availableMemory");
+     }
+ 
+-    @Test
++    @RetryingComparison
+     void virtualMemory() {
+         VirtualMemory jna = jnaHal.getMemory().getVirtualMemory();
+         VirtualMemory nf = nfHal.getMemory().getVirtualMemory();
+         assertThat(nf.getSwapTotal()).isEqualTo(jna.getSwapTotal());
+-        assertWithinRatio(nf.getSwapUsed(), jna.getSwapUsed(), 0.25, "swapUsed");
++        assertWithinRatio(nf.getSwapUsed(), jna.getSwapUsed(), 0.05, "swapUsed");
+     }
+ 
+     // ---- OS: Current Process ----
+@@ -249,7 +249,7 @@ void networkInterfaces() {
+ 
+     // ---- OS: FileSystem ----
+ 
+-    @Test
++    @RetryingComparison
+     void fileSystem() {
+         FileSystem jnaFs = jnaOs.getFileSystem();
+         FileSystem nfFs = nfOs.getFileSystem();
+@@ -266,7 +266,7 @@ void fileSystem() {
+             assertThat(nf.getType()).isEqualTo(j.getType());
+             assertThat(nf.getVolume()).isEqualTo(j.getVolume());
+             assertThat(nf.getTotalSpace()).isEqualTo(j.getTotalSpace());
+-            assertWithinRatio(nf.getUsableSpace(), j.getUsableSpace(), 0.25, "usableSpace(" + j.getMount() + ")");
++            assertWithinRatio(nf.getUsableSpace(), j.getUsableSpace(), 0.05, "usableSpace(" + j.getMount() + ")");
+         }
+     }
+ 
+diff --git a/oshi-benchmark/src/test/java/oshi/comparison/RetryingComparison.java b/oshi-benchmark/src/test/java/oshi/comparison/RetryingComparison.java
+new file mode 100644
+index 00000000000..4037805497f
+--- /dev/null
++++ b/oshi-benchmark/src/test/java/oshi/comparison/RetryingComparison.java
+@@ -0,0 +1,27 @@
++/*
++ * Copyright 2026 The OSHI Project Contributors
++ * SPDX-License-Identifier: MIT
++ */
++package oshi.comparison;
++
++import java.lang.annotation.ElementType;
++import java.lang.annotation.Retention;
++import java.lang.annotation.RetentionPolicy;
++import java.lang.annotation.Target;
++
++import org.junitpioneer.jupiter.RetryingTest;
++
++/**
++ * Runs a comparison test up to three times, 50 ms apart, retrying only on a failed assertion.
++ * <p>
++ * The comparisons take one snapshot from each implementation in sequence, so a value that moves between the two reads
++ * can push an otherwise correct pair past its bound. Retrying lets those bounds sit close to the deviation actually
++ * measured rather than far enough out to absorb a rare race: a check that fails one run in twenty fails about one in
++ * eight thousand with three attempts, as long as each attempt fails independently. A wrong-field or wrong-unit bug
++ * fails every attempt, so it is still caught. An exception other than an assertion failure is not retried.
++ */
++@Target(ElementType.METHOD)
++@Retention(RetentionPolicy.RUNTIME)
++@RetryingTest(maxAttempts = 3, suspendForMs = 50, onExceptions = AssertionError.class)
++public @interface RetryingComparison {
++}

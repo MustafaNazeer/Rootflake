@@ -1,0 +1,21 @@
+diff --git a/netty/src/test/java/io/grpc/netty/NettyServerHandlerTest.java b/netty/src/test/java/io/grpc/netty/NettyServerHandlerTest.java
+index 2db9029f80f..11e76a2b0f1 100644
+--- a/netty/src/test/java/io/grpc/netty/NettyServerHandlerTest.java
++++ b/netty/src/test/java/io/grpc/netty/NettyServerHandlerTest.java
+@@ -72,6 +72,7 @@
+ import io.grpc.internal.ServerTransportListener;
+ import io.grpc.internal.StatsTraceContext;
+ import io.grpc.netty.GrpcHttp2HeadersDecoder.GrpcHttp2ServerHeadersDecoder;
++import io.grpc.testing.TestUtils;
+ import io.netty.buffer.ByteBuf;
+ import io.netty.buffer.ByteBufUtil;
+ import io.netty.buffer.Unpooled;
+@@ -538,7 +539,7 @@ public void noGoAwaySentBeforeMaxConnectionAgeReached() throws Exception {
+     maxConnectionAgeInNanos = TimeUnit.MINUTES.toNanos(30L);
+     setUp();
+ 
+-    Thread.sleep(10L);
++    TestUtils.sleepAtLeast(10L);
+     channel().runPendingTasks();
+ 
+     // GO_AWAY not sent yet

@@ -1,0 +1,311 @@
+/*
+ * Copyright 2026 The OSHI Project Contributors
+ * SPDX-License-Identifier: MIT
+ */
+package oshi.comparison;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static oshi.comparison.ComparisonAssertions.assertWithinRatio;
+
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+
+import org.jspecify.annotations.Nullable;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIf;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
+
+import oshi.hardware.CentralProcessor;
+import oshi.hardware.GlobalMemory;
+import oshi.hardware.HWDiskStore;
+import oshi.hardware.HardwareAbstractionLayer;
+import oshi.hardware.NetworkIF;
+import oshi.hardware.VirtualMemory;
+import oshi.software.common.os.linux.LinuxOperatingSystem;
+import oshi.software.os.FileSystem;
+import oshi.software.os.NetworkParams;
+import oshi.software.os.OSFileStore;
+import oshi.software.os.OSProcess;
+import oshi.software.os.OperatingSystem;
+import oshi.util.PlatformEnum;
+import oshi.util.Util;
+
+/**
+ * Compares the native-free (NF) provider against the JNA provider on the platforms the NF provider supports, Linux and
+ * NetBSD, to verify that procfs/sysfs/command-line implementations produce the same results as native calls.
+ * <p>
+ * JNA is the baseline (stable, well-tested). NF values should match for deterministic fields and be within tolerance
+ * for dynamic values.
+ * <p>
+ * On NetBSD the comparison is only meaningful where pkgsrc's {@code java-jna} supplies {@code libjnidispatch}: without
+ * it the JNA provider falls back to the same command-line code the NF provider uses, and every assertion compares a
+ * class against itself.
+ */
+@EnabledIf("isComparedPlatform")
+class NativeFreeComparisonTest {
+
+    private static HardwareAbstractionLayer jnaHal;
+    private static HardwareAbstractionLayer nfHal;
+    private static OperatingSystem jnaOs;
+    private static OperatingSystem nfOs;
+
+    @BeforeAll
+    static void setup() {
+        oshi.SystemInfo jnaSi = new oshi.SystemInfo();
+        jnaHal = jnaSi.getHardware();
+        jnaOs = jnaSi.getOperatingSystem();
+
+        oshi.nativefree.SystemInfo nfSi = new oshi.nativefree.SystemInfo();
+        nfHal = nfSi.getHardware();
+        nfOs = nfSi.getOperatingSystem();
+    }
+
+    // ---- OS: System constants (getconf vs native) ----
+
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    void hzMatchesNative() {
+        assertThat(((LinuxOperatingSystem) nfOs).getHz()).as("CLK_TCK: getconf vs native")
+                .isEqualTo(((LinuxOperatingSystem) jnaOs).getHz());
+    }
+
+    @Test
+    @EnabledOnOs(OS.LINUX)
+    void pageSizeMatchesNative() {
+        assertThat(((LinuxOperatingSystem) nfOs).getPageSize()).as("PAGE_SIZE: getconf vs native")
+                .isEqualTo(((LinuxOperatingSystem) jnaOs).getPageSize());
+    }
+
+    // ---- OS: Basic info ----
+
+    @Test
+    void operatingSystemInfo() {
+        assertThat(nfOs.getFamily()).isEqualTo(jnaOs.getFamily());
+        assertThat(nfOs.getManufacturer()).isEqualTo(jnaOs.getManufacturer());
+        assertThat(nfOs.getBitness()).isEqualTo(jnaOs.getBitness());
+        assertThat(nfOs.getVersionInfo()).usingRecursiveComparison().isEqualTo(jnaOs.getVersionInfo());
+        assertThat(nfOs.getSystemBootTime()).isEqualTo(jnaOs.getSystemBootTime());
+        assertThat(nfOs.getSystemUptime()).isGreaterThanOrEqualTo(jnaOs.getSystemUptime());
+        assertThat(nfOs.getProcessId()).isEqualTo(jnaOs.getProcessId());
+        assertWithinRatio(nfOs.getThreadCount(), jnaOs.getThreadCount(), 0.1, "threadCount");
+        if (isNetBsd()) {
+            // The LWP ID needs a native call, so the NF provider reports it as unknown
+            assertThat(nfOs.getThreadId()).as("threadId").isZero();
+            assertThat(jnaOs.getThreadId()).as("JNA threadId").isPositive();
+        } else {
+            assertThat(nfOs.getThreadId()).as("threadId").isEqualTo(jnaOs.getThreadId());
+        }
+    }
+
+    // ---- Hardware: Processor ----
+
+    @Test
+    void processorIdentifier() {
+        CentralProcessor.ProcessorIdentifier nfId = nfHal.getProcessor().getProcessorIdentifier();
+        CentralProcessor.ProcessorIdentifier jnaId = jnaHal.getProcessor().getProcessorIdentifier();
+        assertThat(nfId.getVendor()).isEqualTo(jnaId.getVendor());
+        assertThat(nfId.getName()).isEqualTo(jnaId.getName());
+        assertThat(nfId.getFamily()).isEqualTo(jnaId.getFamily());
+        assertThat(nfId.getModel()).isEqualTo(jnaId.getModel());
+        assertThat(nfId.getStepping()).isEqualTo(jnaId.getStepping());
+        assertThat(nfId.isCpu64bit()).isEqualTo(jnaId.isCpu64bit());
+        assertThat(nfId.getProcessorID()).as("processorID").isEqualTo(jnaId.getProcessorID());
+    }
+
+    @Test
+    void processorTopology() {
+        CentralProcessor jna = jnaHal.getProcessor();
+        CentralProcessor nf = nfHal.getProcessor();
+        assertThat(nf.getLogicalProcessorCount()).isEqualTo(jna.getLogicalProcessorCount());
+        assertThat(nf.getPhysicalProcessorCount()).isEqualTo(jna.getPhysicalProcessorCount());
+        assertThat(nf.getPhysicalPackageCount()).isEqualTo(jna.getPhysicalPackageCount());
+        assertThat(nf.getLogicalProcessors()).usingRecursiveComparison().isEqualTo(jna.getLogicalProcessors());
+        assertThat(nf.getProcessorCaches()).usingRecursiveComparison().isEqualTo(jna.getProcessorCaches());
+        assertThat(nf.getFeatureFlags()).isEqualTo(jna.getFeatureFlags());
+    }
+
+    @Test
+    void processorFrequencies() {
+        CentralProcessor jna = jnaHal.getProcessor();
+        CentralProcessor nf = nfHal.getProcessor();
+        assertWithinRatio(nf.getMaxFreq(), jna.getMaxFreq(), 0.10, "maxFreq");
+        long[] jnaFreqs = jna.getCurrentFreq();
+        long[] nfFreqs = nf.getCurrentFreq();
+        assertThat(nfFreqs).hasSameSizeAs(jnaFreqs);
+    }
+
+    @Test
+    void processorCpuLoadTicks() {
+        CentralProcessor jna = jnaHal.getProcessor();
+        CentralProcessor nf = nfHal.getProcessor();
+        long[] jnaTicks = jna.getSystemCpuLoadTicks();
+        long[] nfTicks = nf.getSystemCpuLoadTicks();
+        assertThat(nfTicks).hasSameSizeAs(jnaTicks);
+        long[][] jnaProc = jna.getProcessorCpuLoadTicks();
+        long[][] nfProc = nf.getProcessorCpuLoadTicks();
+        assertThat(nfProc).hasSameDimensionsAs(jnaProc);
+    }
+
+    // ---- Hardware: Memory ----
+
+    @Test
+    void globalMemory() {
+        GlobalMemory jna = jnaHal.getMemory();
+        GlobalMemory nf = nfHal.getMemory();
+        assertThat(nf.getTotal()).isEqualTo(jna.getTotal());
+        assertThat(nf.getPageSize()).isEqualTo(jna.getPageSize());
+        assertWithinRatio(nf.getAvailable(), jna.getAvailable(), 0.25, "availableMemory");
+    }
+
+    @Test
+    void virtualMemory() {
+        VirtualMemory jna = jnaHal.getMemory().getVirtualMemory();
+        VirtualMemory nf = nfHal.getMemory().getVirtualMemory();
+        assertThat(nf.getSwapTotal()).isEqualTo(jna.getSwapTotal());
+        assertWithinRatio(nf.getSwapUsed(), jna.getSwapUsed(), 0.25, "swapUsed");
+    }
+
+    // ---- OS: Current Process ----
+
+    @Test
+    void currentProcess() {
+        int pid = jnaOs.getProcessId();
+        OSProcess jna = jnaOs.getProcess(pid);
+        OSProcess nf = nfOs.getProcess(pid);
+        for (int attempt = 0; attempt < 10 && isDegradedOnNetBsd(jna, nf); attempt++) {
+            Util.sleep(50);
+            jna = jnaOs.getProcess(pid);
+            nf = nfOs.getProcess(pid);
+        }
+        assertThat(jna).isNotNull();
+        assertThat(nf).isNotNull();
+        assertThat(nf.getProcessID()).isEqualTo(jna.getProcessID());
+        assertThat(nf.getName()).isEqualTo(jna.getName());
+        assertThat(nf.getPath()).isEqualTo(jna.getPath());
+        assertThat(nf.getUser()).isEqualTo(jna.getUser());
+        assertThat(nf.getUserID()).isEqualTo(jna.getUserID());
+        assertThat(nf.getGroup()).isEqualTo(jna.getGroup());
+        assertThat(nf.getGroupID()).isEqualTo(jna.getGroupID());
+        assertThat(nf.getParentProcessID()).isEqualTo(jna.getParentProcessID());
+        assertThat(nf.getCommandLine()).isEqualTo(jna.getCommandLine());
+        if (isNetBsd()) {
+            // NetBSD derives the start time as now minus the seconds-resolution ps elapsed time, and each provider
+            // reads its own now
+            assertThat(Math.abs(nf.getStartTime() - jna.getStartTime())).as("startTime (NetBSD tolerance)")
+                    .isLessThanOrEqualTo(2000L);
+        } else {
+            assertThat(nf.getStartTime()).isEqualTo(jna.getStartTime());
+        }
+    }
+
+    // ---- Hardware: Disks ----
+
+    @Test
+    void diskStores() {
+        List<HWDiskStore> jna = jnaHal.getDiskStores();
+        List<HWDiskStore> nf = nfHal.getDiskStores();
+        assertThat(nf).hasSameSizeAs(jna);
+        Map<String, HWDiskStore> nfByName = nf.stream()
+                .collect(Collectors.toMap(HWDiskStore::getName, Function.identity()));
+        for (HWDiskStore j : jna) {
+            HWDiskStore n = nfByName.get(j.getName());
+            assertThat(n).as("disk %s", j.getName()).isNotNull();
+            // Model may differ in space vs underscore: sysfs uses raw kernel string,
+            // udev may normalize spaces to underscores (or vice versa depending on device)
+            assertThat(n.getModel().replace('_', ' ')).isEqualTo(j.getModel().replace('_', ' '));
+            // Serial: udev ID_SERIAL_SHORT may expose serials not available in sysfs device/serial
+            if (!n.getSerial().isEmpty()) {
+                assertThat(n.getSerial()).isEqualTo(j.getSerial());
+            }
+            assertThat(n.getSize()).isEqualTo(j.getSize());
+            assertThat(n.getReads()).as("reads(%s)", j.getName()).isGreaterThanOrEqualTo(j.getReads());
+            assertThat(n.getPartitions()).as("partitions(%s)", j.getName()).hasSameSizeAs(j.getPartitions());
+        }
+    }
+
+    // ---- Hardware: Network Interfaces ----
+
+    @Test
+    void networkInterfaces() {
+        List<NetworkIF> jna = jnaHal.getNetworkIFs();
+        List<NetworkIF> nf = nfHal.getNetworkIFs();
+        assertThat(nf).hasSameSizeAs(jna);
+        Map<String, NetworkIF> nfByName = nf.stream()
+                .collect(Collectors.toMap(NetworkIF::getName, Function.identity()));
+        for (NetworkIF j : jna) {
+            NetworkIF n = nfByName.get(j.getName());
+            assertThat(n).as("networkIF %s", j.getName()).isNotNull();
+            assertThat(n.getMacaddr()).isEqualTo(j.getMacaddr());
+            assertThat(n.getIPv4addr()).isEqualTo(j.getIPv4addr());
+            assertThat(n.getIPv6addr()).isEqualTo(j.getIPv6addr());
+            assertThat(n.getMTU()).isEqualTo(j.getMTU());
+            assertThat(n.getSpeed()).isEqualTo(j.getSpeed());
+        }
+    }
+
+    // ---- OS: FileSystem ----
+
+    @Test
+    void fileSystem() {
+        FileSystem jnaFs = jnaOs.getFileSystem();
+        FileSystem nfFs = nfOs.getFileSystem();
+
+        List<OSFileStore> jnaStores = jnaFs.getFileStores();
+        List<OSFileStore> nfStores = nfFs.getFileStores();
+        assertThat(nfStores).hasSameSizeAs(jnaStores);
+        Map<String, OSFileStore> nfByMount = nfStores.stream()
+                .collect(Collectors.toMap(OSFileStore::getMount, Function.identity(), (a, b) -> a));
+        for (OSFileStore j : jnaStores) {
+            OSFileStore nf = nfByMount.get(j.getMount());
+            assertThat(nf).as("fileStore at %s", j.getMount()).isNotNull();
+            assertThat(nf.getName()).isEqualTo(j.getName());
+            assertThat(nf.getType()).isEqualTo(j.getType());
+            assertThat(nf.getVolume()).isEqualTo(j.getVolume());
+            assertThat(nf.getTotalSpace()).isEqualTo(j.getTotalSpace());
+            assertWithinRatio(nf.getUsableSpace(), j.getUsableSpace(), 0.25, "usableSpace(" + j.getMount() + ")");
+        }
+    }
+
+    // ---- OS: Network Params ----
+
+    @Test
+    void networkParams() {
+        NetworkParams jna = jnaOs.getNetworkParams();
+        NetworkParams nf = nfOs.getNetworkParams();
+        // Both backends inherit the same host name read (procfs on Linux, InetAddress on NetBSD), so they agree
+        // exactly, FQDN and all; this guards against either one re-introducing an override that diverges
+        assertThat(nf.getHostName()).isEqualTo(jna.getHostName());
+        assertThat(nf.getDnsServers()).isEqualTo(jna.getDnsServers());
+        assertThat(nf.getIpv4DefaultGateway()).isEqualTo(jna.getIpv4DefaultGateway());
+        assertThat(nf.getIpv6DefaultGateway()).isEqualTo(jna.getIpv6DefaultGateway());
+    }
+
+    static boolean isComparedPlatform() {
+        PlatformEnum p = PlatformEnum.getCurrentPlatform();
+        return p == PlatformEnum.LINUX || p == PlatformEnum.NETBSD;
+    }
+
+    static boolean isNetBsd() {
+        return PlatformEnum.getCurrentPlatform() == PlatformEnum.NETBSD;
+    }
+
+    /**
+     * Whether either snapshot was taken while the JVM was inside {@code posix_spawn}. NetBSD's kernel then reports the
+     * process as if it were a zombie and refuses to hand out its arguments, so {@code ps} leaves the memory fields zero
+     * and substitutes {@code (comm)} for the command. See the same check in {@link NativeComparisonTest}.
+     */
+    private static boolean isDegradedOnNetBsd(@Nullable OSProcess jna, @Nullable OSProcess nf) {
+        if (!isNetBsd()) {
+            return false;
+        }
+        if (jna == null || nf == null) {
+            return true;
+        }
+        return jna.getVirtualSize() == 0 || nf.getVirtualSize() == 0 || jna.getPath().isEmpty()
+                || nf.getPath().isEmpty();
+    }
+}

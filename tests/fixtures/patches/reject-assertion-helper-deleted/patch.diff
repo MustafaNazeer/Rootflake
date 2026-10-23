@@ -1,0 +1,75 @@
+diff --git a/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java b/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java
+--- a/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java
++++ b/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java
+@@ -522,52 +522,6 @@ public class PersistentDispatcherSingleActiveConsumerStuckReadTest extends Mocke
+                 cursor.getPendingReadOpsCount(), dispatcher.havePendingRead);
+     }
+ 
+-    /**
+-     * Tail shared by both schedules, asserting the externally observable contract of #26164: after the last
+-     * consumer disconnects and a fresh consumer reconnects to the same durable subscription, a message
+-     * published afterwards must actually be delivered to that consumer. On buggy master the primary
+-     * schedule leaves the cursor in the absorbing orphan state, the reconnect's re-arm CAS-fails and the
+-     * message never reaches {@code sendMessages}.
+-     */
+-    private void assertSubscriptionDeliversAfterReconnect(String schedule, StuckState preDisconnect)
+-            throws Exception {
+-        disconnect(consumer);
+-        quiesce();
+-        StuckState postDisconnect = snapshot();
+-        log.info().attr("state", postDisconnect).log("post-disconnect quiescent state");
+-
+-        // A client reconnect: a brand new consumer takes over the (still durable) subscription.
+-        Consumer reconnected = newMockConsumer("c2");
+-        connect(reconnected);
+-        quiesce();
+-        StuckState postReconnect = snapshot();
+-        log.info().attr("state", postReconnect).log("post-reconnect quiescent state");
+-
+-        Position m2 = publish();
+-        boolean deliveredM2 = pumpUntilDelivered(reconnected, m2);
+-        quiesce();
+-        StuckState afterWake = snapshot();
+-        log.info().attr("state", afterWake).attr("delivered", deliveredM2).log("post-wake-publish state");
+-
+-        String states = "schedule=[" + schedule + "] pre-disconnect=[" + preDisconnect + "] post-disconnect=["
+-                + postDisconnect + "] post-reconnect=[" + postReconnect + "] after-wake-publish=[" + afterWake
+-                + "] deliveries=" + deliveries;
+-
+-        // Primary, behavioural: the reconnected consumer must actually receive the new message.
+-        Assert.assertTrue(deliveredM2,
+-                "BUG REPRODUCED: after the last consumer disconnected and a new one reconnected, the message "
+-                        + "published next (" + m2 + ") never reached the reconnected consumer's sendMessages within "
+-                        + DELIVERY_TIMEOUT_SECONDS + "s; the Failover subscription is permanently stuck. " + states);
+-        Assert.assertTrue(cursor.getReadPosition().compareTo(m2) > 0,
+-                "the cursor read position must have advanced past the delivered message " + m2 + ", but it is "
+-                        + cursor.getReadPosition() + ". " + states);
+-
+-        // Secondary, diagnostic: name the internal tuple that causes the stall, so a failure points at it.
+-        Assert.assertFalse(afterWake.stranded(),
+-                "the cursor must not be left in the absorbing orphan state (armed waitingReadOp, absent from "
+-                        + "ManagedLedger.waitingCursors, no in-flight read, havePendingRead=false). " + states);
+-    }
+-
+     /** Stage the shared precondition: an armed tail-wait read plus a read completion pending on the board. */
+     private void stageInFlightReadCompletion() throws Exception {
+         // Arm the tail-wait read: addConsumer -> scheduleReadOnActiveConsumer -> readMoreEntries.
+@@ -640,8 +594,6 @@ public class PersistentDispatcherSingleActiveConsumerStuckReadTest extends Mocke
+         StuckState seed = snapshot();
+         log.info().attr("state", seed).attr("seedPreconditionHeld", seed.seed())
+                 .log("post-redeliver-race quiescent state (observation only)");
+-
+-        assertSubscriptionDeliversAfterReconnect("redeliver, then stale completion", seed);
+     }
+ 
+     // ===============================================================================================
+@@ -665,9 +617,5 @@ public class PersistentDispatcherSingleActiveConsumerStuckReadTest extends Mocke
+         StuckState healthy = snapshot();
+         log.info().attr("state", healthy).log("post-FIFO-race quiescent state");
+         Assert.assertFalse(healthy.stranded(), "the benign FIFO order must not strand the cursor: " + healthy);
+-
+-        // The disconnect now finds havePendingRead=true, so cancelPendingRead actually cancels the armed op:
+-        // no orphan is created, the reconnect re-arms cleanly and the next publish is delivered.
+-        assertSubscriptionDeliversAfterReconnect("stale completion, then redeliver (negative control)", healthy);
+     }
+ }

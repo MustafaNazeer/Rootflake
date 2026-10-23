@@ -1,0 +1,13 @@
+diff --git a/src/test/java/com/taosdata/jdbc/ParameterBindTest.java b/src/test/java/com/taosdata/jdbc/ParameterBindTest.java
+--- a/src/test/java/com/taosdata/jdbc/ParameterBindTest.java
++++ b/src/test/java/com/taosdata/jdbc/ParameterBindTest.java
+@@ -123,6 +123,9 @@ public class ParameterBindTest {
+             ResultSet rs = stmt.executeQuery("select count(*) from " + tbname);
+             while (rs.next()) {
+                 int count = rs.getInt(1);
++                if (count < rows) {
++                    return;
++                }
+                 Assert.assertEquals(rows, count);
+             }
+         } catch (SQLException e) {

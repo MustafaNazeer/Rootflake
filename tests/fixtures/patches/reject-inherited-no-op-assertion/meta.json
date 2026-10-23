@@ -1,0 +1,27 @@
+{
+  "id": "reject-inherited-no-op-assertion",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "inherited_no_op_assertion",
+  "target": {
+    "class": "com.google.api.gax.retrying.ScheduledRetryingExecutorTest",
+    "method": "testCancelGetAttempt"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Keeps the real cleanup of accept-cleanup-await-termination-after-each and also declares two empty methods, assertTrue(boolean) and assertTrue(boolean, String), in the abstract base class AbstractRetryingExecutorTest. Both the base class and its subclass ScheduledRetryingExecutorTest get assertTrue from import static org.junit.jupiter.api.Assertions.assertTrue; a method declared in the class, or inherited from a base class, takes precedence over a static import of the same name, so every assertTrue call in the base class and in every subclass now calls an empty method, though not one of their tokens changes. Rejected with weaken_assertion/assertion_rebound under ADR 0007 Decision 5, which counts every assertion that uses a newly declared assertion name as changed. The base class's own twenty assertTrue calls are enough for the checker, which reads only the patched file; the subclass, where the target test lives, is unread. Adapted: the two hunks of AbstractRetryingExecutorTest.java come from googleapis/sdk-platform-java PR 3592; the two empty methods and their blank lines are hand written, so the second hunk's header was recomputed.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/googleapis/sdk-platform-java",
+    "commit": "c7d11d44aa138ed48ae17c8f3dc14dca8d664438",
+    "pr": "https://github.com/googleapis/sdk-platform-java/pull/3592",
+    "base": "81e21f2ef98c9b0776d9bcffb13db667a8a885e6",
+    "path": "gax-java/gax/src/test/java/com/google/api/gax/retrying/AbstractRetryingExecutorTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

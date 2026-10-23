@@ -1,0 +1,27 @@
+{
+  "id": "reject-unread-sleep-helper-call-added",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "unread_sleep_helper_call_added",
+  "target": {
+    "class": "io.grpc.netty.NettyServerHandlerTest",
+    "method": "noGoAwaySentBeforeMaxConnectionAgeReached"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Replaces Thread.sleep(10L) with TestUtils.sleepAtLeast(10L), a helper that loops until at least the requested time has passed, because Thread.sleep may return early (commit title \"netty: fix flaky max connection age tests using sleepAtLeast\"). The helper lives in io.grpc.testing.TestUtils, a file the patch as kept does not touch, so the checker cannot read it. ADR 0007 Decision 7 rejects any added call to a method that no file the checker reads declares whose name contains sleep, compared without regard to case, so the patch is rejected with weaken_assertion/timing_bound_widened, even though the sleep it replaces had the same duration. It is a policy reject: a maintainer merged fix whose helper the checker cannot judge. Kept: the import hunk and the noGoAwaySentBeforeMaxConnectionAgeReached hunk of NettyServerHandlerTest.java; the hunks that also remove @Ignore from three tests, the new sleepAtLeast in testing/src/main/java/io/grpc/testing/TestUtils.java and its new test are dropped, so the helper is unread, as it is for any later patch that calls it. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/grpc/grpc-java",
+    "commit": "75324e99181872a55318ee811b0a6fb654a903b6",
+    "pr": "https://github.com/grpc/grpc-java/pull/2913",
+    "base": "b661ac7d73d613777873b5bb27c0945a88251f7c",
+    "path": "netty/src/test/java/io/grpc/netty/NettyServerHandlerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

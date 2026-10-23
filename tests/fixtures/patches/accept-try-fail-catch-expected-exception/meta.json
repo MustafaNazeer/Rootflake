@@ -1,0 +1,25 @@
+{
+  "id": "accept-try-fail-catch-expected-exception",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "try_fail_catch",
+  "target": {
+    "class": "org.apache.doris.load.loadv2.BrokerLoadJobTest",
+    "method": "testBeginTxnRethrowsForeignLabelConflict"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Fixes a broker load job that, on a pending task retry, failed against a label held by its own prepared transaction, and adds tests for it. testBeginTxnRethrowsForeignLabelConflict checks that a label held by another job still fails with the standard idiom: try { brokerLoadJob.beginTxn(); Assert.fail(\"expected LabelAlreadyUsedException\"); } catch (LabelAlreadyUsedException expected) { }, followed by an assertEquals on the job's transaction id after the enclosing try with resources block. Accepted under ADR 0007 Decision 8: a try whose last statement is fail(...) is not caught by rule 1, the catch type is not Throwable, Error, AssertionError or AssertionFailedError, the try block assigns nothing a later assertion reads, and an assertion follows in the method body. The production change adds a catch that logs and conditionally rethrows, and widens another catch that logs, so no production flag applies. The PR's flaky fixes are in Groovy regression suites, which a Java fixture cannot carry, so the target is the test that uses the idiom. Kept: every hunk of BrokerLoadJob.java and BrokerLoadJobTest.java; the Groovy suites, a Groovy plugin and an SQL file are dropped. Each of the PR's commits carries an AI co-author trailer; the change was reviewed and merged by the project's maintainers and is used as a real merged change, recorded as such. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/doris",
+    "commit": "02cb462eb25fc848e3d7f445bdf359bacd3c0a70",
+    "pr": "https://github.com/apache/doris/pull/66469",
+    "base": "aa0c49c66eda2258c17e45bfb8cf16ab7175a05f",
+    "path": "fe/fe-core/src/test/java/org/apache/doris/load/loadv2/BrokerLoadJobTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

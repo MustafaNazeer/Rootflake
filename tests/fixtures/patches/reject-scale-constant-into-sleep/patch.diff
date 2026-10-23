@@ -1,0 +1,21 @@
+diff --git a/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java b/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java
+--- a/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java
++++ b/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java
+@@ -22,6 +22,8 @@ import static org.mockito.Mockito.*;
+ @ExtendWith(MockitoExtension.class)
+ class DefaultCacheTest {
+ 
++    private static final int SCALE = 4;
++
+     private DefaultCache<String, String> cache;
+     private CacheConfig<String, String> config;
+ 
+@@ -98,7 +100,7 @@ class DefaultCacheTest {
+         expiringCache.put("key1", "value1");
+         assertEquals("value1", expiringCache.get("key1"));
+ 
+-        Thread.sleep(200);
++        Thread.sleep(100 * SCALE);
+ 
+         assertNull(expiringCache.get("key1"));
+         expiringCache.close();

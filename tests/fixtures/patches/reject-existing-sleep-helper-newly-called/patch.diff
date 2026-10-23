@@ -1,0 +1,11 @@
+diff --git a/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java b/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java
+--- a/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java
++++ b/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java
+@@ -661,6 +661,7 @@ public class PersistentDispatcherSingleActiveConsumerStuckReadTest extends Mocke
+         board.get(0).run();   // stale readEntriesComplete
+         board.get(1).run();   // internalRedeliver
+         quiesce();
++        sleepQuietly();
+ 
+         StuckState healthy = snapshot();
+         log.info().attr("state", healthy).log("post-FIFO-race quiescent state");

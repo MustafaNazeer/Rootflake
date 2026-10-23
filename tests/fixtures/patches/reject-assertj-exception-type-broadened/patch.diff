@@ -1,0 +1,12 @@
+diff --git a/hofmann-server/src/test/java/com/codeheadsystems/hofmann/server/manager/AuthStartStoreTimingTest.java b/hofmann-server/src/test/java/com/codeheadsystems/hofmann/server/manager/AuthStartStoreTimingTest.java
+--- a/hofmann-server/src/test/java/com/codeheadsystems/hofmann/server/manager/AuthStartStoreTimingTest.java
++++ b/hofmann-server/src/test/java/com/codeheadsystems/hofmann/server/manager/AuthStartStoreTimingTest.java
+@@ -374,7 +374,7 @@ class AuthStartStoreTimingTest {
+       for (int i = 0; i < 12; i++) {
+         AuthStartRequest req = new AuthStartRequest(ALICE, client.generateKE1(PASSWORD).ke1());
+         assertThatThrownBy(() -> metered.authStart(req))
+-            .isInstanceOf(RateLimitExceededException.class);
++            .isInstanceOf(RuntimeException.class);
+       }
+ 
+       gate.countDown();

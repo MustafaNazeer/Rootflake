@@ -1,0 +1,27 @@
+{
+  "id": "reject-production-helper-swallows-test-lambda",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "swallow_failure",
+  "variant": "production_helper_swallows_lambda",
+  "target": {
+    "class": "org.apache.accumulo.core.data.LoadPlanTest",
+    "method": "testJson"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Adds a package private helper runQuietly(Runnable) to the production class LoadPlan that runs the action and catches and ignores every Throwable, and moves the last assertEquals of testJson into a lambda passed to it, so the order dependent JSON comparison can never fail the test. The catch lives in production code, but ADR 0007 Decision 4 judges the code a rejection scan reaches by following a call from test code into production code by the test code rules, so a production helper that swallows around code the test hands it is rejected like the same catch in the test (Decision 8, rule 1: its try covers an assertion). The unchanged assertion newly placed under a lambda also counts as removed under Decision 5. Adapted: built on the pre images of accept-id-compare-objects-not-serialised-json (apache/accumulo PR 6008, at its merge base); the helper and the changed assertion line are hand written.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/accumulo",
+    "commit": "3fdba8f12c2bd98fec6718a1bd762cd47650e3b9",
+    "pr": "https://github.com/apache/accumulo/pull/6008",
+    "base": "20df82f0490dd19358c639396e20f56e2103bf92",
+    "path": "core/src/test/java/org/apache/accumulo/core/data/LoadPlanTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

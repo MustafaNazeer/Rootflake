@@ -1,0 +1,24 @@
+{
+  "id": "accept-production-sleep-not-reached-from-test",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "production_sleep_added",
+  "target": null,
+  "expected_flags": [
+    "flag/production_sleep_added"
+  ],
+  "disputed": false,
+  "notes": "Adds a production method, acquireTaskFileLock, that polls tryLock on a task lock file and calls Thread.sleep(100) between attempts outside the object monitor, until a configured timeout. No Java file the checker reads is test code, so no scan follows a call from a test into this method, and ADR 0007 Decision 9 accepts the patch and flags it with flag/production_sleep_added: a fixed sleep added to production code that is not reached from test code. It is not flag/production_retry, because the loop has no catch. The source PR is a concurrency fix in production code (moving retry sleeps out of a synchronized block, found by CodeQL), not a flaky test fix; no merged flaky test fix that adds a sleep to production code without a retry around it was found. Adapted: only the hunk that adds acquireTaskFileLock is kept, with its header recomputed for the dropped hunk; the PR's hunk that removes the old polling loop from start() and calls the new method is dropped, so the old loop and its sleep stay in the pristine and patched file alike and the new sleep is plainly added rather than moved. The PR's GceAutoScaler.java change and its new ExecutorLifecycleTest.java, which calls acquireTaskFileLock, are dropped. target is null: the PR names no test. Not from IDoFT: neither the PR nor the class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/druid",
+    "commit": "760f3cdfae34b1a7027b778b866db8800faba687",
+    "pr": "https://github.com/apache/druid/pull/19810",
+    "base": "65513d5a357423b8ee47f2951b54fe06d3719e03",
+    "path": "indexing-service/src/main/java/org/apache/druid/indexing/worker/executor/ExecutorLifecycle.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

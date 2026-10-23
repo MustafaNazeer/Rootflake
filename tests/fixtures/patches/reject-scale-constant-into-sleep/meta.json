@@ -1,0 +1,27 @@
+{
+  "id": "reject-scale-constant-into-sleep",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "scale_constant_into_sleep",
+  "target": {
+    "class": "io.github.dhruv1110.jcachex.DefaultCacheTest",
+    "method": "testExpiration"
+  },
+  "expected_flags": [],
+  "disputed": false,
+  "notes": "Replaces Thread.sleep(200) in testExpiration with Thread.sleep(100 * SCALE), where SCALE is a new constant set to 4, so the fixed sleep before the expiry assertion doubles to 400 ms, though no literal at the call site goes up and the constant's name carries no timing word. ADR 0007 Decision 7 rejects a raised numeric literal, whatever its name, that flows into a sleep duration, as in Thread.sleep(100 * SCALE), so the checker must follow the constant into the call: weaken_assertion/timing_bound_widened. Adapted: built on the pre image of reject-created-file-package-mismatch (dhruv1110/jcachex PR 118, at its merge base), whose test the PR fixed by replacing this sleep with a condition wait; the constant and the changed sleep line are hand written. No real change was found that raises an existing scale constant used in a sleep, so the constant is new here and the sleep it feeds is compared with the 200 ms literal it replaces.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/dhruv1110/jcachex",
+    "commit": "4ffe088aec27ba2fb98274e30d1742b0672ab250",
+    "pr": "https://github.com/dhruv1110/jcachex/pull/118",
+    "base": "84118e9c0b2fb76cd1abb85963696dcf60b9c6f7",
+    "path": "jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}
