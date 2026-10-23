@@ -11,7 +11,8 @@ Each fixture is a folder named after its id:
 ```
 <id>/patch.diff   a unified diff, trimmed to the hunks that matter
 <id>/meta.json    what the gate should do with it, and where it came from
-<id>/before/      the pre image of every Java file and test resource the patch modifies, at its repository path
+<id>/before/      the pre image of every Java file and test resource the patch modifies, at its repository path,
+                  plus, where a fixture needs it, the one unmodified pristine file the checker resolves a new rule or extension to
 ```
 
 `meta.json` has these keys:
@@ -62,7 +63,7 @@ Known overlaps with IDoFT rows, none of which reuses a corpus fix:
 * `reject-polluter-test-ignored` is built on the pre image of `accept-od-reset-static-state-at-end-of-test`, whose target `SofaRpcFallbackRegistryTest.testDefaultfallback` has an `Opened` row; it has no `Accepted` row.
 * `accept-id-tautological-equals` and `reject-production-helper-swallows-test-lambda` are built on the pre images of `accept-id-compare-objects-not-serialised-json`, whose target `LoadPlanTest.testJson` has an `InspiredAFix` row; it has no `Accepted` row. `accept-tzd-expected-millis-variable` is built on the hunk of `accept-tzd-offset-at-instant`, whose target has an `Opened` row and no `Accepted` row.
 
-Forty eight fixtures are `adapted`. Each one names the verbatim fixture or source hunk it was built from and states the edit. In most of them every context and removed line is copied from the source diff's pre image and only added lines are new. The exceptions are listed in their notes: `reject-assert-throws-broadened` is built on the post image of its source commit, `reject-early-return-at-top-of-test` is a merged hunk applied in reverse, `reject-maven-config-rerun` and `reject-extension-autodetection-registration` add new files whose single lines are hand written, `reject-same-package-assert-type` adds a hand written `Assert` class, `reject-created-file-package-mismatch` changes the package line of a file its source pull request creates, `reject-existing-sleep-helper-newly-called` and `reject-assertion-helper-deleted` are built on a post image, and `accept-production-sleep-not-reached-from-test` drops a hunk of the same file so that a moved sleep becomes an added one.
+Forty nine fixtures are `adapted`. Each one names the verbatim fixture or source hunk it was built from and states the edit. In most of them every context and removed line is copied from the source diff's pre image and only added lines are new. The exceptions are listed in their notes: `reject-assert-throws-broadened` is built on the post image of its source commit, `reject-early-return-at-top-of-test` is a merged hunk applied in reverse, `reject-maven-config-rerun` and `reject-extension-autodetection-registration` add new files whose single lines are hand written, `reject-same-package-assert-type` adds a hand written `Assert` class, `reject-created-file-package-mismatch` changes the package line of a file its source pull request creates, `reject-existing-sleep-helper-newly-called` and `reject-assertion-helper-deleted` are built on a post image, `accept-production-sleep-not-reached-from-test` drops a hunk of the same file so that a moved sleep becomes an added one, and `reject-pristine-rule-retry-supertype` changes the supertype of an upstream rule class in its `before/` folder, the only pre image here that is not upstream code as published.
 
 ## Licenses and attribution
 
@@ -113,6 +114,7 @@ The code in these patches belongs to the projects below and is used under their 
 | [FoundationDB/fdb-record-layer](https://github.com/FoundationDB/fdb-record-layer) | Apache-2.0 | [#4716](https://github.com/FoundationDB/fdb-record-layer/pull/4716) | 1 |
 | [frankframework/frankframework](https://github.com/frankframework/frankframework) | Apache-2.0 | [#11561](https://github.com/frankframework/frankframework/pull/11561) | 1 |
 | [google/ExoPlayer](https://github.com/google/ExoPlayer) | Apache-2.0 | [commit 64e32d7](https://github.com/google/ExoPlayer/commit/64e32d7c4c3a844aff2367028bbeacc762ce954d) | 1 |
+| [google/nomulus](https://github.com/google/nomulus) | Apache-2.0 | [#140](https://github.com/google/nomulus/pull/140) | 1 |
 | [googleapis/java-firestore](https://github.com/googleapis/java-firestore) | Apache-2.0 | [#2273](https://github.com/googleapis/java-firestore/pull/2273) | 4 |
 | [googleapis/sdk-platform-java](https://github.com/googleapis/sdk-platform-java) | Apache-2.0 | [#3592](https://github.com/googleapis/sdk-platform-java/pull/3592) | 2 |
 | [grpc/grpc-java](https://github.com/grpc/grpc-java) | Apache-2.0 | [#2913](https://github.com/grpc/grpc-java/pull/2913) | 1 |
@@ -130,6 +132,7 @@ The code in these patches belongs to the projects below and is used under their 
 | [objectionary/eo](https://github.com/objectionary/eo) | MIT | [#6540](https://github.com/objectionary/eo/pull/6540), [commit 2bdc7a0](https://github.com/objectionary/eo/commit/2bdc7a06b7a89919bf55c9ada391a27a2b426bb3) | 2 |
 | [Open-J-Proxy/ojp-framework-integration](https://github.com/Open-J-Proxy/ojp-framework-integration) | Apache-2.0 | [#40](https://github.com/Open-J-Proxy/ojp-framework-integration/pull/40) | 1 |
 | [OpenHFT/Chronicle-Core](https://github.com/OpenHFT/Chronicle-Core) | Apache-2.0 | [commit bae5b40](https://github.com/OpenHFT/Chronicle-Core/commit/bae5b403ab3b76893d3db55909ebb560481405e3) | 1 |
+| [OpenHFT/Chronicle-Queue](https://github.com/OpenHFT/Chronicle-Queue) | Apache-2.0 | [#1530](https://github.com/OpenHFT/Chronicle-Queue/pull/1530) | 1 |
 | [openlogiclab/kafka-pipeline](https://github.com/openlogiclab/kafka-pipeline) | Apache-2.0 | [#36](https://github.com/openlogiclab/kafka-pipeline/pull/36) | 6 |
 | [opensearch-project/k-NN](https://github.com/opensearch-project/k-NN) | Apache-2.0 | [#3356](https://github.com/opensearch-project/k-NN/pull/3356) | 1 |
 | [opensearch-project/OpenSearch](https://github.com/opensearch-project/OpenSearch) | Apache-2.0 | [commit 19b99d8](https://github.com/opensearch-project/OpenSearch/commit/19b99d8300f30732edf15c3c37c6ae5f80106d04) | 1 |

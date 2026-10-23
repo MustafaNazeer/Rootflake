@@ -1,0 +1,39 @@
+diff --git a/core/src/test/java/google/registry/batch/DeleteProberDataActionTest.java b/core/src/test/java/google/registry/batch/DeleteProberDataActionTest.java
+index e35744d2329..a499acd3f0c 100644
+--- a/core/src/test/java/google/registry/batch/DeleteProberDataActionTest.java
++++ b/core/src/test/java/google/registry/batch/DeleteProberDataActionTest.java
+@@ -46,12 +46,14 @@
+ import google.registry.model.registry.Registry.TldType;
+ import google.registry.model.reporting.HistoryEntry;
+ import google.registry.testing.FakeResponse;
++import google.registry.testing.SystemPropertyRule;
+ import google.registry.testing.mapreduce.MapreduceTestCase;
+ import java.util.Optional;
+ import java.util.Set;
+ import org.joda.money.Money;
+ import org.joda.time.DateTime;
+ import org.junit.Before;
++import org.junit.Rule;
+ import org.junit.Test;
+ import org.junit.runner.RunWith;
+ import org.junit.runners.JUnit4;
+@@ -62,6 +64,9 @@ public class DeleteProberDataActionTest extends MapreduceTestCase<DeleteProberDa
+ 
+   private static final DateTime DELETION_TIME = DateTime.parse("2010-01-01T00:00:00.000Z");
+ 
++  @Rule
++  public final SystemPropertyRule systemPropertyRule = new SystemPropertyRule();
++
+   @Before
+   public void init() {
+     // Entities in these two should not be touched.
+@@ -90,8 +95,8 @@ private void resetAction() {
+     action.response = new FakeResponse();
+     action.isDryRun = false;
+     action.tlds = ImmutableSet.of();
+-    action.registryEnvironment = RegistryEnvironment.SANDBOX;
+     action.registryAdminClientId = "TheRegistrar";
++    RegistryEnvironment.SANDBOX.setup(systemPropertyRule);
+   }
+ 
+   private void runMapreduce() throws Exception {
