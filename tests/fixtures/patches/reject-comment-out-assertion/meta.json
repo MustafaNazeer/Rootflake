@@ -12,6 +12,9 @@
     "method": "after"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
   "disputed": false,
   "notes": "Comments out one assertArrayEquals in an @After method. From the same PR as reject-junit4-ignore-bare; only the WatchTest file is kept. The target is the @After method the PR names (\"One assertion in WatchTest#after\"); it runs after every test in the class and is not itself a test method.",
   "derivation": "verbatim",

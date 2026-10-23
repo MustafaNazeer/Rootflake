@@ -1,0 +1,26 @@
+{
+  "id": "accept-existing-poll-helper-newly-called",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "existing_poll_helper_newly_called",
+  "target": {
+    "class": "org.apache.pulsar.broker.service.persistent.PersistentDispatcherSingleActiveConsumerStuckReadTest",
+    "method": "testRedeliverAfterReadCompletionDoesNotStrandCursor"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "The accept twin of reject-existing-sleep-helper-newly-called: instead of a new call to the fixed sleep helper sleepQuietly(), the patch adds a call to the test class's existing private helper quiesce(). quiesce() drains the dispatcher board in a loop that rechecks on every pass whether the board and the pending reads stayed idle, is bounded by a deadline of QUIESCE_TIMEOUT_SECONDS (10 s), calls sleepQuietly() between passes, and throws IllegalStateException when the deadline passes without the condition holding. ADR 0007 Decision 7 judges such a hand written poll loop as a condition wait, and newly calling an existing helper built this way is allowed on the same terms; the sleep inside it is a poll interval. The catch in sleepQuietly is the allowed InterruptedException idiom. Adapted: built on the post image of the commit that created the test (apache/pulsar PR 26174), as its twin is; the one added line is hand written and repeats the quiesce() call on the line before it, so the change is the smallest one that newly reaches the helper.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/pulsar",
+    "commit": "0679b0d897de064bd6edfd47694f35a9ff44e80f",
+    "pr": "https://github.com/apache/pulsar/pull/26174",
+    "base": "0679b0d897de064bd6edfd47694f35a9ff44e80f",
+    "path": "pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

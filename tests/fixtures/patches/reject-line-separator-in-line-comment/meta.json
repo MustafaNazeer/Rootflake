@@ -12,6 +12,9 @@
     "method": "successfulBatchAcksAndCompletesCounter"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
   "disputed": false,
   "notes": "The line assertEquals(0, counter.records()); becomes \"//\", then the character U+2028 LINE SEPARATOR written as its raw UTF-8 bytes (E2 80 A8), then assertEquals(0, counter.records()) without its semicolon. Editors and renderers that treat U+2028 as a line break show a live assertion on its own line, but Java ends a line only at CR, LF or CRLF, so the whole line is one comment, and the assertion text would not even compile as code. Rejected with weaken_assertion/assertion_removed. The U+2028 bytes are deliberate and appear only in patch.diff. Built on the pre image of reject-thread-sleep-before-assertion; the removed line and the context are the pre image's own.",
   "derivation": "adapted",

@@ -10,6 +10,7 @@
     "method": "testCancelGetAttempt"
   },
   "expected_flags": [],
+  "expected_codes": [],
   "disputed": false,
   "notes": "Gives every retrying executor test a fresh scheduled executor per test, created in a @BeforeEach and shut down in an @AfterEach that calls shutdownNow() and then awaitTermination(DEFAULT_AWAIT_TERMINATION_SEC, TimeUnit.SECONDS) without checking the returned value, so no task from one test can still be running in the next. ADR 0007 Decision 7 rejects a bounded wait whose result is ignored, unless it sits in a lifecycle method that runs after the test, with no assertion after it in that body, which is ordinary cleanup; this one does, so the patch is accepted. The target is the test named in the PR title (\"Fix testCancelGetAttempt flaky test\", issue 2851), declared in the subclass ScheduledRetryingExecutorTest. Kept: both hunks of AbstractRetryingExecutorTest.java; the ScheduledRetryingExecutorTest.java changes, which switch that class to the new executor and also turn testCancelGetAttempt from a parameterized test into a plain one, are dropped. Not from IDoFT: neither the commit nor the test class appears in pr-data.csv under any status.",
   "derivation": "verbatim",

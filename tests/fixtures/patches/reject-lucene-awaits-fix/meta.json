@@ -12,6 +12,7 @@
     "method": "testThatSettingHeadersWorks"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Adds Lucene's @AwaitsFix(bugUrl = \"flaky test - enable after fix\") to a test class, which the Lucene test runner treats as disabled. The project builds with Gradle; the annotation is the point here. Only one file of the commit is kept. The target is the only test method of the disabled class.",
   "derivation": "verbatim",

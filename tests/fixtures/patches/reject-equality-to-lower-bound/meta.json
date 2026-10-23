@@ -12,6 +12,9 @@
     "method": "testCatalogStatusReportsARegistrationFailure"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/equality_relaxed"
+  ],
   "disputed": false,
   "notes": "Replaces assertEquals(row.getField(2), 1L) with assertThat(...).isGreaterThanOrEqualTo(1L), with a comment saying a background refresh can bump the count. In the source, a commit message carries a co-author trailer naming an AI model; it is used here as a real merged change and recorded as such.",
   "derivation": "verbatim",

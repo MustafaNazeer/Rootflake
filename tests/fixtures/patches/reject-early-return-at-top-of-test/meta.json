@@ -12,6 +12,10 @@
     "method": "testLeaderElectionCreatesLease"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "disable/early_return",
+    "weaken_assertion/assertion_removed"
+  ],
   "disputed": false,
   "notes": "Adds a conditional early return at the top of a test, so the test passes without running whenever the condition holds. This is the merged Apicurio hunk applied in reverse: the maintainers replaced an existing early return with @DisabledIf; reversing the hunk removes @DisabledIf and puts the early return back. Context lines are the hunk's own; removed and added lines are swapped.",
   "derivation": "adapted",

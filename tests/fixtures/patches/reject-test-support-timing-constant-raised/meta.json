@@ -12,6 +12,9 @@
     "method": "testConnectionStateNewClient"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Raises SESSION_MULTIPLE in the shared Timing helper from .25 to 1.5, so every test that asks Timing for a session timeout gets one six times longer (\"Fix flaky TestReadOnly.testConnectionStateNewClient in ZooKeeper 3.9.3\"). The file sits under src/main/java of the curator-test module, which is test code because a path component ends in -test. Rejected as a widened timing bound in test code. SESSION_MULTIPLE contains none of the words the raised constant rule matches on; it scales session(), which returns the session timeout in milliseconds, so the checker has to follow the constant into that method to see it. The target is the test named in the PR title.",
   "derivation": "verbatim",

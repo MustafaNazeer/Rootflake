@@ -12,6 +12,9 @@
     "method": "testIterationOrder"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "disable/test_removed"
+  ],
   "disputed": false,
   "notes": "Collects neuron identifiers, sorts them, then asserts the count and the first and last values, instead of asserting iteration order. Ruled a shortcut of the disable kind: the commit renames the flaky test method (testIterationOrder becomes testIdentifierAssignment), which counts as deleting the target test. reject-id-sorted-values-replace-order-assertion is the same fix with the original name, a policy reject. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.commons.math4.neuralnet.NetworkTest.testIterationOrder; the fix is linked from the Notes column.",
   "derivation": "verbatim",

@@ -9,6 +9,9 @@
   "variant": "surefire_rerun_pom",
   "target": null,
   "expected_flags": [],
+  "expected_codes": [
+    "outside_allowlist"
+  ],
   "disputed": false,
   "notes": "Adds <rerunFailingTestsCount>5</rerunFailingTestsCount> to a Surefire configuration in a POM. Only the first of the six POMs in the PR is kept. No target: the change applies to every test the module runs.",
   "derivation": "verbatim",

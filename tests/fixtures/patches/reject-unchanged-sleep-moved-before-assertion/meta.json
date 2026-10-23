@@ -1,0 +1,30 @@
+{
+  "id": "reject-unchanged-sleep-moved-before-assertion",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "unchanged_sleep_moved_before_assertion",
+  "target": {
+    "class": "com.google.cloud.bigtable.data.v2.stub.DynamicFlowControlCallableTest",
+    "method": "testIncreasingThreshold"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
+  "disputed": false,
+  "notes": "Moves the unchanged line Thread.sleep(50); in createFlowControlEvent from after the thread start wait, where it gives the helper thread time to block, to just before the final assertThat on the last flow control event, so the assertion now waits a fixed 50 ms for the event to be recorded. No sleep is added and no duration changes. ADR 0007 Decision 7 counts an unchanged sleep moved within test code as added, so this is an added fixed sleep before an assertion: weaken_assertion/timing_bound_widened. Adapted: no merged change was found that moves an unchanged sleep to before an assertion on its own. The hunk is hand made on the pre image of DynamicFlowControlCallableTest.java at the merge base of googleapis/java-bigtable PR 2259; every context and removed line is the pre image's own, and the added line is the removed line copied. The target is the first test that calls createFlowControlEvent; PR 2259 (\"test: deflake flow control test\") names no single test. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/googleapis/java-bigtable",
+    "commit": "7247c326a233adbf0d1aa3025c0c25e68bc74014",
+    "pr": "https://github.com/googleapis/java-bigtable/pull/2259",
+    "base": "e62c969e36c105af6da6c5ebeb72ef5425ca26e8",
+    "path": "google-cloud-bigtable/src/test/java/com/google/cloud/bigtable/data/v2/stub/DynamicFlowControlCallableTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

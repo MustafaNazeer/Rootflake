@@ -12,6 +12,9 @@
   "expected_flags": [
     "flag/test_resource_changed"
   ],
+  "expected_codes": [
+    "flag/test_resource_changed"
+  ],
   "disputed": false,
   "notes": "In the test's StatefulSet template, replaces mongo:4.4 and its 1Gi volume claim with a pause container and no volume, renames the template and the matching Service template and moves the Service to port 80, and drops the volume claim label from the Java builder, so the readiness the test waits for no longer depends on a large image pull and volume provisioning inside the test's time budget (\"test: deflake ComplexWorkflowIT\"). Accepted and flagged with flag/test_resource_changed, because two modified files sit under src/test/resources. Kept: BaseStatefulSet.java and the two modified templates; the PR also deletes two unused copies of the templates, which the path validator would refuse as deletions, so they are dropped. before/ holds the two YAML pre images as well as the Java one, so the validator finds the modified resources in the pristine tree. The target is the only test method of ComplexWorkflowIT. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
   "derivation": "verbatim",

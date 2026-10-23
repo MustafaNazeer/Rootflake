@@ -12,6 +12,7 @@
     "method": "sendsAndReceivesMessageViaSocketObject"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Replaces @Test with rerunner-jupiter's @RepeatedIfExceptionsTest(repeats = 3).",
   "derivation": "verbatim",

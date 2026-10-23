@@ -1,0 +1,30 @@
+{
+  "id": "accept-tzd-default-zone-set-and-restored",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "default_zone_set_and_restored",
+  "target": {
+    "class": "org.apache.seatunnel.transform.sql.SQLDateTimeFunctionsTest",
+    "method": "testAtTimeZone"
+  },
+  "expected_flags": [
+    "flag/default_zone_or_locale_set"
+  ],
+  "expected_codes": [
+    "flag/default_zone_or_locale_set"
+  ],
+  "disputed": false,
+  "notes": "Pins the JVM default time zone to UTC for testAtTimeZone with TimeZone.setDefault(TimeZone.getTimeZone(\"UTC\")), restores the original zone in a finally block, and computes the expected value from a fixed ZoneId.of(\"UTC\") instead of ZoneId.systemDefault(), so the test passes in any CI time zone (\"Timezone stability\" in the PR description). The assertions move into the try block unchanged apart from the expected value: a try with only a finally catches nothing (accept-try-finally-cleanup), the assertNotNull is unchanged, and the assertEquals is a kind 1 match whose new argument shares its identifiers with the old one, so flag/assertion_subject_replaced is not raised. ADR 0007 Decision 9 flags test code that newly calls TimeZone.setDefault with flag/default_zone_or_locale_set, because it can make a time zone sweep vacuous; here the zone is restored, so it creates no polluter. Verbatim: both hunks of SQLDateTimeFunctionsTest.java; the PR's other files are dropped. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status; the repository has one Accepted row for another test (OptionUtilTest.test, PR 5894).",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/seatunnel",
+    "commit": "e75c3b725885fe420d85698d7faed9fee34a59c4",
+    "pr": "https://github.com/apache/seatunnel/pull/11001",
+    "base": "4dfe8bd768a051b5065d83ca7cbb75a0a9de6642",
+    "path": "seatunnel-transforms-v2/src/test/java/org/apache/seatunnel/transform/sql/SQLDateTimeFunctionsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

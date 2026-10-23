@@ -12,6 +12,9 @@
     "method": "noSubcommand_printsUsageHelp"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "denied_test_engine_config"
+  ],
   "disputed": false,
   "notes": "Turns off JUnit 5 parallel execution for a module in junit-platform.properties (\"fix flakey output redirection in tools tests\"). A legitimate change for the project, but a fix may not edit test runner configuration, so the path validator rejects it. Filed under disable because it removes the concurrent schedule the failure needs. The target is the failing test named in the comment the patch adds and in hiero-ledger/hiero-block-node issue 3248.",
   "derivation": "verbatim",

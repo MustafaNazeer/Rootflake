@@ -12,6 +12,9 @@
     "method": "verify"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/equality_relaxed"
+  ],
   "disputed": false,
   "notes": "Weakens a Hamcrest assertion from equalTo(i) to notNullValue(), which an autoboxed int always satisfies. Built from the pre image of the CosId file used in reject-junit5-assumptions-abort-conditional: the import block and the first verification loop of verify() are taken from that diff's context and removed lines; the change itself is hand written. The first hunk carries the blank line after the imports as trailing context, so it applies to the pre image. The target is the verify method of this test specification class, which the backend specific tests of the project call; it is not annotated as a test. In the source, the pull request description carries an AI tool attribution marker; it is used here as a real merged change and recorded as such.",
   "derivation": "adapted",

@@ -21,10 +21,9 @@ index 40bc9b0..a4cc078 100644
          expiringCache.close();
 diff --git a/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/testing/TestAwait.java b/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/testing/TestAwait.java
 new file mode 100644
-index 0000000..078250e
 --- /dev/null
 +++ b/jcachex-core/src/test/java/io/github/dhruv1110/jcachex/testing/TestAwait.java
-@@ -0,0 +1,51 @@
+@@ -0,0 +1,47 @@
 +package io.github.dhruv1110.jcachex;
 +
 +import java.util.Objects;
@@ -68,10 +67,6 @@ index 0000000..078250e
 +        value = supplier.get();
 +        assertTrue(Objects.nonNull(value), "Expected non-null value within " + timeoutMs + "ms");
 +        return value;
-+    }
-+
-+    public static void awaitMillis(long millis) throws InterruptedException {
-+        TimeUnit.MILLISECONDS.sleep(millis);
 +    }
 +}
 +

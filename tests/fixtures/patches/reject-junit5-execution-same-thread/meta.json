@@ -12,6 +12,7 @@
     "method": "countsTheAttributesOfAFormationItCannotShape"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Adds @Execution(ExecutionMode.SAME_THREAD) to a test class whose tests share one logger, after countsTheAttributesOfAFormationItCannotShape came back with an empty capture on Windows (\"hold the logger capture in one thread\"). Rejected: turning off parallel execution changes what runs beside the test instead of fixing it. The class already carried @ResourceLock before the patch; an unchanged annotation is not a finding. The target is the test named in the commit message. Commit 2bdc7a0 is the last commit of the pull request below and base is its parent. The commit message carries a co-author trailer naming an AI model; it is used here as a real merged change and recorded as such.",
   "derivation": "verbatim",

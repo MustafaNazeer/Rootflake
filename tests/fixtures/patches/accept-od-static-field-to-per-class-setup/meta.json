@@ -10,6 +10,7 @@
     "method": "testBlankMediaType"
   },
   "expected_flags": [],
+  "expected_codes": [],
   "disputed": false,
   "notes": "Replaces a static field initialised at class load with an instance field set in @BeforeAll under PER_CLASS lifecycle. Only one of the three files in the PR is kept. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category OD, test org.apache.servicecomb.swagger.generator.core.processor.annotation.OperationMethodAnnotationProcessorTest.testBlankMediaType (15 rows reference it; the first is shown); the fix is linked from the PR Link column; IDoFT lists the PR as Opened, and GitHub reports it merged. The target is the IDoFT row, a test in a file of the PR that is not kept here.",
   "derivation": "verbatim",

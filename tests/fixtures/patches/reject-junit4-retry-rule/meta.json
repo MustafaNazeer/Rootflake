@@ -12,6 +12,7 @@
     "method": null
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Adds a hand written JUnit 4 RetryRule (a TestRule that reruns the statement up to five times) and applies it to a test class with @Rule. The target names the class only: the rule retries every test in ErrorTest, and the PR names no single test.",
   "derivation": "verbatim",

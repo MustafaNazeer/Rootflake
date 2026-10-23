@@ -12,6 +12,9 @@
     "method": "successfulBatchAcksAndCompletesCounter"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
   "disputed": false,
   "notes": "The reverse of reject-unicode-escape-closes-comment-early: code that looks live is a comment. The line assertEquals(0, counter.records()) becomes \"/\\u002a assertEquals(0, counter.records()); */\" written with a literal backslash, u, 002a. A reader, or a lexer that does not translate escapes, sees the same assertion still there; Java sees a block comment. Rejected with weaken_assertion/assertion_removed. Built on the pre image of reject-thread-sleep-before-assertion; the removed line and the context are the pre image's own, and the added line is hand written.",
   "derivation": "adapted",

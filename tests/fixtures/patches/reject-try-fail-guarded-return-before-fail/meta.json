@@ -1,0 +1,28 @@
+{
+  "id": "reject-try-fail-guarded-return-before-fail",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "swallow_failure",
+  "variant": "try_fail_guarded_return",
+  "target": {
+    "class": "org.apache.doris.load.loadv2.BrokerLoadJobTest",
+    "method": "testBeginTxnRethrowsForeignLabelConflict"
+  },
+  "expected_flags": [],
+  "expected_codes": null,
+  "disputed": false,
+  "notes": "The try and fail idiom of accept-try-fail-catch-expected-exception with an early exit added before the fail: inside the try, after brokerLoadJob.beginTxn(), the patch adds if ((long) Deencapsulation.getField(brokerLoadJob, \"transactionId\") > 0) { return; } before Assert.fail(\"expected LabelAlreadyUsedException\"). When beginTxn wrongly succeeds and assigns a transaction, the failure the test exists to catch, the test now returns as passed. ADR 0007 Decision 8 exempts the idiom from swallow rules 1 and 3 only as long as no return, break, continue or throw that can leave the try block comes before the fail, so the exemption is lost and the catch, whose body is a comment, is a swallowed failure under rule 1, since its try covers a fail. The return in the test method is also disable/early_return under Decision 6. Adapted: built on accept-try-fail-catch-expected-exception (apache/doris PR 66469, at its merge base). Only the four hunks of BrokerLoadJobTest.java are kept; the three guard lines are hand written, the last hunk header is recomputed, and the index line and BrokerLoadJob.java are dropped. Each of the PR's commits carries an AI co-author trailer; the change was reviewed and merged by the project's maintainers and is used as a real merged change, recorded as such. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/doris",
+    "commit": "02cb462eb25fc848e3d7f445bdf359bacd3c0a70",
+    "pr": "https://github.com/apache/doris/pull/66469",
+    "base": "aa0c49c66eda2258c17e45bfb8cf16ab7175a05f",
+    "path": "fe/fe-core/src/test/java/org/apache/doris/load/loadv2/BrokerLoadJobTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

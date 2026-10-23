@@ -12,6 +12,9 @@
     "method": "testGetStreamDaoWithPlacementTvfNamesFailsWhenNotMutableKeyRange"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/expected_exception_broadened"
+  ],
   "disputed": false,
   "notes": "Broadens assertThrows(IllegalArgumentException.class, ...) to assertThrows(Exception.class, ...), so any exception, including one from a broken set up, passes. Built on the post image of the debezium commit, which added this assertThrows in a new test; the change to Exception.class is hand written.",
   "derivation": "adapted",

@@ -1,0 +1,14 @@
+diff --git a/google-cloud-bigtable/src/test/java/com/google/cloud/bigtable/data/v2/stub/DynamicFlowControlCallableTest.java b/google-cloud-bigtable/src/test/java/com/google/cloud/bigtable/data/v2/stub/DynamicFlowControlCallableTest.java
+--- a/google-cloud-bigtable/src/test/java/com/google/cloud/bigtable/data/v2/stub/DynamicFlowControlCallableTest.java
++++ b/google-cloud-bigtable/src/test/java/com/google/cloud/bigtable/data/v2/stub/DynamicFlowControlCallableTest.java
+@@ -294,9 +294,9 @@ private void createFlowControlEvent(final FlowController flowController) throws Exception {
+     // Wait 5 seconds for the thread to start, and 50 milliseconds after it's started to make sure
+     // flowController.reserve(1, 0) is blocked and creates a throttling event. It should never take
+     // so long.
+-    for (int i = 0; i < 1000; i++) {
++    for (int i = 0; i < 5000; i++) {
+       if (threadStarted.get()) {
+         break;
+       }
+       Thread.sleep(5);
+     }

@@ -12,6 +12,7 @@
     "method": "get_number_statistics_with_filter"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Replaces @Test with junit-pioneer's @RetryingTest(3).",
   "derivation": "verbatim",

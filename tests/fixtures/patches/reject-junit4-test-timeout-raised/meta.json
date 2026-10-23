@@ -12,6 +12,9 @@
     "method": "testBridgeReconnectsAfterHandshakeFailure"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Raises a JUnit 4 @Test(timeout = 60_000) to 90_000 and a Wait.waitFor bound from 10 to 20 seconds in a PR titled \"test: Fix flaky NetworkBridgeReconnectOnHandshakeFailureTest\". Two widened timing bounds. Kept: the two hunks with those changes; the first also renames a latch variable. The target is the method whose @Test timeout is raised; the second hunk raises a bound in testBridgeReconnectsAfterRemoteBrokerRestart.",
   "derivation": "verbatim",

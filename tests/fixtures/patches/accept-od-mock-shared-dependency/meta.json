@@ -10,6 +10,7 @@
     "method": "normalTest"
   },
   "expected_flags": [],
+  "expected_codes": [],
   "disputed": false,
   "notes": "Replaces a real rate limiter executor that carries shared registry state with a mock, so the test no longer depends on other tests. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category OD, test org.apache.shenyu.plugin.resilience4j.Resilience4JPluginTest.normalTest; the fix is linked from the PR Link column; IDoFT lists the PR as Opened, and GitHub reports it merged.",
   "derivation": "verbatim",

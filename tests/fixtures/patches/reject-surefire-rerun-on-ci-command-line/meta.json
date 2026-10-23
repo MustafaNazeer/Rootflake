@@ -9,6 +9,9 @@
   "variant": "surefire_rerun_cli_flag",
   "target": null,
   "expected_flags": [],
+  "expected_codes": [
+    "path_syntax"
+  ],
   "disputed": false,
   "notes": "Adds -Dsurefire.rerunFailingTestsCount=2 to the Maven command in a CI workflow. Rejected by the patch path validator only: a CI workflow is outside the files a fix may touch. The gate runs its own Maven command and never reads CI workflows, so the shortcut checker's content rules are not needed to stop this one. No target: the change applies to every test of the CI build.",
   "derivation": "verbatim",

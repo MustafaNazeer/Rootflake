@@ -1,0 +1,27 @@
+diff --git a/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java b/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
+--- a/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
++++ b/src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java
+@@ -33,11 +33,15 @@
+ import org.apache.kafka.clients.consumer.ConsumerRecord;
+ import org.apache.kafka.clients.consumer.ConsumerRecords;
+ import org.apache.kafka.common.TopicPartition;
+ import org.junit.jupiter.api.AfterEach;
+ import org.junit.jupiter.api.BeforeEach;
++import org.junit.jupiter.api.ClassOrderer;
+ import org.junit.jupiter.api.Nested;
++import org.junit.jupiter.api.Order;
+ import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.TestClassOrder;
+ 
++@TestClassOrder(ClassOrderer.OrderAnnotation.class)
+ class BatchWorkerPoolTest {
+ 
+   private static final TopicPartition TP0 = new TopicPartition("test", 0);
+@@ -144,6 +148,7 @@ class BatchWorkerPoolTest {
+   }
+ 
+   @Nested
++  @Order(1)
+   class ProcessBatch {
+ 
+     private BatchWorkerPool<String, String> pool;

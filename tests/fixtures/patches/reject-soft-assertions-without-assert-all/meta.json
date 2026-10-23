@@ -12,6 +12,9 @@
     "method": "isInCommonPool"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/soft_assertions_unchecked"
+  ],
   "disputed": false,
   "notes": "Moves the AssertJ assertion chain on the results map onto a SoftAssertions object that is never followed by assertAll, so its failures are collected and never reported. Rejected with weaken_assertion/soft_assertions_unchecked. Built on the pre image of reject-junit4-assume-environment-precondition: the line assertThat(results) becomes a declaration of a fully qualified org.assertj.core.api.SoftAssertions named softly, followed by softly.assertThat(results); the rest of the chain is unchanged.",
   "derivation": "adapted",

@@ -10,6 +10,7 @@
     "method": "testMatchesGroupId"
   },
   "expected_flags": [],
+  "expected_codes": [],
   "disputed": false,
   "notes": "Creates a fresh test root directory in @BeforeEach and deletes it in @AfterEach on both file systems. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category OD, test org.apache.hadoop.yarn.server.timeline.TestLogInfo.testMatchesGroupId (4 rows reference it; the first is shown); the fix is linked from the PR Link column; IDoFT lists the PR as Opened, and GitHub reports it merged.",
   "derivation": "verbatim",

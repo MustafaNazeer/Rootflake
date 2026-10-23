@@ -1,0 +1,26 @@
+{
+  "id": "accept-try-fail-because-exception-was-not-thrown",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "try_fail_because_exception_was_not_thrown",
+  "target": {
+    "class": "io.dropwizard.jersey.errors.LoggingExceptionMapperTest",
+    "method": "formatsWebApplicationException"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Adds a test that requests a resource expected to fail with try { target(\"/exception/web-application-exception\").request(MediaType.APPLICATION_JSON).get(String.class); failBecauseExceptionWasNotThrown(WebApplicationException.class); } catch (WebApplicationException e) { ... }, and asserts the response status and body inside the catch. ADR 0007 Decision 8 treats a try whose last statement is AssertJ's failBecauseExceptionWasNotThrown(...) like one that ends in fail(...): the standard check for an expected exception, caught by neither swallow rule 1 nor rule 3, since nothing can leave the try before that call and the catch type is not Throwable, Error, AssertionError or one of its listed subclasses. The try block assigns nothing a later assertion reads, so rule 2 does not apply. It is not a flaky test fix: no merged flaky fix was found that shows the AssertJ form on its own. Verbatim: the one hunk of LoggingExceptionMapperTest.java, whose pre image already imports failBecauseExceptionWasNotThrown; the PR's change to the test resource class ExceptionResource.java and its production change are dropped. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/dropwizard/dropwizard",
+    "commit": "1c01bdc3bef86c7ca04e9da8f918b5e2d11dc201",
+    "pr": "https://github.com/dropwizard/dropwizard/pull/1193",
+    "base": "9a35099c686f85870148e44c3f3c64dc57ca734b",
+    "path": "dropwizard-jersey/src/test/java/io/dropwizard/jersey/errors/LoggingExceptionMapperTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

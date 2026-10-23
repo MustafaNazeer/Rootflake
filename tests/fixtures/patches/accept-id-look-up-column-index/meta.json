@@ -12,6 +12,9 @@
   "expected_flags": [
     "flag/assertion_subject_replaced"
   ],
+  "expected_codes": [
+    "flag/assertion_subject_replaced"
+  ],
   "disputed": false,
   "notes": "Finds the id column by name first, then asserts equality on that column. The equality assertion is kept and was wrong before (it indexed rows by column number). IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test com.j256.ormlite.table.TableUtilsTest.testComboIndex; the fix is linked from the PR Link column of a row for another test in the same PR. The target is the test this patch changes, not the IDoFT row the PR was found through. Flagged because assertTrue(found) becomes assertTrue(idColumnIndex >= 0), whose argument shares no identifier with the old one after following the local definitions of found and idColumnIndex.",
   "derivation": "verbatim",

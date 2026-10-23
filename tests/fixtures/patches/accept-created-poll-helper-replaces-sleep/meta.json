@@ -1,0 +1,26 @@
+{
+  "id": "accept-created-poll-helper-replaces-sleep",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "created_poll_helper_replaces_sleep",
+  "target": {
+    "class": "io.github.dhruv1110.jcachex.DefaultCacheTest",
+    "method": "testExpiration"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Replaces the fixed Thread.sleep(200) in testExpiration with awaitTrue(() -> expiringCache.get(\"key1\") == null, 1000), a condition wait from the new test helper TestAwait. awaitTrue polls in a loop that rechecks the condition on every pass, is bounded by a deadline, sleeps a poll interval between passes and asserts the condition with assertTrue when the deadline passes, so ADR 0007 Decision 7 judges it as a condition wait, not a fixed sleep: it is bounded (1000 ms), its result is checked by construction, and the assertNull after it is unchanged. awaitNotNull is built the same way. The accept twin of reject-created-file-package-mismatch: the two patches differ only in the package line of TestAwait.java. Adapted: the two DefaultCacheTest hunks (the static import and testExpiration) and TestAwait.java are copied from the PR, except that the method awaitMillis, which calls TimeUnit.MILLISECONDS.sleep(millis) and is a fixed sleep wherever it sits, is removed with the blank line before it (four added lines), so the new file hunk header and its now unused TimeUnit import differ from the source, and the index line is dropped. Kept as is, TestAwait.java would carry an added fixed sleep and the patch would be a reject. The PR's other hunks, which call awaitMillis or raise a Future.get bound, and its other files are dropped. The project builds with Gradle; the paths follow the Maven layout. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/dhruv1110/jcachex",
+    "commit": "4ffe088aec27ba2fb98274e30d1742b0672ab250",
+    "pr": "https://github.com/dhruv1110/jcachex/pull/118",
+    "base": "84118e9c0b2fb76cd1abb85963696dcf60b9c6f7",
+    "path": "jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

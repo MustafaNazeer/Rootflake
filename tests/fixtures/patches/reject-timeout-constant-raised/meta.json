@@ -12,6 +12,9 @@
     "method": "testChunkedRequestWithBodyAndTrailingHeaders"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Raises the class constant WAIT_TIME_SECONDS from 5 to 30. Every awaitUninterruptibly(WAIT_TIME_SECONDS, SECONDS) in the class, six of them in the target, now waits up to six times longer. Rejected: a raised numeric literal in a constant whose name contains wait and seconds, flowing into a number and TimeUnit argument pair, is a widened timing bound. Built on the pre image of reject-mockito-verify-at-least-once, whose flaky test is the target: instead of relaxing the verify, the patch changes the constant on line 84, a hand made hunk with context from the pre image.",
   "derivation": "adapted",

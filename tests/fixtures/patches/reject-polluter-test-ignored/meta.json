@@ -12,6 +12,7 @@
     "method": "testDefaultfallback"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Disables the polluter instead of fixing the victim: testCustomFallback leaves custom fallbacks registered, which makes the order dependent victim testDefaultfallback fail when it runs after it, and this patch puts @Ignore on testCustomFallback. The target test itself is untouched. Rejected: disabling any test in test code is a disable, because silencing a polluter makes a victim pass. Built on the pre image of accept-od-reset-static-state-at-end-of-test, the maintainers' fix that resets the fallbacks instead; IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 lists the victim with Status Opened and Category OD-Vic. Instead of the reset lines, the patch adds an import of org.junit.Ignore and a bare @Ignore above testCustomFallback.",
   "derivation": "adapted",

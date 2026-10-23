@@ -12,6 +12,9 @@
     "method": "testReadUnawareBucketTableWithRebalanceShuffle"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "disable/test_removed"
+  ],
   "disputed": false,
   "notes": "Deletes an unstable test method. In the PR the scenario was rewritten in a new test class; only the deletion is kept here, which on its own removes the test.",
   "derivation": "verbatim",

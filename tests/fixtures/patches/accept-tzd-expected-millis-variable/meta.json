@@ -10,6 +10,7 @@
     "method": "testFormatTime"
   },
   "expected_flags": [],
+  "expected_codes": [],
   "disputed": false,
   "notes": "Fixes a time zone dependent expectation by subtracting the zone offset at the instant, getOffset(millis), instead of the raw offset, so daylight saving time is honoured, and holds the instant in a local variable named millis. The assertion stays the same assertEquals with a changed argument, a kind 1 match that is not trivially true. The variable's name contains millis, but it flows only into the arguments of that assertion, not into a sleep, a wait, a timeout or a loop bound, so ADR 0007 Decision 7 does not apply and Decision 5 judges it; the literal is newly declared, not raised. The new argument shares its identifiers with the old one, so flag/assertion_subject_replaced is not raised. Adapted from the hunk of alibaba/Sentinel PR 3459 used verbatim in accept-tzd-offset-at-instant: the line long millis = 1560600794000L; is hand written and both uses of the literal in the added line are replaced by millis; the removed line and the context are unchanged. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category TZD, test com.alibaba.csp.sentinel.eagleeye.EagleEyeCoreUtilsTest.testFormatTime, as for the verbatim fixture.",
   "derivation": "adapted",

@@ -10,6 +10,7 @@
     "method": "testNullCache"
   },
   "expected_flags": [],
+  "expected_codes": [],
   "disputed": false,
   "notes": "Deletes the row each test inserted at the end of the test, so a second run in the same JVM and database does not see it (\"Fixed non-idempotent tests\"). Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status. The PR names both testCache and testNullCache as non idempotent and reproduces the failure with testNullCache, so that is the target.",
   "derivation": "verbatim",

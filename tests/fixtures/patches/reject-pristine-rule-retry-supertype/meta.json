@@ -12,6 +12,9 @@
     "method": null
   },
   "expected_flags": [],
+  "expected_codes": [
+    "retry/existing_retry_extension"
+  ],
   "disputed": false,
   "notes": "Adds a new @Rule field of type SystemPropertyRule to DeleteProberDataActionTest and uses it to set the registry environment. SystemPropertyRule is declared in a file the patch does not touch, core/src/test/java/google/registry/testing/SystemPropertyRule.java, in the test's own module, so ADR 0007 Decision 2 lets the checker read that one file from the pristine checkout. Its simple name has no Retry, Rerun, Repeat, Flaky or Ignore, but in this fixture's pristine tree it extends RetryingExternalResource, and Decision 8 step 3 applies the step 1 name rule to each supertype of a type it reads, so the patch is rejected with retry/existing_retry_extension even though RetryingExternalResource itself is unread. The before/ folder therefore holds two files: the pre image of the test the patch modifies, and the pristine SystemPropertyRule.java the checker resolves the new rule to, which the patch does not modify. target method is null: the patch acts on the whole class. Adapted: the test hunks are copied unchanged from google/nomulus commit 661e348 (PR 140), keeping its import, rule field and first set up hunks and dropping the other files; in the pristine SystemPropertyRule.java, which is otherwise the upstream file at the commit's parent, the class line is changed from extends ExternalResource to extends RetryingExternalResource, a type that does not exist in the project. No real rule class with a retry named supertype or delegate and a neutral name of its own was found in a permissive project. Not from IDoFT: neither the commit nor the test class appears in pr-data.csv under any status.",
   "derivation": "adapted",

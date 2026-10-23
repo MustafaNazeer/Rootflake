@@ -10,6 +10,7 @@
   "variant": "testng_annotation_transformer",
   "target": null,
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Adds a TestNG IAnnotationTransformer that sets a retry analyzer on every @Test, registers it as a listener in the suite file, and adds the analyzer. No test method changes, so a checker that only reads test annotations misses it. Kept: the transformer, the analyzer, and testng.xml. No target: the transformer applies a retry analyzer to every test and names no test.",
   "derivation": "verbatim",

@@ -13,6 +13,9 @@
     "method": "testRTTUpdates"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Raises the bound in assertFalse(System.currentTimeMillis() - startTime > 1000) to 10000, a wall clock assertion on an elapsed time, in a PR titled \"Server discovery prose tests flaky\"; the same hunk also raises the round trip time the loop waits for from 50 to 250 ms. Rejected: a raised numeric bound in an assertion that compares an elapsed time is a widened timing bound. The path validator also rejects it, because src/test/functional is outside the source sets a patch may touch, as in reject-assume-version-raised, which comes from the same PR and shares this pre image. One hunk of the PR is kept.",
   "derivation": "verbatim",

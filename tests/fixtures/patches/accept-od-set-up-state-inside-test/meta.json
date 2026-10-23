@@ -10,6 +10,7 @@
     "method": "endCount"
   },
   "expected_flags": [],
+  "expected_codes": [],
   "disputed": false,
   "notes": "Makes a test create the state it depends on instead of relying on a test that ran before it. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category OD, test org.apache.seata.common.rpc.RpcStatusTest.beginCount (2 rows reference it; the first is shown); the fix is linked from the PR Link column; IDoFT lists the PR as Opened, and GitHub reports it merged. IDoFT has two rows for this PR, beginCount and endCount; the patch changes endCount, so that is the target.",
   "derivation": "verbatim",

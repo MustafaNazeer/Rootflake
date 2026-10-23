@@ -12,6 +12,9 @@
     "method": "successfulBatchAcksAndCompletesCounter"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "The fixed sleep of reject-thread-sleep-before-assertion written as LockSupport.parkNanos for 50 ms, fully qualified so no import is added. Rejected as an added fixed sleep. Change from that fixture's hunk: Thread.sleep(50) becomes java.util.concurrent.locks.LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(50)); the comment line is kept.",
   "derivation": "adapted",

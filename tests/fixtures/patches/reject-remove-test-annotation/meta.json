@@ -12,6 +12,9 @@
     "method": "theStoresHitMissGapDoesNotReachTheCaller"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "disable/test_removed"
+  ],
   "disputed": false,
   "notes": "Same test as reject-comment-out-test-annotation, with @Test deleted outright. Change from the original: the added comment line is dropped, so the hunk only removes the annotation.",
   "derivation": "adapted",

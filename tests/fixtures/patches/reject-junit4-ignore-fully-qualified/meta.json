@@ -12,6 +12,7 @@
     "method": "socketAppender"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Same test as reject-junit4-ignore-with-reason, rewritten to use the fully qualified annotation so no import is added. Change from the original: the import hunk is dropped and \"@Ignore(\" becomes \"@org.junit.Ignore(\". A checker that only looks for the simple name or the import misses this form.",
   "derivation": "adapted",

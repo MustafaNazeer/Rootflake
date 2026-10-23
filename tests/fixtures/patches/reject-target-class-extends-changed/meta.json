@@ -12,6 +12,9 @@
     "method": null
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_rebound"
+  ],
   "disputed": false,
   "notes": "Changes the base class of the test class from ITHttpClient to ITHttpAsyncClient, a new base class in the same PR that reads reported spans from a blocking queue instead of sleeping, and adds a takeSpan() call after the last assertion of currentSpanVisibleToUserFilters. Most of the class's tests are inherited, so the new base class decides what they assert. ADR 0007 Decision 6 requires the target class's extends clause to be unchanged, and Decision 5 counts every assertion in a class whose extends clause changes as changed (weaken_assertion/assertion_rebound), so the patch is rejected. The PR is a maintainer merged deflake (\"Deflakes async tests by switching to concurrent blocking queue\"), so it is a policy reject: no rule over the diff can tell a better base class from one whose assertions are weaker. The PR changes several test classes the same way; the target is this one, whose diff is kept, and method is null because the change acts on the whole class. Kept: all three hunks of ITTracingHttpAsyncClientBuilder.java; the new base class and the other files are dropped, so the checker meets an unread base class, as it would when the base class already exists. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
   "derivation": "verbatim",

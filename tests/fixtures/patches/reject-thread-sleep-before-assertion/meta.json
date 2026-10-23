@@ -12,6 +12,9 @@
     "method": "successfulBatchAcksAndCompletesCounter"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Adds Thread.sleep(50) before an assertion so a background counter has time to update (\"Fix race condition in BatchWorkerPoolTest\"). A fixed sleep is a timing bound in disguise; the allowed fix is a condition wait. Only the test hunk of the PR is kept. The test method is declared in the @Nested class ProcessBatch, written with its binary name.",
   "derivation": "verbatim",

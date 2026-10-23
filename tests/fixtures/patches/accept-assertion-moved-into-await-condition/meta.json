@@ -10,6 +10,7 @@
     "method": "test_priority_consume_retry_as_lowest"
   },
   "expected_flags": [],
+  "expected_codes": [],
   "disputed": false,
   "notes": "Deletes assertEquals(count, collect.size()) after an Awaitility loop and makes the loop wait until collect.size() == count. Awaitility throws on timeout, so the deleted check is still enforced. Accepted under the strict assertion principle: the same comparison moved into an Awaitility until condition keeps its strength. Not from IDoFT: neither the PR nor the test class PopPriorityIT appears in pr-data.csv under any status. Taken from the same merged PR as reject-comment-out-assertions-in-loop (hunk 2 only). The target is the test method the patch changes.",
   "derivation": "verbatim",

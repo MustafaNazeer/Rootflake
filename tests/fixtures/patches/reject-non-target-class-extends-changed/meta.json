@@ -1,0 +1,30 @@
+{
+  "id": "reject-non-target-class-extends-changed",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "non_target_class_extends_changed",
+  "target": {
+    "class": "brave.okhttp3.ITTracingCallFactory",
+    "method": null
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_rebound"
+  ],
+  "disputed": false,
+  "notes": "Changes the base class of ITTracingInterceptor from ITHttpClient to ITHttpAsyncClient, a new base class in the same PR that reads reported spans from a blocking queue instead of sleeping. ITTracingInterceptor declares no test method of its own: every test it runs is inherited, so the new base class decides what they assert, and no assertion in the class changes. It is not the target: the target is ITTracingCallFactory, the other okhttp3 client test the PR deflakes, which this patch does not touch. ADR 0007 Decision 6 forbids changing the extends or implements clause of any class in test code that declares or inherits test methods, not only the target's, and rejects it with weaken_assertion/assertion_rebound. A policy reject for the same reason as reject-target-class-extends-changed, from the same pull request: a maintainer merged deflake (\"Deflakes async tests by switching to concurrent blocking queue\") whose new base class no rule over the diff can tell from one whose assertions are weaker. Verbatim: all three hunks of ITTracingInterceptor.java; the new base class and the PR's other files are dropped, so the checker meets an unread base class. The target is chosen from the PR, which names no test; method is null because the PR changes the whole class. Not from IDoFT: neither the PR nor either test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/openzipkin/brave",
+    "commit": "66585ba174ebe6cba9b0863e96f81cb29a64ffca",
+    "pr": "https://github.com/openzipkin/brave/pull/606",
+    "base": "2b03741798b25c1d266e6fe8339dbff9544e1a42",
+    "path": "instrumentation/okhttp3/src/test/java/brave/okhttp3/ITTracingInterceptor.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

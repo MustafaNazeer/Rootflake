@@ -12,6 +12,9 @@
     "method": "successfulBatchAcksAndCompletesCounter"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_rebound"
+  ],
   "disputed": false,
   "notes": "Adds private static void assertEquals(Object expected, Object actual) {} to the test class. The class gets assertEquals from import static org.junit.jupiter.api.Assertions.*, and a method declared in the class shadows every statically imported method of that name, so all four assertEquals calls in the class, two of them in the target, now call the empty method, though not one of their tokens changes. Rejected with weaken_assertion/assertion_rebound. Built on the pre image of reject-thread-sleep-before-assertion; the method and its blank line are hand written.",
   "derivation": "adapted",

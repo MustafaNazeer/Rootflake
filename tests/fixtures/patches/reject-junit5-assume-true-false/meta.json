@@ -12,6 +12,7 @@
     "method": "solveEmployeeScheduleWithWatching"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Same test as reject-junit5-disabled-method, disabled through an unconditional assumption instead of an annotation. Change from the original: the import of Disabled becomes an import of Assumptions, and instead of adding @Disabled(\"Flaky test\") the first statement of the method becomes Assumptions.assumeTrue(false, \"Flaky test\"). The test is then reported as skipped on every run.",
   "derivation": "adapted",

@@ -1,0 +1,27 @@
+{
+  "id": "accept-production-sleep-moved-into-new-method",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "production_sleep_moved",
+  "target": null,
+  "expected_flags": [
+    "flag/production_sleep_added"
+  ],
+  "expected_codes": [
+    "flag/production_sleep_added"
+  ],
+  "disputed": false,
+  "notes": "Moves the lock polling loop of ExecutorLifecycle.start() into a new method, acquireTaskFileLock, so that the Thread.sleep(100) between tryLock attempts runs outside the object monitor. The sleep line is unchanged; it only moves into a new method body. ADR 0007 Decision 9 counts a sleep moved unchanged into a new or changed method body of production code as added, so the patch is accepted and flagged with flag/production_sleep_added. No Java file the checker reads is test code, so no scan follows a call from a test into this method. It is not flag/production_retry, because the loop has no catch. The source PR is a concurrency fix in production code (found by CodeQL), not a flaky test fix. Verbatim: both hunks of ExecutorLifecycle.java; the PR's GceAutoScaler.java change and its new ExecutorLifecycleTest.java are dropped. accept-production-sleep-not-reached-from-test is the same file with the removing hunk dropped, so there the sleep is plainly added. target is null: the PR names no test. Not from IDoFT: neither the PR nor the class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/druid",
+    "commit": "760f3cdfae34b1a7027b778b866db8800faba687",
+    "pr": "https://github.com/apache/druid/pull/19810",
+    "base": "65513d5a357423b8ee47f2951b54fe06d3719e03",
+    "path": "indexing-service/src/main/java/org/apache/druid/indexing/worker/executor/ExecutorLifecycle.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

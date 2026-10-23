@@ -12,6 +12,9 @@
     "method": "testFailoverConsumerStuckWhenRedeliverRacesInFlightReadCompletion"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
   "disputed": false,
   "notes": "Deletes the private helper assertSubscriptionDeliversAfterReconnect, which held the test class's three behavioural assertions (the reconnected consumer receives the next message, the read position advances past it, and the cursor is not stranded), together with its two calls, one at the end of each test. Neither test method changes in any other way and every assertion left in the tests is untouched. ADR 0007 Decision 5 collects the before set of a method through every helper it calls, so an assertion in a helper the patch deletes, or a call to a helper the patch removes, is a removal with no match: weaken_assertion/assertion_removed. The target is the test whose only binding assertions lived in the helper. Adapted: built on the post image of the commit that created the test (apache/pulsar PR 26174), so source.base is that commit; the patch only removes lines, and the removed lines are the file's own.",
   "derivation": "adapted",

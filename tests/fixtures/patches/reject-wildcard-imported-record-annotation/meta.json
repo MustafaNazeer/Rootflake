@@ -1,0 +1,28 @@
+{
+  "id": "reject-wildcard-imported-record-annotation",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "retry",
+  "variant": "wildcard_imported_record_annotation",
+  "target": {
+    "class": "oshi.comparison.NativeFreeComparisonTest",
+    "method": "globalMemory"
+  },
+  "expected_flags": [],
+  "expected_codes": null,
+  "disputed": false,
+  "notes": "The retry of reject-composed-annotation-retrying-test with the composed annotation named Record, declared in another package and reached through a wildcard import: the patch creates oshi/comparison/support/Record.java, an annotation type carrying JUnit Pioneer @RetryingTest(maxAttempts = 3, suspendForMs = 50, onExceptions = AssertionError.class), adds import oshi.comparison.support.*; to the test and replaces @Test with @Record on two tests. Record is also the simple name of java.lang.Record (Java 16 and later). ADR 0007 Decision 8 exempts only Deprecated, FunctionalInterface, Override, SafeVarargs and SuppressWarnings as java.lang names, because at a release older than 16 a wildcard imported type named Record binds without an ambiguity error, so a checker must not read @Record as java.lang.Record and skip it. The annotation type is declared in a file the checker reads, since the patch creates it, so Decision 8 judges it by the retry rules: @RetryingTest counts inside a composed annotation. Replacing @Test with a retry annotation is reported only under retry/. The name rule of step 1 plays no part here: Record contains none of its words. Built for a release of 16 or later, the two on demand imports would make @Record ambiguous and the build would fail; the fixture assumes an older release. Adapted: built on reject-composed-annotation-retrying-test (oshi/oshi PR 3766, at its merge base). Changes: the annotation file is moved from oshi/comparison/RetryingComparison.java to oshi/comparison/support/Record.java with its package line and type name changed; @RetryingComparison becomes @Record in the first test hunk; a hand made import hunk with context from the pre image adds the wildcard import, so the second hunk's new line numbers move by one; the index lines and the PR's third hunk are dropped. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/oshi/oshi",
+    "commit": "1ad7ca3c6eaf52b62e8beb01e4427d9dcab01c2d",
+    "pr": "https://github.com/oshi/oshi/pull/3766",
+    "base": "34d06553c99894eee14c5606c4021a1308f77f7a",
+    "path": "oshi-benchmark/src/test/java/oshi/comparison/NativeFreeComparisonTest.java",
+    "license": "MIT",
+    "fetched": "2026-10-23"
+  }
+}

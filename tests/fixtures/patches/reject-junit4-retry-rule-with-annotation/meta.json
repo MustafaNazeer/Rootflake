@@ -12,6 +12,7 @@
     "method": "do_test"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Adds a @Retry annotation and a RetryRule that reads it, then applies both to an integration test. Kept: the annotation, the rule, and one of the three test classes.",
   "derivation": "verbatim",

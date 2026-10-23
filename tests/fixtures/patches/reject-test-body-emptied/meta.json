@@ -12,6 +12,10 @@
     "method": "testFormatTime"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "disable/test_body_emptied",
+    "weaken_assertion/assertion_removed"
+  ],
   "disputed": false,
   "notes": "Empties a test body and keeps @Test, so the test always passes and checks nothing. Built on the pre image of the Sentinel time zone fix used in accept-tzd-offset-at-instant: both lines of the assertion are deleted instead of fixed.",
   "derivation": "adapted",

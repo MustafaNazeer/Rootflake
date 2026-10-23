@@ -10,6 +10,7 @@
     "method": "test"
   },
   "expected_flags": [],
+  "expected_codes": [],
   "disputed": false,
   "notes": "Replaces each Thread.sleep(2000) followed by an HTTP content assertion with a helper that runs the same assertion inside Awaitility untilAsserted (poll 300 ms, at most 10 s). The comparison is unchanged; it moves into the wait. Two notes for the checker: the assertion moves into a private helper, not into the same test method, so the checker has to follow the call; and the PR also adds the Awaitility test dependency to core/deployment/pom.xml, a hunk dropped here because the path validator would reject it. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status. The target is the test method the patch changes.",
   "derivation": "verbatim",

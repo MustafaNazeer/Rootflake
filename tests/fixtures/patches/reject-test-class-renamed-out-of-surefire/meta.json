@@ -13,6 +13,9 @@
     "method": null
   },
   "expected_flags": [],
+  "expected_codes": [
+    "disable/test_file_removed"
+  ],
   "disputed": false,
   "notes": "Renames GpgServiceImplTest to GpgServiceImplIT (\"hopefully fixing flaky test\"). Surefire's default includes match *Test, *Tests, *TestCase and Test*, so the class drops out of the unit test run. Filed under disable. The source file uses CRLF line endings, and the patch keeps them. The target names the class only: the rename drops all five of its tests, and the PR names no single test.",
   "derivation": "verbatim",

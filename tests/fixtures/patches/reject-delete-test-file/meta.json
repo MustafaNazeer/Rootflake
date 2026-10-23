@@ -13,6 +13,9 @@
     "method": "testEvictionUpdatesHashTracker"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "disable/test_file_removed"
+  ],
   "disputed": false,
   "notes": "Deletes a whole test class that was reported as flaky. The target is the flaky test named in the PR title; the deleted file also holds testConflictDetectionAfterEviction.",
   "derivation": "verbatim",

@@ -12,6 +12,9 @@
     "method": "testBridgeReconnectsAfterRemoteBrokerRestart"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Raises the raw millisecond bound passed to the project's own wait helper, Wait.waitFor(condition, 10_000, 200), to 20_000. Rejected: a raised numeric literal passed to a call whose name contains wait is a widened timing bound. This is the second hunk of the PR used in reject-junit4-test-timeout-raised, kept on its own so the helper form is tested without the @Test timeout beside it.",
   "derivation": "verbatim",

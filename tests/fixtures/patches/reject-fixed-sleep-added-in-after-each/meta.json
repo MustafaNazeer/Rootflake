@@ -1,0 +1,31 @@
+{
+  "id": "reject-fixed-sleep-added-in-after-each",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker",
+    "patch_validator"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "fixed_sleep_in_after_each",
+  "target": {
+    "class": "com.scalar.db.storage.objectstorage.ConsensusCommitIntegrationTestWithObjectStorage",
+    "method": null
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
+  "disputed": false,
+  "notes": "Adds an @AfterEach method that calls Uninterruptibles.sleepUninterruptibly(2, TimeUnit.SECONDS) after every test when the backend is Cloud Storage (\"Sleep to mitigate rate limit errors\"). ADR 0007 Decision 7 rejects an added fixed sleep wherever it sits, lifecycle methods included, and the cleanup exemption for a bounded wait in a method that runs after the test never covers a fixed sleep, so the patch is rejected with weaken_assertion/timing_bound_widened. The file is test code: it imports org.junit and a path component, integration-test, ends in -test. The path validator also rejects it, because src/integration-test is outside the source sets a patch may touch, so rejected_by lists both. Adapted: the PR adds a @BeforeEach that sleeps the same way in the same hunk; its ten added lines and the added import of BeforeEach are removed, so the only sleep left is the one in the @AfterEach method, the hunk header is recomputed and the index line is dropped. Every context line is the pre image's own. The PR's other files are dropped. target method is null: the sleep runs after every test of the class. The project builds with Gradle. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/scalar-labs/scalardb",
+    "commit": "7d4b2b97ad2c0bc7656de4f4b4b4708bee12be5a",
+    "pr": "https://github.com/scalar-labs/scalardb/pull/3232",
+    "base": "1c3893476a48979200d12dc3671832986b8a5bb0",
+    "path": "core/src/integration-test/java/com/scalar/db/storage/objectstorage/ConsensusCommitIntegrationTestWithObjectStorage.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

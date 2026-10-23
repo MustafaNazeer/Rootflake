@@ -9,6 +9,9 @@
   "variant": "maven_config_rerun",
   "target": null,
   "expected_flags": [],
+  "expected_codes": [
+    "path_syntax"
+  ],
   "disputed": false,
   "notes": "Turns on Surefire reruns for every build of the project through .mvn/maven.config, which Maven reads before the command line. Derived from the Apicurio commit, which passes the same property on the CI command line (see reject-surefire-rerun-on-ci-command-line). Change: the flag \"-Dsurefire.rerunFailingTestsCount=2\" is moved into a new .mvn/maven.config file; no index line is given because the file is new and hand written. No target: the change applies to every test of the build.",
   "derivation": "adapted",

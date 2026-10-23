@@ -12,6 +12,9 @@
     "method": "do_test"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "retry/existing_retry_extension"
+  ],
   "disputed": false,
   "notes": "Applies a retry rule to a test class through a new @Rule RetryRule field and marks the test with @Retry, without changing either type. Kept: the import, field and annotation hunks of one of the three test classes of the PR used in reject-junit4-retry-rule-with-annotation; the tearDown hunk that clears a schema list is dropped. In the PR the rule and the annotation are new files; they are not in this patch, so the checker meets the same situation as when a project already has the rule: a type it does not read. Rejected with retry/existing_retry_extension, because the simple names RetryRule and Retry contain Retry. As kept, the patch would not build, since neither type exists in the pre image.",
   "derivation": "verbatim",

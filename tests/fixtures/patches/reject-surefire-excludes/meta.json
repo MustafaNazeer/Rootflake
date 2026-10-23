@@ -9,6 +9,9 @@
   "variant": "surefire_excludes",
   "target": null,
   "expected_flags": [],
+  "expected_codes": [
+    "outside_allowlist"
+  ],
   "disputed": false,
   "notes": "Adds failing and flaky test classes to the Surefire <excludes> list in a module POM (\"temporarily exclude failing tests so that CI works\"). Only the excludes hunk is kept. No target: the change excludes seventeen test classes and names no single test.",
   "derivation": "verbatim",

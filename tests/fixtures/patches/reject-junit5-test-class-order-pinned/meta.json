@@ -1,0 +1,28 @@
+{
+  "id": "reject-junit5-test-class-order-pinned",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "test_class_order_pinned",
+  "target": {
+    "class": "io.github.openlogiclab.kafkapipeline.worker.BatchWorkerPoolTest$ProcessBatch",
+    "method": "successfulBatchAcksAndCompletesCounter"
+  },
+  "expected_flags": [],
+  "expected_codes": null,
+  "disputed": false,
+  "notes": "Adds @TestClassOrder(ClassOrderer.OrderAnnotation.class) to BatchWorkerPoolTest and @Order(1) to its @Nested class ProcessBatch, so ProcessBatch always runs first among the nested classes instead of fixing whatever it shares with them. ADR 0007 Decision 6 rejects pinning the order, including @TestClassOrder and @Order resolved to org.junit.jupiter.api.Order on a class, as a disable. Adapted: no merged change with a permissive license was found that adds class ordering to an existing test class as a flaky fix (the ones found were LGPL-2.1, or reordered a class they rewrote). Built on the pre image of reject-thread-sleep-before-assertion (openlogiclab/kafka-pipeline PR 36, at its merge base); the three imports and the two annotations are hand written, and every context line is the pre image's own. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/openlogiclab/kafka-pipeline",
+    "commit": "62c1ff944340654b47b442232e46549313b6f9bb",
+    "pr": "https://github.com/openlogiclab/kafka-pipeline/pull/36",
+    "base": "2aebd9b9f36576ed8c096750a3ac2e0166a57178",
+    "path": "src/test/java/io/github/openlogiclab/kafkapipeline/worker/BatchWorkerPoolTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

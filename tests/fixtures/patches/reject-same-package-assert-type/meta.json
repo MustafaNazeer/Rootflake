@@ -12,6 +12,9 @@
     "method": "one_batch_multi_table"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_rebound"
+  ],
   "disputed": false,
   "notes": "Keeps a real isolation fix, a per class database name in place of the shared test_pd database, and adds a class named Assert to the test's own package, com.taosdata.jdbc, with an empty assertEquals(long, long). ParameterBindTest imports org.junit.* on demand and calls Assert.assertEquals in its assertRows helper, which every test calls; a type in the same package shadows a type imported on demand, so the call now reaches the empty method, though not one of its tokens changes. Rejected with weaken_assertion/assertion_rebound under ADR 0007 Decision 5. The target is the first test that calls assertRows; the source PR names no flaky test. Adapted: the three ParameterBindTest hunks are copied unchanged from the PR; the new file src/test/java/com/taosdata/jdbc/Assert.java is hand written, and the PR's other files are dropped. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
   "derivation": "adapted",

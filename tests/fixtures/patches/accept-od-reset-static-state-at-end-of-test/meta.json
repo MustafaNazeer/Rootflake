@@ -10,6 +10,7 @@
     "method": "testDefaultfallback"
   },
   "expected_flags": [],
+  "expected_codes": [],
   "disputed": false,
   "notes": "Resets the static provider and consumer fallbacks to their defaults at the end of the test that changed them, so later tests see clean state. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status Opened, Category OD-Vic, test com.alibaba.csp.sentinel.adapter.sofa.rpc.fallback.SofaRpcFallbackRegistryTest.testDefaultfallback; the fix is linked from the PR Link column; IDoFT lists the PR as Opened, and GitHub reports it merged. The target is the IDoFT victim test; the patch changes testCustomFallback, the test that leaves the static fallbacks changed.",
   "derivation": "verbatim",

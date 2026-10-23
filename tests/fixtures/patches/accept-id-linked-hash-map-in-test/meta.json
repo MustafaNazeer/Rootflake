@@ -10,6 +10,7 @@
     "method": "withTextValuesMap"
   },
   "expected_flags": [],
+  "expected_codes": [],
   "disputed": false,
   "notes": "Builds the test input with a LinkedHashMap instead of a HashMap so the expected order is deterministic. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test com.twelvemonkeys.imageio.StandardImageMetadataSupportTest.withTextValuesMap; the fix is linked from the Notes column.",
   "derivation": "verbatim",

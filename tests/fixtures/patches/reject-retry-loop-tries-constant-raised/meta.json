@@ -12,6 +12,9 @@
     "method": "appenderAndTailerResourcesShouldBeCleanedUpByGarbageCollection"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Raises the constant TRIES from 5 to 10. TRIES bounds the loop in the helper queueFilesAreAllClosed, which waits for a GC cycle, checks for open queue files and calls Jvm.pause(10) between attempts, and whose result four tests assert with assertTrue; the commit message says the test \"does not try enough times\". ADR 0007 Decision 7 rejects a raised numeric literal in a constant that has tries as a whole name component when the constant flows into a loop bound: weaken_assertion/timing_bound_widened. Like the other timing fixtures taken from maintainer merged changes, it is a shortcut by Rootflake's definition, because a test that passes only with more attempts says nothing about the flakiness, so reject_kind is shortcut rather than policy. The target is the first test that asserts the helper's result. Verbatim: the whole single hunk of the PR. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
   "derivation": "verbatim",

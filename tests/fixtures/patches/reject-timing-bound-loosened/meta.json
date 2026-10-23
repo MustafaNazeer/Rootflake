@@ -12,6 +12,9 @@
     "method": "factIsValid"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Raises a succeedsWithin bound from 1100 ms to 2000 ms for a rule with a 1000 ms delay (\"extra slack absorbs scheduling/GC jitter\"). Only one hunk of one file is kept. Ruled a shortcut: every widened timing bound in test code is rejected. Replacing a fixed sleep with a condition wait is the allowed fix for a timing flake. The test method is declared in the @Nested class WithDelayedRuleTest, written with its binary name.",
   "derivation": "verbatim",

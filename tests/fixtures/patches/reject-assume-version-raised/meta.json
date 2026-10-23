@@ -13,6 +13,7 @@
     "method": "monitorsSleepAtLeastMinHeartbeatFrequencyMSBetweenChecks"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Raises the minimum server version in an existing assumeTrue so the flaky test is skipped on more configurations. Only the hunk with the assumption is kept from a PR titled \"Server discovery prose tests flaky\".",
   "derivation": "verbatim",

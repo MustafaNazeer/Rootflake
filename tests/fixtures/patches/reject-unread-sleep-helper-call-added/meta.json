@@ -12,6 +12,9 @@
     "method": "noGoAwaySentBeforeMaxConnectionAgeReached"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Replaces Thread.sleep(10L) with TestUtils.sleepAtLeast(10L), a helper that loops until at least the requested time has passed, because Thread.sleep may return early (commit title \"netty: fix flaky max connection age tests using sleepAtLeast\"). The helper lives in io.grpc.testing.TestUtils, a file the patch as kept does not touch, so the checker cannot read it. ADR 0007 Decision 7 rejects any added call to a method that no file the checker reads declares whose name contains sleep, compared without regard to case, so the patch is rejected with weaken_assertion/timing_bound_widened, even though the sleep it replaces had the same duration. It is a policy reject: a maintainer merged fix whose helper the checker cannot judge. Kept: the import hunk and the noGoAwaySentBeforeMaxConnectionAgeReached hunk of NettyServerHandlerTest.java; the hunks that also remove @Ignore from three tests, the new sleepAtLeast in testing/src/main/java/io/grpc/testing/TestUtils.java and its new test are dropped, so the helper is unread, as it is for any later patch that calls it. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
   "derivation": "verbatim",

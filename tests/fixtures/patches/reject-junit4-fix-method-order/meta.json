@@ -12,6 +12,7 @@
     "method": "testNoInvoke"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Adds @FixMethodOrder(MethodSorters.NAME_ASCENDING) so one test always runs first (\"the testARetryFailed Method must to first execution\"). Pinning the order hides an order dependent failure instead of removing it, so it is filed under disable. Kept: the class header hunk only; the commit also renames tests and changes production code. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status DeveloperFixed, Category NIO, test org.apache.dubbo.rpc.cluster.support.FailbackClusterInvokerTest.testNoInvoke; the fix is linked from the Notes column. The source file uses CRLF line endings, and the patch keeps them.",
   "derivation": "verbatim",

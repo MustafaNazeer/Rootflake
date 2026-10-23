@@ -1,0 +1,15 @@
+diff --git a/google-cloud-bigtable/src/test/java/com/google/cloud/bigtable/data/v2/stub/DynamicFlowControlCallableTest.java b/google-cloud-bigtable/src/test/java/com/google/cloud/bigtable/data/v2/stub/DynamicFlowControlCallableTest.java
+--- a/google-cloud-bigtable/src/test/java/com/google/cloud/bigtable/data/v2/stub/DynamicFlowControlCallableTest.java
++++ b/google-cloud-bigtable/src/test/java/com/google/cloud/bigtable/data/v2/stub/DynamicFlowControlCallableTest.java
+@@ -300,10 +300,10 @@ private void createFlowControlEvent(final FlowController flowController) throws Exception {
+       }
+       Thread.sleep(5);
+     }
+-    Thread.sleep(50);
+     flowController.release(INITIAL_ELEMENT, 0);
+     t.join();
+     flowController.release(1, 0);
+ 
++    Thread.sleep(50);
+     assertThat(flowController.getFlowControlEventStats().getLastFlowControlEvent()).isNotNull();
+   }

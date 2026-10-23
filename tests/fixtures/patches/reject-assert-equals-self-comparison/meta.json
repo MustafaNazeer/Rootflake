@@ -12,6 +12,9 @@
     "method": "testCatalogStatusReportsARegistrationFailure"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
   "disputed": false,
   "notes": "Keeps assertEquals and changes only its arguments, comparing a value with itself, which always passes. This is the case the strict assertion principle's \"same assertion method with changed arguments\" clause lets through unless the checker also rejects trivially true arguments (the same expression on both sides, or a literal true in assertTrue). Change from the original gravitino hunk: assertEquals(row.getField(2), 1L) becomes assertEquals(row.getField(2), row.getField(2)). In the source, a commit message carries a co-author trailer naming an AI model; it is used here as a real merged change and recorded as such.",
   "derivation": "adapted",

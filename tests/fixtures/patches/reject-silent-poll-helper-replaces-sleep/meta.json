@@ -1,0 +1,30 @@
+{
+  "id": "reject-silent-poll-helper-replaces-sleep",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "silent_poll_helper_replaces_sleep",
+  "target": {
+    "class": "org.apache.unomi.services.impl.scheduler.TaskExecutionManagerTest",
+    "method": "testHandleTaskCompletionOneShotDisablesAndClearsNext"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
+  "disputed": false,
+  "notes": "Replaces Thread.sleep(100) with awaitStatus(task, ScheduledTask.TaskStatus.COMPLETED, 5000), a new helper that sleeps 20 ms per pass in a loop bounded by a deadline and leaves silently when the deadline passes: it neither throws, fails nor asserts. ADR 0007 Decision 7 counts a loop that leaves silently when its bound runs out as a fixed sleep, so the helper is an added fixed sleep reached from the test and the patch is rejected with weaken_assertion/timing_bound_widened. It is a policy reject: the maintainers' deflake (commit \"UNOMI-979: Deflake the scheduler test suites\") is followed at every call site by an assertEquals on the same status, so the test still fails when the status never arrives, but the rule judges the loop on its own and no rule over the diff credits an assertion that sits after the call. Verbatim: the awaitStatus hunk and the call site hunk of testHandleTaskCompletionOneShotDisablesAndClearsNext; the PR's other hunks of the file, its other files and its other call sites are dropped. Each commit of the PR carries a co-author trailer naming an AI model and the description ends with a generation footer; the change was reviewed and merged by the project's maintainers and is used as a real merged change, recorded as such. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/unomi",
+    "commit": "0ff5e659e88f9f9ba0845502d690819f97717189",
+    "pr": "https://github.com/apache/unomi/pull/855",
+    "base": "0163e13f0189b1ce672789be0125e7cad3585ae3",
+    "path": "services/src/test/java/org/apache/unomi/services/impl/scheduler/TaskExecutionManagerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

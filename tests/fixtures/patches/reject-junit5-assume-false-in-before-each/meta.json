@@ -12,6 +12,7 @@
     "method": "setup"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Adds assumeFalse(isTestRunningOnCI(), ...) to an @BeforeEach method, so every test in the class is skipped in CI. The target is the @BeforeEach method the patch changes, in an abstract base class; it runs before every test of the subclasses and is not itself a test method.",
   "derivation": "verbatim",

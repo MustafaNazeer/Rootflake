@@ -1,0 +1,30 @@
+{
+  "id": "reject-id-tautological-equals",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "tautological_equals",
+  "target": {
+    "class": "org.apache.accumulo.core.data.LoadPlanTest",
+    "method": "testJson"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/tautological_equals"
+  ],
+  "disputed": false,
+  "notes": "Compares parsed LoadPlan objects instead of serialised JSON strings, as accept-id-compare-objects-not-serialised-json does, but the equals the patch adds to LoadPlan returns obj instanceof LoadPlan, so any two plans compare equal and the changed assertEquals can no longer fail. ADR 0007 Decision 9 rejects an added or changed equals that reads no state of either object (it returns a constant, or only tests instanceof or getClass) with weaken_assertion/tautological_equals, like a trivially true assertion argument, instead of flagging it with flag/equals_changed. A shortcut, not a policy reject: the equals is hand written, no maintainer merged it, and the rule recognises it from the tokens of the equals body. The move from string equality to equality of parsed objects is itself an allowlisted order only relaxation. The two test hunks are copied unchanged from accumulo PR 6008. Adapted: the LoadPlan hunk keeps the hashCode PR 6008 adds at the end of the class, but its equals body is replaced by the hand written line return obj instanceof LoadPlan; and the hunk that adds equals and hashCode to LoadPlan.Destination is dropped, so the hunk header was recomputed. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status InspiredAFix, Category ID, test org.apache.accumulo.core.data.LoadPlanTest.testJson, as for the verbatim fixture.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/accumulo",
+    "commit": "3fdba8f12c2bd98fec6718a1bd762cd47650e3b9",
+    "pr": "https://github.com/apache/accumulo/pull/6008",
+    "base": "20df82f0490dd19358c639396e20f56e2103bf92",
+    "path": "core/src/test/java/org/apache/accumulo/core/data/LoadPlanTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

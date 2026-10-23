@@ -12,6 +12,9 @@
     "method": "aCeilingRefusalDoesNotBurnTheCallersRateLimit"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/expected_exception_broadened"
+  ],
   "disputed": false,
   "notes": "Broadens assertThatThrownBy(...).isInstanceOf(RateLimitExceededException.class) to isInstanceOf(RuntimeException.class) in a concurrency timing test, so any unchecked exception thrown while the ceiling is full passes, not only the rate limit refusal. RateLimitExceededException extends RuntimeException in the project. Rejected with weaken_assertion/expected_exception_broadened under the ADR 0007 Decision 5 named weakenings: AssertJ isInstanceOf with a type, changed to a supertype. Adapted: built on the pre image of reject-remove-test-annotation (codeheadsystems/hofmann-elimination PR 112, at its merge base), with the one line change to RuntimeException.class hand written; the context lines are copied from that pre image.",
   "derivation": "adapted",

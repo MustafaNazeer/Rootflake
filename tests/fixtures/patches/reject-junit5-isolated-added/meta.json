@@ -12,6 +12,7 @@
     "method": "testAccessLogContent"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Adds JUnit 5 @Isolated to a test class the maintainers found flaky, so it never runs at the same time as any other test. Rejected: turning off parallel execution changes what runs beside the test instead of fixing it. Built on reject-junit5-disabled-class: its import of Disabled becomes an import of org.junit.jupiter.api.parallel.Isolated, and @Disabled(\"...\") becomes @Isolated.",
   "derivation": "adapted",

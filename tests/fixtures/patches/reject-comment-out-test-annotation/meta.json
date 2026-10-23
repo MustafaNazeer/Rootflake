@@ -12,6 +12,9 @@
     "method": "theStoresHitMissGapDoesNotReachTheCaller"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "disable/test_removed"
+  ],
   "disputed": false,
   "notes": "Comments out @Test (\"//@Test //Removed as this is getting flaky\") so JUnit no longer discovers the method.",
   "derivation": "verbatim",

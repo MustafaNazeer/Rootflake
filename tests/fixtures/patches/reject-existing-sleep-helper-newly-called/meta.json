@@ -12,6 +12,9 @@
     "method": "testRedeliverAfterReadCompletionDoesNotStrandCursor"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Adds a call to the test class's existing private helper sleepQuietly(), which calls Thread.sleep(3) and swallows the interrupt, before the state snapshot and assertions of the test. The helper is unchanged and present in the pristine file, but ADR 0007 Decision 6 judges the code a newly added call reaches as if it were added, so this is an added fixed sleep before an assertion and is rejected with weaken_assertion/timing_bound_widened under Decision 7. The checker finds the sleep by following the call into the declaration in the file it reads, not by the helper's name. Adapted: built on the post image of the commit that created the test (apache/pulsar PR 26174), so source.base is that commit; the one added line is hand written.",
   "derivation": "adapted",

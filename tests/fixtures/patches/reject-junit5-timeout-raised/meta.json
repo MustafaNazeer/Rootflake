@@ -12,6 +12,9 @@
     "method": "testNumThreadCachesWithNoDirectArenas"
   },
   "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Raises a JUnit 5 @Timeout from 10 to 30 seconds on a test method, in a PR titled \"Try to fix/stabilize a number of flaky tests\". A widened timing bound in test code. One hunk of one file is kept.",
   "derivation": "verbatim",

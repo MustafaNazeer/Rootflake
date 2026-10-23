@@ -12,6 +12,7 @@
     "method": "verify"
   },
   "expected_flags": [],
+  "expected_codes": null,
   "disputed": false,
   "notes": "Calls Assumptions.abort when the test ran longer than a time window and an assertion is about to fail, turning that failure into a skip. Only one of the two files in the PR is kept. Ruled a shortcut: a new abort or assumption that can skip the test hides the failure from the rerun gate, whatever the maintainers' reason. The target is the verify method of this test specification class, which the backend specific tests of the project call; it is not annotated as a test. In the source, the pull request description carries an AI tool attribution marker; it is used here as a real merged change and recorded as such.",
   "derivation": "verbatim",
