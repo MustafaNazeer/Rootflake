@@ -1,0 +1,30 @@
+{
+  "id": "reject-id-contains-only-instead-of-contains-exactly",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "order_insensitive_collection_assert",
+  "target": {
+    "class": "examples.simple.PersonMapperTest",
+    "method": "gh737"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Replaces AssertJ containsExactly with containsOnly on the parameters of an update statement and of a fragment collector, both passed AssertJ entry(...) values, to drop the order requirement (\"gh737\"). The parameters are a map, so every entry is still checked, but neither getParameters() nor parameters() is declared in a file the checker reads, and entry(...) arguments alone do not establish a Map, since on a List of entries containsOnly is the iterable method and stops counting duplicates. ADR 0007 Decision 5 allows containsExactly to containsOnly only when the actual is declared as a Map or Set, and when the declared type cannot be established the change is a removal: weaken_assertion/assertion_removed. A policy reject: a maintainer merged fix that relaxes only order, which no rule over the diff can confirm without the type. Kept: PersonMapperTest and FragmentCollectorTest. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052: Status DeveloperFixed, Category ID, test examples.simple.PersonMapperTest.gh737 (9 rows reference it; the first is shown); the fix is linked from the PR Link column.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/mybatis/mybatis-dynamic-sql",
+    "commit": "a82874184b211dbf4be3a6f727f33ab28957ac51",
+    "pr": "https://github.com/mybatis/mybatis-dynamic-sql/pull/988",
+    "base": "19018357d53802182e5ac5a2921984d2d8c56942",
+    "path": "src/test/java/examples/simple/PersonMapperTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

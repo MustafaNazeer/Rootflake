@@ -12,7 +12,10 @@
     "method": "isInCommonPool"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "disable/assumption_added",
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Adds assumeTrue(parallelism > 2) for the common ForkJoinPool plus a short sleep in the stream body. Ruled a shortcut: under the sandbox CPU cap the common pool can have parallelism of 2 or less, which would skip the test on every run, so a new environment assumption counts as a disable.",
   "derivation": "verbatim",

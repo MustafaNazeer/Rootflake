@@ -12,7 +12,9 @@
     "method": "sendsBackoffBatchAfterOtherEnqueuedBatches"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
   "disputed": false,
   "notes": "Adds a bare JUnit 4 @Ignore (and its import) to a test the maintainers saw flaking. Only the BulkWriterTest file of the PR is kept.",
   "derivation": "verbatim",

@@ -12,7 +12,9 @@
     "method": "solveEmployeeScheduleWithWatching"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
   "disputed": false,
   "notes": "Adds JUnit 5 @Disabled(\"Flaky test\") to a test method.",
   "derivation": "verbatim",

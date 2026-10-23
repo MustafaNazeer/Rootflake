@@ -12,7 +12,9 @@
     "method": "testSend"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
   "disputed": false,
   "notes": "Adds @DisabledIfSystemProperty so the test class is skipped on the CI host where it is unreliable. Only the first of the two test files in the PR is kept. The target is the only test method of the disabled class. In the source, a commit message carries a co-author trailer naming an AI model; it is used here as a real merged change and recorded as such.",
   "derivation": "verbatim",

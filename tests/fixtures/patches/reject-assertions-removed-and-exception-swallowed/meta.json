@@ -12,7 +12,10 @@
     "method": "testTableReadWriteWithExternalPathWeightRobin"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "swallow_failure/catch_swallows",
+    "weaken_assertion/assertion_removed"
+  ],
   "disputed": false,
   "notes": "Removes three assertions on how files are spread across paths and wraps the file listing in a try that swallows NoSuchFileException. Both the weakening and the swallow apply; it is filed under weaken_assertion. Kept: the import hunk and the test hunk.",
   "derivation": "verbatim",

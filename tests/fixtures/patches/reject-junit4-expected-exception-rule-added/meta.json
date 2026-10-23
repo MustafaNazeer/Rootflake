@@ -12,7 +12,9 @@
     "method": "sendsBackoffBatchAfterOtherEnqueuedBatches"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "swallow_failure/expected_exception_added"
+  ],
   "disputed": false,
   "notes": "Adds a JUnit 4 ExpectedException rule to the class and calls thrown.expect(Exception.class) at the start of the flaky test, so a run that throws any Exception passes. As with reject-junit4-expected-exception-added, a run that throws nothing then fails; the fixture covers the rule form. Rejected: a newly added ExpectedException rule is a swallowed failure. Built on the pre image of reject-junit4-ignore-bare: the rule field, fully qualified so no import is added, and the expect line are hand written.",
   "derivation": "adapted",

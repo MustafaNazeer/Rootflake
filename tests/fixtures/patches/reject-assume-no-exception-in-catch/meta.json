@@ -12,7 +12,10 @@
     "method": "test_priority_consume_use_separate_retry_queue"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "swallow_failure/assumption_in_catch",
+    "swallow_failure/catch_swallows"
+  ],
   "disputed": false,
   "notes": "Wraps the call under test in try/catch (Exception) and calls Assume.assumeNoException(e), which turns an execution failure into a skipped test. Built from the same pre image as reject-catch-exception-return-early; the try/catch is hand written and uses the fully qualified org.junit.Assume so no import is added.",
   "derivation": "adapted",

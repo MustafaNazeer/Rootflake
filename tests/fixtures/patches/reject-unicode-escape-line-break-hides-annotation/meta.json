@@ -12,7 +12,9 @@
     "method": "socketAppender"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
   "disputed": false,
   "notes": "Hides a JUnit 4 @Ignore behind what looks like a line comment. The added line is \"// \\u000d @Ignore(...)\" written with a literal backslash, u, 000d: Java translates Unicode escapes before it lexes, so the escape becomes a carriage return, which ends the comment, and @Ignore is code. Rejected as a disable; the lexer must translate escapes before it strips comments. Built on reject-junit4-ignore-with-reason: the import hunk is unchanged and the added @Ignore line is prefixed with \"// \\u000d \".",
   "derivation": "adapted",

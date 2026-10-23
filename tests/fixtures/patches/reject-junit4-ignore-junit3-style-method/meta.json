@@ -12,7 +12,9 @@
     "method": "testKNNQuery_withModelDifferentCombination_thenSuccess"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
   "disputed": false,
   "notes": "Adds a bare @Ignore, and its import, to testKNNQuery_withModelDifferentCombination_thenSuccess, which the PR title says times out occasionally. The method has no @Test annotation, and FaissIT has none anywhere: it extends KNNRestTestCase, whose chain reaches OpenSearchTestCase and Lucene's LuceneTestCase, which runs under RandomizedRunner with LuceneJUnit3MethodProvider, so methods named test... run without @Test. The checker has to treat this JUnit 3 style method as a test method and recognise the disable without an @Test next to it. Rejected with a disable code under Decision 6. The target is the method the PR names. Both hunks are kept unchanged; the PR touches only this file.",
   "derivation": "verbatim",

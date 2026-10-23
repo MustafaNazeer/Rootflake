@@ -12,7 +12,9 @@
     "method": "testUnknownEntriesWithFailures"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "retry/testng_retry_analyzer"
+  ],
   "disputed": false,
   "notes": "Adds retryAnalyzer = FlakyRetryAnalyzer.class to a TestNG @Test annotation (commit message: \"payment: mark test as flaky\").",
   "derivation": "verbatim",

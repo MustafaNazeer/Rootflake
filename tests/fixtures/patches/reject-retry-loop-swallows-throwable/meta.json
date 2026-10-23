@@ -12,7 +12,11 @@
     "method": "currentTimeMicros"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "swallow_failure/catch_swallows",
+    "swallow_failure/retry_loop",
+    "weaken_assertion/timing_bound_widened"
+  ],
   "disputed": false,
   "notes": "Wraps the test body in a loop of three attempts that catches Throwable and only prints a message. If all three attempts fail the test still passes, so the failure is swallowed, not only retried. Only the test file of a large commit is kept.",
   "derivation": "verbatim",

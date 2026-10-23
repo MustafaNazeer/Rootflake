@@ -12,7 +12,11 @@
     "method": "test_priority_consume_use_separate_retry_queue"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "disable/early_return",
+    "swallow_failure/catch_swallows",
+    "swallow_failure/exit_in_catch"
+  ],
   "disputed": false,
   "notes": "Wraps the call under test and its assertions in try/catch (Exception) that returns from the test, so a timeout or execution failure of the call ends the test as passed. Built from the pre image of hunk 4 of the rocketmq PR used in reject-comment-out-assertions-in-loop; the try/catch is hand written.",
   "derivation": "adapted",

@@ -9,7 +9,9 @@
   "variant": "invocation_interceptor_retry",
   "target": null,
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "retry/invocation_interceptor"
+  ],
   "disputed": false,
   "notes": "Adds a JUnit 5 InvocationInterceptor that reruns a failed test method up to two more times when the test carries @Flaky and its stack trace matches a pattern, on CI only. Rejected: a class in test code implementing InvocationInterceptor is a retry. The file is new and sits under src/main/java of the trino-testing-services module, which the path validator admits; it is test code because it imports org.junit and a path component is named testing. No target: the extension applies to every test annotated with @Flaky and names none. Kept: the extension only, from commit 9420957 of the pull request below; the commit also adds the @Flaky annotation and documentation and changes the scope of a dependency in the module POM. base is that commit's parent. Not from IDoFT: neither the commit nor the class appears in pr-data.csv under any status.",
   "derivation": "verbatim",

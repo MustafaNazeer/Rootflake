@@ -12,7 +12,9 @@
     "method": "testUnknownEntriesWithFailures"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
   "disputed": false,
   "notes": "Disables a TestNG test with enabled = false. Change from the original commit, which added a retryAnalyzer to the same annotation (see reject-testng-retry-analyzer): \"retryAnalyzer = FlakyRetryAnalyzer.class\" is replaced by \"enabled = false\"; the comment line is kept.",
   "derivation": "adapted",

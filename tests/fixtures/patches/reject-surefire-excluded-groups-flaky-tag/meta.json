@@ -10,7 +10,9 @@
   "variant": "surefire_excluded_groups",
   "target": null,
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "disable/tag_changed"
+  ],
   "disputed": false,
   "notes": "Turns a @FlakyTest marker into a JUnit 5 @Tag(\"flaky\") meta annotation and sets <excludedGroups>flaky</excludedGroups> in the root Surefire configuration, so every tagged test is skipped. Kept: the annotation file and the root POM hunk. No target: the change skips every test tagged as flaky and names no test.",
   "derivation": "verbatim",

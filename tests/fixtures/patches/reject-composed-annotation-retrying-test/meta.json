@@ -12,7 +12,9 @@
     "method": "globalMemory"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "retry/retry_annotation"
+  ],
   "disputed": false,
   "notes": "Creates the composed annotation RetryingComparison, which carries JUnit Pioneer @RetryingTest(maxAttempts = 3, suspendForMs = 50, onExceptions = AssertionError.class), and replaces @Test with it on three comparison tests in this file, so a failed assertion is retried up to three times. The PR also tightens the tolerances of the same tests (0.25 to 0.05), and says the retries let those bounds sit close to the measured deviation. Rejected under ADR 0007 Decision 8: @RetryingTest counts inside a composed annotation, and the annotation's file is one the checker reads, since the patch creates it; replacing @Test with a retry annotation is reported only under retry/. The target is the first test the patch annotates; the PR names no single flaky test. Kept: every hunk of NativeFreeComparisonTest.java and the new RetryingComparison.java; NativeComparisonTest.java and PerfmonComparisonTest.java, which get the same change, are dropped. The PR description ends with release notes appended by a review bot (CodeRabbit); the change itself carries no AI generation declaration or co-author trailer. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
   "derivation": "verbatim",

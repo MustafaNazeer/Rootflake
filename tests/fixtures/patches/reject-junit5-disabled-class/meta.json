@@ -12,7 +12,9 @@
     "method": "testAccessLogContent"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
   "disputed": false,
   "notes": "Adds @Disabled to a whole JUnit 5 test class. The target is the only test method of the disabled class.",
   "derivation": "verbatim",

@@ -12,7 +12,9 @@
     "method": "assertArg_matcher_fails_when_assertion_fails"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "swallow_failure/catch_swallows"
+  ],
   "disputed": false,
   "notes": "Adds tests for the new ArgumentMatchers.assertArg that check a failing assertion inside it with try { verify(mock).oneArg(assertArg((String it) -> assertEquals(\"not-hello\", it))); fail(\"Should throw an exception\"); } catch (ComparisonFailure e) { }. org.junit.ComparisonFailure is an AssertionError subclass, and ADR 0007 Decision 8 withholds the try and fail exemption when a catch type is AssertionError or one of the subclasses listed in the semantics note, ComparisonFailure among them, so the catch is judged by the swallow rules: its try covers a verify and an assertion (rule 1), and in the first of the three tests nothing follows the try (rule 3). A policy reject: the code is Mockito's own merged test of a matcher that is expected to throw an assertion error, a correct use that no rule over the diff can tell from a catch that hides a failing assertion. It is not a flaky test fix; the fixture covers the form. Verbatim: all three hunks of MatchersTest.java; the PR's changes to ArgumentMatchers.java and Mockito.java are dropped. The target is the first test that uses the form. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
   "derivation": "verbatim",

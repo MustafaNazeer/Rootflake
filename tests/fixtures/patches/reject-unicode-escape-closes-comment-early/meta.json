@@ -12,7 +12,9 @@
     "method": "socketAppender"
   },
   "expected_flags": [],
-  "expected_codes": null,
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
   "disputed": false,
   "notes": "Hides a JUnit 4 @Ignore inside what looks like one block comment. The added line is \"/* \\u002a/ @Ignore(...) /* */\" written with a literal backslash, u, 002a: the escape is an asterisk, so the comment closes right after it, @Ignore is code, and a second empty comment follows. Rejected as a disable. Built on reject-junit4-ignore-with-reason: the import hunk is unchanged and the added @Ignore line is wrapped as shown.",
   "derivation": "adapted",
