@@ -262,6 +262,30 @@ class TestFormat:
         )
         self.reject(patch, repo, "format")
 
+    @pytest.mark.parametrize(
+        "header",
+        ["@@ -" + "1" * 5000 + ",5 +1,5 @@", "@@ -\u0661,5 +1,5 @@", "@@ -1,5 +1,\uff15 @@"],
+        ids=["five_thousand_digits", "arabic_indic_digit", "fullwidth_digit"],
+    )
+    def test_a_hunk_header_number_outside_plain_ascii_digits_is_rejected(self, repo, header):
+        patch = modify(TEST_FILE, FOO, FOO_FIXED).replace("@@ -1,5 +1,5 @@", header)
+        assert run(patch, repo).rejections == (Rejection("format", TEST_FILE),)
+
+    def test_a_no_newline_marker_before_the_last_line_of_its_side_is_rejected(self, tmp_path):
+        root = tree(tmp_path / "repo", {TEST_FILE: "a\n"})
+        patch = (
+            f"diff --git a/{TEST_FILE} b/{TEST_FILE}\n"
+            f"--- a/{TEST_FILE}\n+++ b/{TEST_FILE}\n"
+            "@@ -1 +1,3 @@\n a\n+x\n\\ No newline at end of file\n+y\n"
+        )
+        assert run(patch, root).rejections == (Rejection("format", TEST_FILE),)
+
+    def test_a_malformed_index_line_is_rejected(self, repo):
+        patch = modify(TEST_FILE, FOO, FOO_FIXED).replace(
+            "index 1111111..2222222 100644", "index 11..22 100644"
+        )
+        assert run(patch, repo).rejections == (Rejection("format", TEST_FILE),)
+
     def test_a_section_without_hunks_is_rejected(self, repo):
         patch = (
             f"diff --git a/{TEST_FILE} b/{TEST_FILE}\n"
@@ -541,6 +565,15 @@ class TestDenyList:
         assert Rejection("denied_test_engine_config", path) in result.rejections
 
 
+class TestSeveralSections:
+    def test_a_problem_in_each_of_two_sections_is_reported_for_both(self, repo):
+        patch = created("pom2.xml") + created("src/test/java/CON.java")
+        assert run(patch, repo).rejections == (
+            Rejection("outside_allowlist", "pom2.xml"),
+            Rejection("path_syntax", "src/test/java/CON.java"),
+        )
+
+
 class TestCreateVersusModify:
     def test_modifying_a_path_that_does_not_exist_is_rejected(self, repo):
         path = "src/test/java/org/example/Ghost.java"
@@ -662,9 +695,7 @@ class TestDeletionAndRename:
             "similarity index 100%\n"
             f"rename from {TEST_FILE}\nrename to {new}\n"
         )
-        result = run(patch, repo)
-        assert not result.accepted
-        assert codes(result) & {"rename", "format"}
+        assert run(patch, repo).rejections == (Rejection("format"),)
 
     def test_a_rename_with_matching_header_paths_is_rejected_as_a_rename(self, repo):
         patch = (
@@ -710,7 +741,7 @@ class TestSize:
         base = created(path, "\n")
         filler = total - len(base.encode()) - 2
         content = "a" * filler + "\n"
-        patch = create(path, "\n" + content).replace("+1,2 @@", "+1,2 @@")
+        patch = create(path, "\n" + content)
         assert len(patch.encode()) == total, len(patch.encode())
         return patch
 
@@ -747,6 +778,19 @@ class TestSize:
 
     def test_a_file_over_the_size_limit_after_the_patch_is_rejected(self, tmp_path):
         assert Rejection("size", TEST_FILE) in self.big(tmp_path, 1).rejections
+
+    def test_a_pristine_file_too_large_to_end_under_the_limit_is_not_read(
+        self, tmp_path, monkeypatch
+    ):
+        before = "a" * (MAX_FILE_BYTES + MAX_PATCH_BYTES) + "\nb\n"
+        root = tree(tmp_path / "repo", {TEST_FILE: before})
+        monkeypatch.setattr(Path, "read_bytes", lambda self: pytest.fail("read " + str(self)))
+        patch = (
+            f"diff --git a/{TEST_FILE} b/{TEST_FILE}\n"
+            f"--- a/{TEST_FILE}\n+++ b/{TEST_FILE}\n"
+            "@@ -2 +2 @@\n-b\n+c\n"
+        )
+        assert run(patch, root).rejections == (Rejection("size", TEST_FILE),)
 
     def test_a_created_file_with_a_nul_byte_is_rejected(self, repo):
         patch = created("src/test/resources/blob.bin", "a\0b\n")

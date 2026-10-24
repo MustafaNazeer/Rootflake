@@ -11,6 +11,7 @@ import json
 import os
 import re
 import stat
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -18,6 +19,9 @@ MAX_PATCH_BYTES = 256 * 1024
 MAX_SECTIONS = 20
 MAX_FILE_BYTES = 1024 * 1024
 
+# A patch can remove at most its own length from a file, so a larger pristine file cannot end
+# under the file limit and is rejected without being read.
+_MAX_PRISTINE_BYTES = MAX_FILE_BYTES + MAX_PATCH_BYTES
 MAX_PATH_BYTES = 1024
 MAX_COMPONENT_BYTES = 255
 
@@ -35,7 +39,9 @@ LIFTABLE = frozenset(["outside_allowlist", "not_a_module", "denied_test_engine_c
 _OVERRIDE_KEYS = ("project", "test", "path", "rule", "reason")
 _DIFF_PREFIX = "diff --git "
 _INDEX_RE = re.compile(r"index [0-9a-f]{7,64}\.\.[0-9a-f]{7,64}(?: ([0-7]{6}))?")
-_HUNK_RE = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(?: .*)?")
+_HUNK_RE = re.compile(
+    r"@@ -([0-9]{1,9})(?:,([0-9]{1,9}))? \+([0-9]{1,9})(?:,([0-9]{1,9}))? @@(?: .*)?"
+)
 _NO_NEWLINE = "\\ No newline at end of file"
 _FORBIDDEN_HEADERS = (
     ("rename from ", "rename"),
@@ -140,8 +146,11 @@ def _parse_hunk(lines: list[str], i: int, path: str) -> tuple[_Hunk, int]:
         i += 1
         if tag not in " -+":
             raise _Reject("format", path)
-        ends_without_newline = i < len(lines) and lines[i] == _NO_NEWLINE
-        if ends_without_newline:
+        if i < len(lines) and lines[i] == _NO_NEWLINE:
+            last_old = tag == "+" or old_seen + 1 == old_count
+            last_new = tag == "-" or new_seen + 1 == new_count
+            if not (last_old and last_new):
+                raise _Reject("format", path)
             text = text[:-1]
             i += 1
         if tag in " -":
@@ -155,25 +164,32 @@ def _parse_hunk(lines: list[str], i: int, path: str) -> tuple[_Hunk, int]:
     return hunk, i
 
 
+def _reject_carriage_returns_in_headers(lines: list[str], i: int, path: str) -> None:
+    while i < len(lines) and not lines[i].startswith(("@@ ", _DIFF_PREFIX)):
+        if "\r" in lines[i]:
+            raise _Reject("format", path)
+        i += 1
+
+
+def _reject_forbidden_header(lines: list[str], i: int, path: str) -> None:
+    for prefix, code in _FORBIDDEN_HEADERS:
+        if i < len(lines) and lines[i].startswith(prefix):
+            raise _Reject(code, path)
+
+
 def _parse_section(lines: list[str], i: int) -> tuple[_Section, int]:
     if not lines[i].startswith(_DIFF_PREFIX):
         raise _Reject("format")
     path = _header_path(lines[i])
     i += 1
-    end = i
-    while end < len(lines) and not lines[end].startswith(("@@ ", _DIFF_PREFIX)):
-        if "\r" in lines[end]:
-            raise _Reject("format", path)
-        end += 1
+    _reject_carriage_returns_in_headers(lines, i, path)
     created = False
     if i < len(lines) and lines[i].startswith("new file mode "):
         if lines[i] != "new file mode 100644":
             raise _Reject("mode", path)
         created = True
         i += 1
-    for prefix, code in _FORBIDDEN_HEADERS:
-        if i < len(lines) and lines[i].startswith(prefix):
-            raise _Reject(code, path)
+    _reject_forbidden_header(lines, i, path)
     if i < len(lines) and lines[i].startswith("index "):
         match = _INDEX_RE.fullmatch(lines[i])
         if not match:
@@ -181,16 +197,10 @@ def _parse_section(lines: list[str], i: int) -> tuple[_Section, int]:
         if match[1] is not None and match[1] != "100644":
             raise _Reject("mode", path)
         i += 1
-    for prefix, code in _FORBIDDEN_HEADERS:
-        if i < len(lines) and lines[i].startswith(prefix):
-            raise _Reject(code, path)
-    if (
-        i < len(lines)
-        and lines[i] == "+++ /dev/null"
-        or (i + 1 < len(lines) and lines[i + 1] == "+++ /dev/null")
-    ):
-        raise _Reject("delete", path)
+    _reject_forbidden_header(lines, i, path)
     i = _expect(lines, i, "--- /dev/null" if created else f"--- a/{path}", path)
+    if i < len(lines) and lines[i] == "+++ /dev/null":
+        raise _Reject("delete", path)
     i = _expect(lines, i, f"+++ b/{path}", path)
     hunks = []
     while i < len(lines) and lines[i].startswith("@@ "):
@@ -388,7 +398,11 @@ def _denied_by_content(path: str, before: bytes, after: bytes) -> Rejection | No
     return None
 
 
-def _path_problems(section: _Section, pristine: Path, colliding: bool):
+def _path_problems(
+    section: _Section, pristine: Path, colliding: bool
+) -> Iterator[Rejection | None]:
+    # Lazy and ordered: a path that fails the syntax rule, which no override lifts, stops the
+    # section before any later check touches the filesystem with it.
     path = section.path
     yield _path_syntax(path)
     yield _allowlist(path)
@@ -400,7 +414,7 @@ def _path_problems(section: _Section, pristine: Path, colliding: bool):
         yield _pristine_case_collision(path, pristine)
 
 
-def _content_problems(path: str, original: bytes, content: bytes):
+def _content_problems(path: str, original: bytes, content: bytes) -> Iterator[Rejection | None]:
     yield _content(path, content)
     yield _denied_by_content(path, original, content)
 
@@ -450,7 +464,7 @@ def validate(
     colliding = _patch_case_collisions(sections)
     rejections, changes, overridden = [], [], []
 
-    def blocked(problems) -> bool:
+    def blocked(problems: Iterator[Rejection | None]) -> bool:
         for problem in problems:
             if problem is None:
                 continue
@@ -465,6 +479,9 @@ def validate(
         if blocked(_path_problems(section, pristine, section.path in colliding)):
             continue
         path = section.path
+        if not section.created and os.lstat(pristine / path).st_size > _MAX_PRISTINE_BYTES:
+            rejections.append(Rejection("size", path))
+            continue
         original = b"" if section.created else (pristine / path).read_bytes()
         try:
             content = _apply(original, section)
