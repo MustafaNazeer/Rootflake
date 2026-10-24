@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from rootflake.gate.checker.calls import Call, ExpansionBudget, calls_in, reach
 from rootflake.gate.checker.model import Context, FileChange, Finding
-from rootflake.gate.checker.scope import Program
+from rootflake.gate.checker.scope import Program, is_library
 from rootflake.gate.checker.survive import SKIP_EXCEPTIONS, attributes
 from rootflake.gate.checker.syntax import (
     Block,
@@ -382,24 +382,32 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
     definitions = _local_definitions(unit, body)
     exits = _exits(unit, body)
     facts = _facts(program, path, body)
-    rules = _expected_exception_fields(program, path)
+    rules = _rule_fields(program, path)
     out: list[Assertion] = []
     consumed: set[int] = set()
     for call in calls_in(unit, body):
-        if call.name == "expect" and call.receiver in rules and call.arity == 1:
+        rule = rules.get(call.receiver) if call.receiver else None
+        if call.name == "expect" and rule and rule[0] == "ExpectedException" and call.arity == 1:
             arguments = _split_arguments(unit, call.start + 1, _close(unit, call.start + 1))
             out.append(Assertion(
                 f"expect ( {arguments[0]} )", ("expect",), arguments,
                 _guard(unit, body, call.start, declared),
-                frozenset(t for at, t in exits if at < call.start), rules[call.receiver],
+                frozenset(t for at, t in exits if at < call.start), rule[1],
                 unit.tokens[call.start].line, call.start, facts=facts,
             ))  # fmt: skip
             continue
-        if call.start in consumed or call.reference or not is_assertion_name(call.name):
+        other = _other_form(program, path, call, rule)
+        if call.start in consumed or call.reference:
+            continue
+        if other is None and not is_assertion_name(call.name):
             continue
         if program.methods_by_name.get(call.name):
             continue  # a helper the checker reads: its assertions come in by following it
-        if call.receiver not in (None, "<expr>") and not call.receiver[:1].isupper():
+        if (
+            other is None
+            and call.receiver not in (None, "<expr>")
+            and not call.receiver[:1].isupper()
+        ):
             continue
         names, end = _chain(unit, call)
         start = call.receiver_at if call.receiver not in (None, "<expr>") else call.start
@@ -418,10 +426,18 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                 or _timed_mode(program, path, unit, inner)
             )
         )
-        credited = _library_call(program, path, call.name, call.start) or (
-            call.receiver not in (None, "<expr>")
-            and program.resolve_type(path, call.receiver, call.receiver_at).kind == "library"
-            and not program.methods_by_name.get(call.name)
+        credited = (
+            other
+            if other is not None
+            else (
+                _library_call(program, path, call.name, call.start)
+                or (
+                    call.receiver not in (None, "<expr>")
+                    and program.resolve_type(path, call.receiver, call.receiver_at).kind
+                    == "library"
+                    and not program.methods_by_name.get(call.name)
+                )
+            )
         )
         out.append(
             Assertion(
@@ -543,26 +559,48 @@ def _ends_in_fail(unit: CompilationUnit, statement: Statement) -> bool:
     return (words[:2] == ["fail", "("]) or (words[1:4] == [".", "fail", "("])
 
 
-def _expected_exception_fields(program: Program, path: str) -> dict[str, bool]:
-    """Fields of the ExpectedException rule type, with whether that type resolves to JUnit."""
-    key = ("expected_exception_fields", path)
+# Rule types whose fields assert: the call names that do, by the field's type.
+_RULE_CALLS = {
+    "ExpectedException": frozenset(["expect"]),
+    "ErrorCollector": frozenset(["checkThat", "checkSucceeds"]),
+    "Expect": frozenset(["that", "withMessage", "about"]),
+}
+_BDD_OWNERS = frozenset(["BDDAssertions", "BDDMockito"])
+
+
+def _rule_fields(program: Program, path: str) -> dict[str, tuple[str, bool]]:
+    """Fields of the JUnit 4 ExpectedException and ErrorCollector rule types and of Truth's
+    Expect, with whether the type resolves to its test library."""
+    key = ("rule_fields", path)
     if key not in program.memo:
-        program.memo[key] = _find_expected_exception_fields(program, path)
+        out = {}
+        for decl in program.all_types(path):
+            for field in decl.fields:
+                simple = field.type.rsplit(".", 1)[-1]
+                if simple not in _RULE_CALLS:
+                    continue
+                credited = is_library(field.type) or (
+                    program.resolve_type(path, simple, field.start).kind == "library"
+                )
+                for name in field.names:
+                    out[name] = (simple, credited)
+        program.memo[key] = out
     return program.memo[key]
 
 
-def _find_expected_exception_fields(program: Program, path: str) -> dict[str, bool]:
-    out = {}
-    for decl in program.all_types(path):
-        for field in decl.fields:
-            if field.type.rsplit(".", 1)[-1] != "ExpectedException":
-                continue
-            credited = field.type.startswith("org.junit.") or (
-                program.resolve_type(path, "ExpectedException", field.start).kind == "library"
-            )
-            for name in field.names:
-                out[name] = credited
-    return out
+def _other_form(program: Program, path: str, call: Call, rule) -> bool | None:
+    """Credit for an assertion outside the assert name list: AssertJ and BDDMockito `then`,
+    and the asserting calls of a rule field. None when the call is not one of these."""
+    if rule is not None and rule[0] != "ExpectedException":
+        return rule[1] if call.name in _RULE_CALLS[rule[0]] else None
+    if call.name != "then":
+        return None
+    if call.receiver is None:
+        return True if _library_call(program, path, "then", call.start) else None
+    if call.receiver in _BDD_OWNERS and call.receiver_at is not None:
+        kind = program.resolve_type(path, call.receiver, call.receiver_at).kind
+        return True if kind == "library" else None
+    return None
 
 
 def _number(text: str) -> float | None:
@@ -1123,6 +1161,10 @@ def _first_arguments(words: list[str], names: frozenset[str]) -> list[tuple[str,
     return out
 
 
+def _verifies(a: Assertion) -> bool:
+    return a.signature[0] == "verify" or (a.signature[0] == "then" and "should" in a.signature)
+
+
 def _expected_types(a: Assertion) -> frozenset[str]:
     """Simple names of the exception types an assertion expects, from `X.class` arguments."""
     out = set()
@@ -1221,7 +1263,7 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
         return "weaken_assertion/expected_exception_broadened"
     if old.signature[0].startswith("assertThatThrownBy") and new.signature[0] == "assertThatCode":
         return "weaken_assertion/expected_exception_broadened"
-    if old.signature[0] == "verify" and new.signature[0] == "verify":
+    if _verifies(old) and _verifies(new):
         if _LOOSE_MODES & set(new.signature) and not _LOOSE_MODES & set(old.signature):
             return "weaken_assertion/verification_mode_relaxed"
     equals = old.signature[0] == new.signature[0] == "assertEquals"

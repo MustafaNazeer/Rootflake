@@ -1007,3 +1007,44 @@ class TestPerNameRebinding:
         before = single_body("assertEquals(Limits.MAX, f());", "import x.Limits;\n")
         after = single_body("assertEquals(Limits.MAX, f());", "import y.Limits;\n")
         assert REBOUND in codes(before, after, tmp_path)
+
+
+class TestMoreAssertionForms:
+    @pytest.mark.parametrize(
+        ("imports", "field", "statement"),
+        [("import org.junit.rules.ErrorCollector;\nimport static org.hamcrest.Matchers.is;\n",
+          "  @org.junit.Rule public ErrorCollector collector = new ErrorCollector();",
+          "collector.checkThat(f(), is(1));"),
+         ("import org.junit.rules.ErrorCollector;\n",
+          "  @org.junit.Rule public ErrorCollector collector = new ErrorCollector();",
+          "collector.checkSucceeds(() -> f());"),
+         ("import static org.assertj.core.api.BDDAssertions.then;\n", "",
+          "then(f()).isEqualTo(1);"),
+         ("import org.assertj.core.api.BDDAssertions;\n", "",
+          "BDDAssertions.then(f()).isEqualTo(1);"),
+         ("import static org.mockito.BDDMockito.then;\nimport static org.mockito.Mockito.times;\n",
+          "", "then(m()).should(times(1)).call();"),
+         ("import com.google.common.truth.Expect;\n",
+          "  @org.junit.Rule public final Expect expect = Expect.create();",
+          "expect.that(f()).isEqualTo(1);")],
+        ids=["error_collector_check_that", "error_collector_check_succeeds", "bdd_then_static",
+             "bdd_then_qualified", "bdd_mockito_should", "truth_expect"],
+    )  # fmt: skip
+    def test_a_deleted_assertion_of_another_form_is_removed(
+        self, tmp_path, imports, field, statement
+    ):
+        before = with_imports(body_of(f"{statement} g();", field), imports)
+        after = with_imports(body_of("g();", field), imports)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_an_unresolved_then_is_not_an_assertion(self, tmp_path):
+        before = single_body("then(f()).isEqualTo(1); g();")
+        assert codes(before, single_body("g();"), tmp_path) == set()
+
+    def test_a_bdd_mockito_mode_relaxed(self, tmp_path):
+        imports = (
+            "import static org.mockito.BDDMockito.then;\nimport static org.mockito.Mockito.*;\n"
+        )
+        before = with_imports(body_of("then(m()).should(times(1)).call();"), imports)
+        after = with_imports(body_of("then(m()).should(atLeastOnce()).call();"), imports)
+        assert "weaken_assertion/verification_mode_relaxed" in codes(before, after, tmp_path)
