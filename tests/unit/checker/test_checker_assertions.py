@@ -1227,3 +1227,33 @@ class TestSecondReview:
         before = body_of('assertEquals("\\n", sep());')
         after = body_of('assertEquals(isWin() ? "\\r\\n" : "\\n", sep());')
         assert codes(before, after, tmp_path) == set()
+
+
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [("verify(m()).foo();", "verify(m(), timeout(1000).times(1)).foo();"),
+     ("verify(m(), times(1)).foo();", "verify(m(), timeout(1000)).foo();"),
+     ("verify(m()).foo();", "verify(m(), after(100)).foo();")],
+    ids=["default_to_timed_times", "times_to_timeout", "default_to_after"],
+)  # fmt: skip
+def test_the_default_verification_mode_is_times_one(tmp_path, before, after):
+    old = with_imports(body_of(before), MOCKITO_IMPORTS)
+    new = with_imports(body_of(after), MOCKITO_IMPORTS)
+    assert codes(old, new, tmp_path) == set()
+
+
+def test_jsonassert_text_in_a_message_does_not_hide_a_tolerance(tmp_path):
+    before = body_of("assertEquals(1.0, d());")
+    after = body_of("assertEquals(1.0, d() + JSONAssert.offset(), 0.5);")
+    assert TOLERANCE in codes(before, after, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "created",
+    ["new Object() { }", "new int[] { 1 }", "new int[3]",
+     "new java.util.HashMap<String, Integer>()", "new String[2][3]"],
+    ids=["anonymous_class", "array_initializer", "array", "generic", "two_dimensions"],
+)  # fmt: skip
+def test_a_creation_expression_is_never_null(tmp_path, created):
+    before = body_of("assertNotNull(f());")
+    assert REMOVED in codes(before, body_of(f"assertNotNull({created});"), tmp_path)

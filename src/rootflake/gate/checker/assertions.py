@@ -89,13 +89,21 @@ def _close(unit: CompilationUnit, open_paren: int) -> int:
 
 def _split_arguments(unit: CompilationUnit, open_paren: int, close: int) -> tuple[str, ...]:
     pieces, depth, start = [], 0, open_paren + 1
+    creating, angles = False, 0  # type arguments of `new T<A, B>(...)` hold commas too
     for i in range(open_paren + 1, close):
         token = unit.tokens[i]
+        if token.kind == "keyword" and token.text == "new":
+            creating = True
+        elif creating and token.kind == "op" and token.text == "<":
+            angles += 1
+        elif creating and token.kind == "op" and token.text == ">":
+            angles -= 1
         if token.kind == "op" and token.text in "([{":
             depth += 1
+            creating, angles = False, 0
         elif token.kind == "op" and token.text in ")]}":
             depth -= 1
-        elif token.kind == "op" and token.text == "," and depth == 0:
+        elif token.kind == "op" and token.text == "," and depth == 0 and angles == 0:
             pieces.append(_text(unit, start, i))
             start = i + 1
     if start < close:
@@ -458,7 +466,9 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
         out.append(
             Assertion(
                 text=_text(unit, start, end),
-                signature=(*(n for n in names if n not in _DESCRIPTIONS), *matchers),
+                signature=_with_default_mode(
+                    (*(n for n in names if n not in _DESCRIPTIONS), *matchers)
+                ),
                 arguments=_split_arguments(unit, call.start + 1, _close(unit, call.start + 1)),
                 guard=_guard(unit, body, call.start, declared),
                 exits_before=frozenset(text for at, text in exits if at < call.start),
@@ -751,6 +761,20 @@ def _value(a: Assertion, text: str) -> float | None:
     name = text.strip()
     found = [f[2] for f in a.facts if f[0] == "value" and f[1] == name]
     return found[0] if found else None
+
+
+_MODES = frozenset(
+    ["times", "never", "atLeast", "atLeastOnce", "atMost", "atMostOnce", "only", "calls"]
+)
+
+
+def _with_default_mode(signature: tuple[str, ...]) -> tuple[str, ...]:
+    """A Mockito verification with no mode verifies `times(1)`, and so does one under a bare
+    `timeout(n)` or `after(n)` (Mockito 5.24.0), so the implicit mode joins the signature."""
+    verifies = signature[0] == "verify" or (signature[0] == "then" and "should" in signature)
+    if verifies and not _MODES & set(signature):
+        return (*signature, "times")
+    return signature
 
 
 # AssertJ calls that only describe a failure; they change no check.
@@ -1088,19 +1112,25 @@ def _equals_self(condition: str) -> bool:
 
 
 def _whole_new(text: str) -> bool:
-    """Exactly one `new T(...)` expression, with nothing after its closing bracket, so a call
-    on a new object, such as `new File(dir, name).exists()`, is not a literal."""
+    """Exactly one creation expression, which is never null: `new T(...)`, with or without an
+    anonymous class body, or an array creation, with no member access or call after it at the
+    top level, so `new File(dir, name).exists()` is not one."""
     words = text.split()
     if words[:1] != ["new"]:
         return False
-    depth = 0
-    for i, word in enumerate(words):
-        depth += word in ("(", "{")
-        if word in (")", "}"):
+    depth, groups = 0, 0
+    for word in words[1:]:
+        if word in ("(", "[", "{"):
+            if depth == 0 and groups and word == "(":
+                return False  # a call on what the creation made
+            depth += 1
+        elif word in (")", "]", "}"):
             depth -= 1
             if depth == 0:
-                return i == len(words) - 1
-    return False
+                groups += 1
+        elif depth == 0 and groups:
+            return False  # anything after the creation, such as `.exists()`
+    return groups > 0 and depth == 0
 
 
 _SELF_CHECKS = frozenset(["isEqualTo", "isSameAs", "isEqualToComparingFieldByField"])
@@ -1415,6 +1445,16 @@ def _expected_types(a: Assertion) -> frozenset[str]:
     return frozenset(out)
 
 
+def _json_mode(a: Assertion) -> bool:
+    """A credited JSONAssert call whose last argument is its strictness: a boolean literal or
+    a JSONCompareMode constant."""
+    qualified = ("JSONAssert . ", "org . skyscreamer . jsonassert . JSONAssert . ")
+    if not a.credited or not a.text.startswith(qualified) or not a.arguments:
+        return False
+    last = a.arguments[-1]
+    return last in ("true", "false") or last.startswith("JSONCompareMode . ")
+
+
 def _json_lenient(a: Assertion) -> bool:
     if "JSONAssert" not in a.text:
         return False
@@ -1511,8 +1551,7 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
         if _LOOSE_MODES & set(new.signature) and not _LOOSE_MODES & set(old.signature):
             return "weaken_assertion/verification_mode_relaxed"
     equals = old.signature[0] == new.signature[0] == "assertEquals"
-    json = "JSONAssert" in new.text or "JSONAssert" in old.text  # its third argument is a mode
-    if equals and not json and len(payload(new)) == 3 and len(payload(old)) == 2:
+    if equals and not _json_mode(new) and len(payload(new)) == 3 and len(payload(old)) == 2:
         return "weaken_assertion/tolerance_widened"
     if old.signature == new.signature:
         old_tolerance, new_tolerance = _tolerance(old), _tolerance(new)
