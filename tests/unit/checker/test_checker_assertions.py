@@ -1048,3 +1048,27 @@ class TestMoreAssertionForms:
         before = with_imports(body_of("then(m()).should(times(1)).call();"), imports)
         after = with_imports(body_of("then(m()).should(atLeastOnce()).call();"), imports)
         assert "weaken_assertion/verification_mode_relaxed" in codes(before, after, tmp_path)
+
+
+def test_a_static_wildcard_change_rebinds_a_name_another_file_declares(tmp_path):
+    before = body_of("assertEquals(1, f());")
+    after = before.replace(
+        "import org.junit.Test;\n", "import org.junit.Test;\nimport static x.Lenient.*;\n"
+    )
+    other = {"src/test/java/b/Other.java": "package b; class Other { void assertEquals() {} }"}
+    assert REBOUND in codes(before, after, tmp_path, other)
+
+
+def test_a_single_import_that_shadows_a_same_package_type_rebinds_it(tmp_path):
+    before = single_body("assertEquals(Limits.MAX, f());", "import x.*;\n")
+    after = single_body("assertEquals(Limits.MAX, f());", "import x.Limits;\n")
+    same_package = {
+        "src/test/java/a/Limits.java": "package a; class Limits { static int MAX = 1; }"
+    }
+    assert REBOUND in codes(before, after, tmp_path, same_package)
+
+
+def test_a_removed_assertion_named_like_a_method_elsewhere_is_removed(tmp_path):
+    other = {"src/test/java/b/Other.java": "package b; class Other { void assertEquals() {} }"}
+    before = body_of("assertEquals(1, f()); g();")
+    assert REMOVED in codes(before, body_of("g();"), tmp_path, other)

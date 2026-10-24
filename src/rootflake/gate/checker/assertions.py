@@ -217,6 +217,19 @@ def _chain(unit: CompilationUnit, call: Call) -> tuple[list[str], int]:
     return names, end + 1
 
 
+def _declared_helper(program: Program, path: str, call: Call) -> bool:
+    """Whether the call reaches a method a read file declares: one of an enclosing class or its
+    supertypes, or of a declared receiver type. A same named method elsewhere does not hide an
+    assertion; it only voids the assertion's credit."""
+    if not program.methods_by_name.get(call.name):
+        return False
+    if call.receiver in (None, "this", "super"):
+        return program.resolve_method(path, call.name, call.start).kind == "declared"
+    if call.receiver == "<expr>" or call.receiver_at is None:
+        return False
+    return program.resolve_type(path, call.receiver, call.receiver_at).kind == "declared"
+
+
 def _library_call(program: Program, path: str, name: str, index: int) -> bool:
     if program.methods_by_name.get(name):
         return False
@@ -401,7 +414,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             continue
         if other is None and not is_assertion_name(call.name):
             continue
-        if program.methods_by_name.get(call.name):
+        if _declared_helper(program, path, call):
             continue  # a helper the checker reads: its assertions come in by following it
         if (
             other is None
@@ -1475,6 +1488,18 @@ def _imports(unit: CompilationUnit) -> tuple[dict, set, dict, set]:
     return types, type_wild, members, member_wild
 
 
+def _declared_type(program: Program, path: str, simple: str) -> bool:
+    """Whether a type in the file or its package, which shadows an on demand import, has the
+    simple name."""
+    unit = program.units[path]
+    return any(
+        decl.name == simple
+        for other_path, other in program.units.items()
+        if other_path == path or other.package == unit.package
+        for decl in program.all_types(other_path)
+    )
+
+
 def _import_rebinds(change: FileChange, ctx: Context) -> set[str]:
     """Names an import change binds differently (ADR 0007 Decision 5, amended 2026-10-24).
 
@@ -1491,10 +1516,14 @@ def _import_rebinds(change: FileChange, ctx: Context) -> set[str]:
         old, new = b_types.get(simple, set()), a_types.get(simple, set())
         if old == new:
             continue
+        # Without the single import the name came from an on demand import only if nothing in
+        # scope (a type in the file or the same package) supplied it, since those shadow one.
         if not old and {_owner(n) for n in new} <= b_wild | {"java.lang"}:
-            continue
+            if not _declared_type(ctx.before, change.path, simple):
+                continue
         if not new and {_owner(n) for n in old} <= a_wild | {"java.lang"}:
-            continue
+            if not _declared_type(ctx.after, change.path, simple):
+                continue
         names.add(simple)
     if b_wild - a_wild and a_wild - b_wild:
         names.add("*types")
@@ -1513,7 +1542,12 @@ def _import_rebinds(change: FileChange, ctx: Context) -> set[str]:
             continue
         names.add(simple)
     if b_member_wild != a_member_wild:
-        declared = set(ctx.after.methods_by_name)
+        declared = {
+            method.name
+            for decl in ctx.after.all_types(change.path)
+            for owner in (decl, *(found for _, found in ctx.after.supertypes(change.path, decl)))
+            for method in owner.methods
+        }
         unit = change.after
         for call in calls_in(unit, _Span(0, len(unit.tokens))):
             if call.receiver is None and call.name not in a_members and call.name not in declared:
