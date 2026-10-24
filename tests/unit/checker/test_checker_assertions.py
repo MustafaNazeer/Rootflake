@@ -606,3 +606,17 @@ def test_a_swapped_type_wildcard_rebinds_when_a_supertype_comes_through_one(tmp_
     )
     after = source.replace("import x.*;", "import y.*;")
     assert REBOUND in codes(source, after, tmp_path)
+
+
+def test_a_reassigned_skip_local_is_still_an_exit(tmp_path):
+    before = body_of("assertEquals(1, f());")
+    after = body_of('RuntimeException e = new SkipException("x"); e = new IllegalStateException(); '
+                    "if (ci()) { throw e; } assertEquals(1, f());")  # fmt: skip
+    assert REMOVED in codes(before, after, tmp_path)
+
+
+def test_a_qualified_skip_local_thrown_later_is_not_an_exit(tmp_path):
+    before = body_of("assertEquals(1, f());")
+    after = body_of('final org.testng.SkipException e = new org.testng.SkipException("x"); '
+                    "if (ci()) { throw e; } assertEquals(1, f());")  # fmt: skip
+    assert REMOVED not in codes(before, after, tmp_path)

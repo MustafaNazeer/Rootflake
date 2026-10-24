@@ -190,9 +190,9 @@ def test_lexing_is_linear():
     small, large = unit * 5000, unit * 20000
 
     def seconds(source):
-        start = time.perf_counter()
+        start = time.process_time()
         tokenize(source)
-        return time.perf_counter() - start
+        return time.process_time() - start
 
     seconds(small)
     assert seconds(large) < 8 * seconds(small) + 0.2

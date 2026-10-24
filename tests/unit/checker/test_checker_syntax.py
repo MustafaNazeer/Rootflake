@@ -295,10 +295,10 @@ class TestGenericsAndEdges:
         method = "  @Test public void t{n}() {{ assertEquals({n}, f(x -> x + {n})); }}\n"
         source = "class Big {\n" + "".join(method.format(n=n) for n in range(15000)) + "}\n"
         assert len(source) > 1_000_000
-        start = time.perf_counter()
+        start = time.process_time()
         [t] = unit(source).types
         assert len(t.methods) == 15000
-        assert time.perf_counter() - start < 5
+        assert time.process_time() - start < 5
 
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "patches"
@@ -418,12 +418,12 @@ def test_every_declaration_annotation_in_the_fixtures_is_attached():
 
 def test_repeated_unclosed_generics_stay_linear():
     statement = "x = " + "new A<b && " * 60000 + "c;"
-    start = time.perf_counter()
+    start = time.process_time()
     try:
         unit("class A { void f() { " + statement + " } }")
     except Unparsable:
         pass
-    assert time.perf_counter() - start < 3
+    assert time.process_time() - start < 3
 
 
 class TestReviewFixes:
@@ -507,10 +507,10 @@ def _parses(source: str) -> bool:
     ids=["interface", "bare", "method"],
 )
 def test_a_stray_at_sign_in_a_member_type_ends_as_unparsable_not_a_hang(member):
-    start = time.perf_counter()
+    start = time.process_time()
     with pytest.raises(Unparsable):
         unit("class A { " + member + " }")
-    assert time.perf_counter() - start < 1
+    assert time.process_time() - start < 1
 
 
 def test_a_long_else_if_chain_walks_without_recursion():

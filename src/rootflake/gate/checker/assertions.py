@@ -221,18 +221,34 @@ def _library_call(program: Program, path: str, name: str, index: int) -> bool:
 
 
 def _throws_skip_local(unit: CompilationUnit, body: Block, statement: Statement) -> bool:
-    """`throw x;` where a local x of the body is declared or assigned a skip exception."""
+    """`throw x;` where the local x is declared as exactly `new <skip exception>(...)` and never
+    assigned again."""
     tokens = unit.tokens[statement.start : statement.end]
     if len(tokens) != 3 or tokens[1].kind != "ident":
         return False
     name = tokens[1].text
+    initialized, reassigned = False, False
     for node in walk(body):
-        if isinstance(node, Statement) and node.kind in ("local_var", "expression"):
-            words = [t.text for t in unit.tokens[node.start : node.end]]
-            if name in words and "=" in words and set(words) & SKIP_EXCEPTIONS:
-                if words.index(name) < words.index("="):
-                    return True
-    return False
+        if not isinstance(node, Statement) or node.kind not in ("local_var", "expression"):
+            continue
+        words = [t.text for t in unit.tokens[node.start : node.end]]
+        for k in range(len(words) - 1):
+            if words[k] != name or words[k + 1] != "=":
+                continue
+            declares = node.kind == "local_var" and k > 0 and words[k - 1] not in ("=", ",")
+            m = k + 3
+            while m + 2 < len(words) and words[m + 1] == ".":
+                m += 2  # a qualified name such as org.testng.SkipException
+            exact = (
+                words[k + 2 : k + 3] == ["new"]
+                and words[m : m + 1] != []
+                and (words[m] in SKIP_EXCEPTIONS)
+            )
+            if declares and exact and not initialized:
+                initialized = True
+            else:
+                reassigned = True
+    return initialized and not reassigned
 
 
 def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str]]:
