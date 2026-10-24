@@ -16,7 +16,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from rootflake.gate.validator import Change, Rejection, Validation, validate
+from rootflake.gate.validator import Change, Rejection, Validation, path_syntax, validate
 from rootflake.sandbox.executor import DockerRunner, ProcessRunner
 
 CPU_LIMIT_S = 30
@@ -28,7 +28,9 @@ _RESULT_KEYS = ["changes", "overridden", "rejections"]
 
 
 def apply_limits(cpu_s: int = CPU_LIMIT_S, address_space: int = ADDRESS_SPACE_BYTES) -> None:
-    resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s))
+    # Linux sends SIGXCPU at the soft limit and SIGKILL at the hard one; a kill at an equal
+    # hard limit would be indistinguishable from an out of memory kill.
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu_s, cpu_s + 1))
     resource.setrlimit(resource.RLIMIT_AS, (address_space, address_space))
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
@@ -90,6 +92,9 @@ def _decode(data: bytes) -> Validation:
     )
     if validation.rejections and validation.changes:
         raise ValueError("a rejected result carries changes")
+    for item in validation.changes + validation.overridden:
+        if not isinstance(item.path, str) or path_syntax(item.path):
+            raise ValueError(f"a result path fails the syntax rule: {item.path!r}")
     return validation
 
 

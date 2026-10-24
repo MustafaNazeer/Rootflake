@@ -135,6 +135,18 @@ def test_a_cpu_limit_kill_is_a_validator_timeout(repo):
         (OK, json.dumps({"rejections": [], "changes": [], "overridden": [], "x": 1}).encode()),
         (OK, b" " * (RESULT_LIMIT_BYTES + 1)),
         (OK, b"[" * 100000),
+        (
+            OK,
+            json.dumps(
+                {"rejections": [], "changes": [["../x", False, ""]], "overridden": []}
+            ).encode(),
+        ),
+        (
+            OK,
+            json.dumps(
+                {"rejections": [], "changes": [], "overridden": [["size", "../x"]]}
+            ).encode(),
+        ),
     ],
     ids=[
         "exit_1",
@@ -148,6 +160,8 @@ def test_a_cpu_limit_kill_is_a_validator_timeout(repo):
         "extra_key",
         "result_too_large",
         "deeply_nested",
+        "change_path_traversal",
+        "overridden_path_traversal",
     ],
 )
 def test_a_failed_or_malformed_child_is_a_validator_error(repo, proc, result):
@@ -180,7 +194,7 @@ def child(code: str) -> subprocess.CompletedProcess:
     )
 
 
-def test_the_child_limits_are_set_as_hard_limits():
+def test_the_cpu_soft_limit_comes_first_so_the_kill_is_sigxcpu():
     done = child(
         "import resource\n"
         "from rootflake.gate.isolated import apply_limits\n"
@@ -191,7 +205,7 @@ def test_the_child_limits_are_set_as_hard_limits():
     assert done.returncode == 0, done.stderr
     assert done.stdout.decode().split() == [
         f"({CPU_LIMIT_S},",
-        f"{CPU_LIMIT_S})",
+        f"{CPU_LIMIT_S + 1})",
         f"({ADDRESS_SPACE_BYTES},",
         f"{ADDRESS_SPACE_BYTES})",
         "(0,",
@@ -215,4 +229,4 @@ def test_the_cpu_limit_stops_a_busy_loop():
         "apply_limits(cpu_s=1)\n"
         "while True:\n    pass\n"
     )
-    assert done.returncode in (-signal.SIGXCPU, -signal.SIGKILL)
+    assert done.returncode == -signal.SIGXCPU

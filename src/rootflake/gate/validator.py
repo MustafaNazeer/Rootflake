@@ -258,7 +258,7 @@ def _apply(original: bytes, section: _Section) -> bytes:
     return b"".join(out)
 
 
-def _path_syntax(path: str) -> Rejection | None:
+def path_syntax(path: str) -> Rejection | None:
     if len(path.encode()) > MAX_PATH_BYTES:
         return Rejection("path_syntax", path)
     for component in path.split("/"):
@@ -412,7 +412,7 @@ def _path_problems(
     # Lazy and ordered: a path that fails the syntax rule, which no override lifts, stops the
     # section before any later check touches the filesystem with it.
     path = section.path
-    yield _path_syntax(path)
+    yield path_syntax(path)
     yield _allowlist(path)
     yield _module(path, pristine)
     yield _denied_by_name(path)
@@ -421,6 +421,10 @@ def _path_problems(
     yield Rejection("case_collision", path) if colliding else None
     if section.created:
         yield _pristine_case_collision(path, pristine)
+
+
+def _pristine_problems(path: str, pristine: Path) -> Iterator[Rejection | None]:
+    yield _size(path, os.lstat(pristine / path).st_size, _MAX_PRISTINE_BYTES)
 
 
 def _content_problems(path: str, original: bytes, content: bytes) -> Iterator[Rejection | None]:
@@ -492,9 +496,7 @@ def validate(
         under_created = any(prefix in created for prefix in _prefixes(path)[:-1])
         if blocked(_path_problems(section, pristine, path in colliding, under_created)):
             continue
-        if not section.created and blocked(
-            iter([_size(path, os.lstat(pristine / path).st_size, _MAX_PRISTINE_BYTES)])
-        ):
+        if not section.created and blocked(_pristine_problems(path, pristine)):
             continue
         original = b"" if section.created else (pristine / path).read_bytes()
         try:
