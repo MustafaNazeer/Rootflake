@@ -578,11 +578,12 @@ def _number(text: str) -> float | None:
 
 
 def _assignment_counts(tokens, start: int, end: int) -> dict[str, int]:
-    """How often each name is the target of an assignment, `++` or `--` in a token range."""
+    """How often each name is the target of an assignment, `++` or `--` in a token range,
+    qualified or not, so `this.eps = 0.5` counts against `eps`."""
     out: dict[str, int] = {}
     for i in range(start, end):
         token = tokens[i]
-        if token.kind != "ident" or (i and tokens[i - 1].text == "."):
+        if token.kind != "ident":
             continue
         after = tokens[i + 1].text if i + 1 < end else ""
         before = tokens[i - 1].text if i else ""
@@ -627,6 +628,7 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
         for param in method.params:
             values.setdefault(param.name, []).append(None)
             sets.setdefault(param.name, []).append(_set_type(param.type))
+    recorded: set[int] = set()
     for node in walk(body):
         if isinstance(node, Catch):
             sets.setdefault(node.name, []).append(False)
@@ -649,6 +651,7 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
                 while end < len(tokens) and tokens[end].text not in (",", ";"):
                     end += 1
                 initialized = follows == "="
+                recorded.add(node.start + i)
                 value = _number(" ".join(t.text for t in tokens[i + 2 : end]))
                 reassigned = assigned.get(token.text, 0) > (1 if initialized else 0)
                 values.setdefault(token.text, []).append(
@@ -657,6 +660,16 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
                 sets.setdefault(token.text, []).append(
                     _set_type(" ".join(t.text for t in tokens[:i]))
                 )
+    # Any other `Type name` pair declares the name again (a for header, a resource, a pattern),
+    # so the name keeps no fact.
+    tokens = unit.tokens
+    for i in range(body.start + 1, body.end - 1):
+        token, before = tokens[i], tokens[i - 1]
+        if token.kind != "ident" or i in recorded or tokens[i + 1].text == "(":
+            continue
+        if before.kind == "ident" or before.text in _PRIMITIVES or before.text in (">", "]"):
+            values.setdefault(token.text, []).append(None)
+            sets.setdefault(token.text, []).append(False)
     out = {("set", name) for name, found in sets.items() if found and all(found)}
     for name, found in values.items():
         if len(found) == 1 and found[0] is not None:
@@ -1071,6 +1084,7 @@ def _tolerance_call(words: list[str], names: frozenset[str]) -> str | None:
 
 
 _BROAD = frozenset(["Exception", "RuntimeException", "Throwable", "Error"])
+_PRIMITIVES = frozenset("boolean byte char short int long float double var".split())
 _EXCEPTION_CALLS = frozenset(
     ["assertThrows", "expectThrows", "assertThatExceptionOfType", "isInstanceOf", "instanceOf",
      "expect"]

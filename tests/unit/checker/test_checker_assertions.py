@@ -935,3 +935,23 @@ class TestSynthesizedFactsFailClosed:
             "List<String> a = e(); assertEquals(new HashSet<>(a), new HashSet<>(b));", helper
         )
         assert RELAXED in codes(before, after, tmp_path)
+
+
+def test_a_tolerance_field_assigned_through_this_has_no_value(tmp_path):
+    helper = "  double eps = 0.01;\n  void grow() { this.eps = 0.5; }"
+    before = body_of("assertEquals(1.0, d(), 0.01);", helper)
+    after = body_of("assertEquals(1.0, d(), eps);", helper)
+    assert TOLERANCE in codes(before, after, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "middle",
+    ["for (List<String> a : lists()) { g(a); }", "try (Res a = res()) { g(a); }",
+     "if (o() instanceof List<?> a) { g(a); }"],
+    ids=["for_each", "try_resource", "pattern"],
+)  # fmt: skip
+def test_a_name_declared_again_in_a_header_is_not_a_set(tmp_path, middle):
+    helper = "  static Set<String> a = null;\n  static Set<String> b = null;"
+    before = body_of(f"{middle} assertEquals(a, b);", helper)
+    after = body_of(f"{middle} assertEquals(new HashSet<>(a), new HashSet<>(b));", helper)
+    assert RELAXED in codes(before, after, tmp_path)
