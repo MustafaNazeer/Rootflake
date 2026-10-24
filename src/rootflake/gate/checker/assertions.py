@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 from rootflake.gate.checker.calls import Call, ExpansionBudget, calls_in, reach
+from rootflake.gate.checker.lexer import tokenize
 from rootflake.gate.checker.model import Context, FileChange, Finding
 from rootflake.gate.checker.scope import Program, is_library
 from rootflake.gate.checker.survive import SKIP_EXCEPTIONS, attributes
@@ -1019,6 +1020,102 @@ _KIND_TWO = (
     (" contains (", " containsInAnyOrder ("),
     ("JSONCompareMode . STRICT", "JSONCompareMode . NON_EXTENSIBLE"),
 )
+
+
+def _literal(token) -> str | None:
+    """The printed text of a string or number literal token, as toString would show it."""
+    if token.kind == "number":
+        return token.text
+    if token.kind == "string" and "\\" not in token.text:
+        return token.text[1:-1]
+    return None
+
+
+def _to_string_equality(a: Assertion) -> tuple[str, str] | None:
+    """The subject and the string literal of `assertEquals("[..]", subject.toString())`, in
+    either argument order."""
+    args = payload(a)
+    if a.signature != ("assertEquals",) or len(args) != 2:
+        return None
+    for literal, actual in (args, args[::-1]):
+        tokens = tokenize(literal)
+        if actual.endswith(" . toString ( )") and len(tokens) == 1 and tokens[0].kind == "string":
+            value = _literal(tokens[0])
+            if value is not None:
+                return actual[: -len(" . toString ( )")], value
+    return None
+
+
+def _order_free_elements(new: Assertion) -> tuple[str, list[str], bool] | None:
+    """The subject, elements and map form of an order insensitive full assertion:
+    `assertThat(s).containsExactlyInAnyOrder(..)`, `assertThat(s, containsInAnyOrder(..))`, or
+    `assertThat(s).containsOnly(entry(k, v), ..)`."""
+    tokens = tokenize(new.text)
+    texts = [t.text for t in tokens]
+    if texts[:2] != ["assertThat", "("]:
+        return None
+    depth, i = 0, 1
+    for i in range(1, len(texts)):
+        depth += texts[i] == "("
+        depth -= texts[i] == ")"
+        if (depth == 1 and texts[i] == ",") or depth == 0:
+            break
+    subject = " ".join(texts[2:i])
+    if texts[i] == ")":
+        rest, closing = texts[i + 1 : i + 4], 1
+        name = rest[1] if rest[:1] == ["."] and len(rest) > 2 and rest[2] == "(" else None
+        start = i + 4
+        if name not in ("containsExactlyInAnyOrder", "containsOnly"):
+            return None
+    else:
+        name, start, closing = texts[i + 1], i + 3, 2
+        if name != "containsInAnyOrder" or texts[i + 2] != "(":
+            return None
+    inner, ending = tokens[start : len(tokens) - closing], texts[len(texts) - closing :]
+    if ending != [")"] * closing:
+        return None
+    is_map = name == "containsOnly"
+    elements, j = [], 0
+    while j < len(inner):
+        if is_map:
+            if [t.text for t in inner[j : j + 2]] != ["entry", "("] or j + 6 > len(inner):
+                return None
+            key, comma, value, close = inner[j + 2], inner[j + 3], inner[j + 4], inner[j + 5]
+            key_text, value_text = _literal(key), _literal(value)
+            if comma.text != "," or close.text != ")" or None in (key_text, value_text):
+                return None
+            elements.append(f"{key_text}={value_text}")
+            j += 6
+        else:
+            text = _literal(inner[j])
+            if text is None:
+                return None
+            elements.append(text)
+            j += 1
+        if j < len(inner):
+            if inner[j].text != ",":
+                return None
+            j += 1
+    return subject, elements, is_map
+
+
+def _collection_text(old: Assertion, new: Assertion) -> bool:
+    """Kind 2: a collection's toString compared with a literal, replaced by an order insensitive
+    assertion over exactly the literal's elements (ADR 0007 Decision 5, amended 2026-10-24)."""
+    found, order_free = _to_string_equality(old), _order_free_elements(new)
+    if found is None or order_free is None:
+        return False
+    subject, literal = found
+    new_subject, elements, is_map = order_free
+    brackets = "{}" if is_map else "[]"
+    if subject != new_subject or literal[:1] + literal[-1:] != brackets:
+        return False
+    inner = literal[1:-1]
+    printed = inner.split(", ") if inner else []
+    readable = all(", " not in e and e.count("=") == (1 if is_map else 0) for e in elements)
+    return readable and sorted(printed) == sorted(elements)
+
+
 _EXACT_CHAIN = frozenset(["isEqualTo", "isSameAs", "isEqualToComparingFieldByField"])
 _RELAXED_CHAIN = frozenset(
     "isGreaterThan isGreaterThanOrEqualTo isLessThan isLessThanOrEqualTo isBetween "
@@ -1044,6 +1141,8 @@ _TOLERANCE_NAMES = frozenset(
 
 def _kind_two(old: Assertion, new: Assertion) -> bool:
     if old.text.endswith(" . inOrder ( )") and new.text == old.text[: -len(" . inOrder ( )")]:
+        return True
+    if _collection_text(old, new):
         return True
     return any(
         before in old.text and new.text == old.text.replace(before, after, 1)

@@ -1072,3 +1072,47 @@ def test_a_removed_assertion_named_like_a_method_elsewhere_is_removed(tmp_path):
     other = {"src/test/java/b/Other.java": "package b; class Other { void assertEquals() {} }"}
     before = body_of("assertEquals(1, f()); g();")
     assert REMOVED in codes(before, body_of("g();"), tmp_path, other)
+
+
+class TestCollectionTextToOrderFree:
+    @pytest.mark.parametrize(
+        ("before", "after", "imports"),
+        [('assertEquals("[a, b]", names().toString());',
+          'assertThat(names()).containsExactlyInAnyOrder("b", "a");', ""),
+         ('assertEquals("[1, 2, 2]", ids().toString());',
+          "assertThat(ids()).containsExactlyInAnyOrder(2, 1, 2);", ""),
+         ('assertEquals("{a=1, b=2}", map().toString());',
+          'assertThat(map()).containsOnly(entry("b", 2), entry("a", 1));',
+          "import static org.assertj.core.api.Assertions.entry;\n")],
+        ids=["list", "duplicates", "map"],
+    )  # fmt: skip
+    def test_the_same_elements_in_any_order_are_kept(self, tmp_path, before, after, imports):
+        old, new = (with_imports(body_of(s), imports) for s in (before, after))
+        assert codes(old, new, tmp_path) == set()
+
+    def test_hamcrest_contains_in_any_order_is_kept(self, tmp_path):
+        old = body_of('assertEquals("[a, b]", names().toString());')
+        new = with_imports(
+            body_of('assertThat(names(), containsInAnyOrder("a", "b"));').replace(
+                "import static org.assertj.core.api.Assertions.assertThat;\n", ""
+            ),
+            HAMCREST_IMPORTS,
+        )
+        assert codes(old, new, tmp_path) == set()
+
+    @pytest.mark.parametrize(
+        "after",
+        ['assertThat(names()).containsExactlyInAnyOrder("a");',
+         'assertThat(names()).contains("a", "b");',
+         'assertThat(others()).containsExactlyInAnyOrder("a", "b");',
+         'assertThat(names()).containsExactlyInAnyOrder("a", "b", "c");'],
+        ids=["fewer", "contains_only_some", "other_subject", "more"],
+    )  # fmt: skip
+    def test_anything_else_is_removed(self, tmp_path, after):
+        before = body_of('assertEquals("[a, b]", names().toString());')
+        assert codes(before, body_of(after), tmp_path) & {REMOVED, RELAXED}
+
+    def test_elements_the_split_cannot_read_are_removed(self, tmp_path):
+        before = body_of('assertEquals("[x, y]", names().toString());')
+        after = body_of('assertThat(names()).containsExactlyInAnyOrder("x, y");')
+        assert REMOVED in codes(before, after, tmp_path)
