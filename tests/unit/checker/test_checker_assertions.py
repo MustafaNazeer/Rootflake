@@ -1364,3 +1364,36 @@ class TestOneSidedBounds:
             for s in ("assertThat(x(), greaterThan(5));", "assertThat(x(), greaterThan(0));")
         )
         assert TOLERANCE in codes(before, after, tmp_path)
+
+
+class TestTypedMessagesAndMigration:
+    @pytest.mark.parametrize(
+        ("after", "helper"),
+        [('assertEquals(e(), a(), String.format("got %s", a()));', ""),
+         ('assertEquals(String.format("got %s", a()), e(), a());', ""),
+         ('assertEquals(e(), a(), java.text.MessageFormat.format("got {0}", a()));', ""),
+         ('assertEquals(e(), a(), "got %s".formatted(a()));', ""),
+         ("assertEquals(e(), a(), why);", "  static final String why = reason();"),
+         ('String why = reason(); assertEquals(e(), a(), why);', "")],
+        ids=["format_last", "format_first", "message_format", "formatted", "string_field",
+             "string_local"],
+    )  # fmt: skip
+    def test_a_typed_message_is_not_a_tolerance(self, tmp_path, after, helper):
+        before = body_of("assertEquals(e(), a());", helper)
+        assert codes(before, body_of(after, helper), tmp_path) == set()
+
+    def test_a_double_local_is_still_a_tolerance(self, tmp_path):
+        before = body_of("assertEquals(e(), a());")
+        after = body_of("double why = delta(); assertEquals(e(), a(), why);")
+        assert TOLERANCE in codes(before, after, tmp_path)
+
+    def test_expected_exception_moved_into_assert_throws_is_kept(self, tmp_path):
+        rule = "  @org.junit.Rule public ExpectedException thrown = ExpectedException.none();"
+        imports = "import org.junit.rules.ExpectedException;\n"
+        before = with_imports(
+            body_of("thrown.expect(java.io.IOException.class); f();", rule), imports
+        )
+        after = with_imports(
+            body_of("assertThrows(java.io.IOException.class, () -> f());", rule), imports
+        )
+        assert codes(before, after, tmp_path) == set()

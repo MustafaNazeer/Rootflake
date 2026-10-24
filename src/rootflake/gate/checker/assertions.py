@@ -468,7 +468,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
         if call.name == "expect" and rule and rule[0] == "ExpectedException" and call.arity == 1:
             arguments = _split_arguments(unit, call.start + 1, _close(unit, call.start + 1))
             out.append(Assertion(
-                f"expect ( {arguments[0]} )", ("expect",), arguments,
+                f"assertThrows ( {arguments[0]} )", ("assertThrows",), arguments,
                 _guard(unit, body, call.start, declared),
                 frozenset(t for at, t in exits if at < call.start), rule[1],
                 unit.tokens[call.start].line, call.start, facts=facts,
@@ -719,14 +719,14 @@ def _assignment_counts(tokens, start: int, end: int) -> dict[str, int]:
 
 
 def _field_facts(program: Program, path: str) -> tuple[dict[str, list], dict[str, list]]:
-    """Each field name's literal values and whether each declaration has a Set type. A field
-    keeps a value only when it is declared once and nothing in the file assigns it again."""
+    """Each field name's literal values and declared types. A field keeps a value only when it
+    is declared once and nothing in the file assigns it again."""
     key = ("field_facts", path)
     if key not in program.memo:
         unit = program.units[path]
         assigned = _assignment_counts(unit.tokens, 0, len(unit.tokens))
         values: dict[str, list] = {}
-        sets: dict[str, list] = {}
+        types: dict[str, list] = {}
         for decl in (n for n in walk(unit) if isinstance(n, TypeDecl)):
             for field in decl.fields:
                 for name in field.names:
@@ -734,34 +734,34 @@ def _field_facts(program: Program, path: str) -> tuple[dict[str, list], dict[str
                     text = _text(unit, span.start, span.end) if span else ""
                     reassigned = assigned.get(name, 0) > (1 if span else 0)
                     values.setdefault(name, []).append(None if reassigned else _number(text))
-                    sets.setdefault(name, []).append(_set_type(field.type))
-        program.memo[key] = (values, sets)
+                    types.setdefault(name, []).append(field.type)
+        program.memo[key] = (values, types)
     return program.memo[key]
 
 
 def _facts(program: Program, path: str, body: Block) -> frozenset:
     """Names bound only to a numeric literal, and names every declaration of which in scope has
-    a Set type, from the file's fields and the method's parameters and locals. A name declared
-    more than once, or assigned, incremented or decremented after its declaration, has no
-    value."""
+    a Set type or a String type, from the file's fields and the method's parameters and locals.
+    A name declared more than once, or assigned, incremented or decremented after its
+    declaration, has no value."""
     unit = program.units[path]
-    field_values, field_sets = _field_facts(program, path)
+    field_values, field_types = _field_facts(program, path)
     values = {name: list(found) for name, found in field_values.items()}
-    sets = {name: list(found) for name, found in field_sets.items()}
+    types: dict[str, list] = {name: list(found) for name, found in field_types.items()}
     assigned = _assignment_counts(unit.tokens, body.start, body.end)
     method = next((n for n in reversed(path_to(unit, body.start)) if isinstance(n, Method)), None)
     if method is not None and method.body is body:
         for param in method.params:
             values.setdefault(param.name, []).append(None)
-            sets.setdefault(param.name, []).append(_set_type(param.type))
+            types.setdefault(param.name, []).append(param.type)
     recorded: set[int] = set()
     for node in walk(body):
         if isinstance(node, Catch):
-            sets.setdefault(node.name, []).append(False)
+            types.setdefault(node.name, []).append(None)
         elif isinstance(node, Lambda):
             for name in node.params:
                 values.setdefault(name, []).append(None)
-                sets.setdefault(name, []).append(False)
+                types.setdefault(name, []).append(None)
         elif isinstance(node, Statement) and node.kind == "local_var":
             tokens = unit.tokens[node.start : node.end]
             for i, token in enumerate(tokens[:-1]):
@@ -783,9 +783,7 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
                 values.setdefault(token.text, []).append(
                     value if initialized and not reassigned else None
                 )
-                sets.setdefault(token.text, []).append(
-                    _set_type(" ".join(t.text for t in tokens[:i]))
-                )
+                types.setdefault(token.text, []).append(" ".join(t.text for t in tokens[:i]))
     # Any other `Type name` pair declares the name again (a for header, a resource, a pattern),
     # so the name keeps no fact.
     tokens = unit.tokens
@@ -795,18 +793,28 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
             continue
         if before.kind == "ident" or before.text in _PRIMITIVES or before.text in (">", "]"):
             values.setdefault(token.text, []).append(None)
-            sets.setdefault(token.text, []).append(False)
-    out = {("set", name) for name, found in sets.items() if found and all(found)}
+            types.setdefault(token.text, []).append(None)
+    out = set()
+    for name, found in types.items():
+        if found and all(t is not None and _set_type(t) for t in found):
+            out.add(("set", name))
+        if found and all(t is not None and _base_type(t) == "String" for t in found):
+            out.add(("string", name))
     for name, found in values.items():
         if len(found) == 1 and found[0] is not None:
             out.add(("value", name, found[0]))
     return frozenset(out)
 
 
-def _set_type(type_text: str) -> bool:
+def _base_type(type_text: str) -> str:
+    """The simple name of a declared type, without modifiers, annotations or type arguments."""
     words = [w for w in type_text.replace("<", " < ").split() if w not in ("final",)]
     base = next((w for w in words if not w.startswith("@")), "")
-    return base.rsplit(".", 1)[-1].endswith("Set")
+    return base.replace(" ", "").rsplit(".", 1)[-1]
+
+
+def _set_type(type_text: str) -> bool:
+    return _base_type(type_text).endswith("Set")
 
 
 def _value(a: Assertion, text: str) -> float | None:
@@ -1086,14 +1094,34 @@ _PAYLOAD = {
 }  # fmt: skip
 
 
-def _is_message(arg: str) -> bool:
+_FORMATS = (
+    ["String", ".", "format", "("], ["java", ".", "lang", ".", "String", ".", "format", "("],
+    ["MessageFormat", ".", "format", "("],
+    ["java", ".", "text", ".", "MessageFormat", ".", "format", "("], ["0", ".", "formatted", "("],
+)  # fmt: skip
+
+
+def _is_message(arg: str, facts: frozenset = frozenset()) -> bool:
     """A String valued argument: a lone string literal, a concatenation that starts with one
-    (Java evaluates `+` left to right, so the result is a String), or a supplier lambda. A literal
-    followed by anything else, such as `"0.5".length()`, is not a message."""
+    (Java evaluates `+` left to right, so the result is a String), a supplier lambda, a
+    `String.format`, `MessageFormat.format` or `formatted` call, or a name every declaration of
+    which is a String. A literal followed by anything else, such as `"0.5".length()`, is not."""
     if arg.startswith("( ) ->"):
         return True
     words = _without_literals(arg).split()
-    return arg.startswith('"') and words[:1] == ["0"] and (len(words) == 1 or words[1] == "+")
+    if arg.startswith('"') and words[:1] == ["0"] and (len(words) == 1 or words[1] == "+"):
+        return True
+    for prefix in _FORMATS:
+        if words[: len(prefix)] == prefix and (prefix[0] != "0" or arg.startswith('"')):
+            depth = 0
+            for i in range(len(prefix) - 1, len(words)):
+                depth += words[i] == "("
+                depth -= words[i] == ")"
+                if depth == 0:
+                    rest = words[i + 1 :]
+                    return not rest or rest[0] == "+"
+            return False
+    return len(words) == 1 and ("string", words[0]) in facts
 
 
 def payload(assertion: Assertion) -> tuple[str, ...]:
@@ -1102,9 +1130,9 @@ def payload(assertion: Assertion) -> tuple[str, ...]:
     least = _PAYLOAD.get(assertion.signature[0])
     if least is None:
         return args
-    if len(args) > least and _is_message(args[-1]):
+    if len(args) > least and _is_message(args[-1], assertion.facts):
         args = args[:-1]
-    if len(args) > least and _is_message(args[0]):
+    if len(args) > least and _is_message(args[0], assertion.facts):
         args = args[1:]
     return args
 
