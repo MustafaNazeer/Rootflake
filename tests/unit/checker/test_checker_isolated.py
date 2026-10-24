@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from rootflake.gate.checker.check import Finding, Target, check
-from rootflake.gate.isolated import WALL_LIMIT_S, check_isolated
+from rootflake.gate.isolated import CHECK_RESULT_LIMIT_BYTES, WALL_LIMIT_S, check_isolated
 from rootflake.sandbox.executor import ProcResult
 
 JAVA = "src/test/java/org/example/FooTest.java"
@@ -111,3 +111,43 @@ def test_a_finding_without_a_path_is_accepted_from_the_child(trees):
     runner = Scripted(OK, findings([["checker/unparsable", None, None]]))
     result = check_isolated([JAVA], *trees, TARGET, runner=runner)
     assert result.findings == (Finding("checker/unparsable", None, None),)
+
+
+def test_a_check_result_over_its_cap_is_a_checker_error(trees):
+    item = ["flag/equals_changed", JAVA, 1]
+    count = CHECK_RESULT_LIMIT_BYTES // len(json.dumps(item)) + 10
+    runner = Scripted(OK, findings([item] * count))
+    assert check_isolated([JAVA], *trees, TARGET, runner=runner).findings == (
+        Finding("checker/checker_error", None),
+    )
+
+
+def test_the_check_result_cap_is_four_mebibytes():
+    assert CHECK_RESULT_LIMIT_BYTES == 4 << 20
+
+
+def test_the_child_writes_each_finding_once(tmp_path, monkeypatch):
+    import rootflake.gate.isolated as isolated
+
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "request.json").write_text(json.dumps({
+        "paths": [JAVA], "pristine": str(tmp_path), "workspace": str(tmp_path),
+        "target": None, "overridden": [],
+    }))  # fmt: skip
+    twice = Finding("disable/test_removed", JAVA, 3)
+
+    class Result:
+        findings = (twice, twice, Finding("disable/test_removed", JAVA, 4))
+
+    monkeypatch.setattr(isolated, "check", lambda *args: Result())
+    isolated._main_check(work)
+    written = json.loads((work / "result.json").read_text())["findings"]
+    assert written == [["disable/test_removed", JAVA, 3], ["disable/test_removed", JAVA, 4]]
+
+
+def test_a_line_must_be_positive(trees):
+    runner = Scripted(OK, findings([["disable/test_removed", JAVA, 0]]))
+    assert check_isolated([JAVA], *trees, TARGET, runner=runner).findings == (
+        Finding("checker/checker_error", None),
+    )

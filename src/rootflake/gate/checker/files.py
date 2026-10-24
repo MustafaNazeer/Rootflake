@@ -1,8 +1,9 @@
 """Host side reads for the shortcut checker (ADR 0007 Decision 2, SH-16).
 
 Every path component is opened relative to its parent without following symlinks, the final
-object must be a regular file, and a read stops one byte past the limit, so a planted link, a
-FIFO or an oversized file is refused rather than followed, waited on or truncated.
+object must be a regular file with a single link, and a read stops one byte past the limit, so
+a planted symlink or hard link, a FIFO or an oversized file is refused rather than followed,
+waited on or truncated.
 """
 
 import errno
@@ -51,8 +52,11 @@ def read_side(root: Path, path: str) -> str | None:
         except OSError as error:
             raise CheckerError(f"{path}: {errno.errorcode.get(error.errno, error.errno)}") from None
         try:
-            if not stat.S_ISREG(os.fstat(handle).st_mode):
+            info = os.fstat(handle)
+            if not stat.S_ISREG(info.st_mode):
                 raise CheckerError(f"{path}: not a regular file")
+            if info.st_nlink != 1:
+                raise CheckerError(f"{path}: hard linked")
             with os.fdopen(handle, "rb", closefd=False) as stream:
                 data = stream.read(MAX_FILE_BYTES + 1)
         finally:

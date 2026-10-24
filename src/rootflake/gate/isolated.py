@@ -26,6 +26,8 @@ CPU_LIMIT_S = 30
 ADDRESS_SPACE_BYTES = 1 << 30
 WALL_LIMIT_S = 60
 RESULT_LIMIT_BYTES = 256 << 20
+# A check result holds only codes, paths and lines, a few kilobytes for a real patch.
+CHECK_RESULT_LIMIT_BYTES = 4 << 20
 DEFAULT_RUNNER = DockerRunner()
 _RESULT_KEYS = ["changes", "overridden", "rejections"]
 _CODE_TYPES = frozenset(
@@ -104,22 +106,22 @@ def _decode(data: bytes) -> Validation:
     return validation
 
 
-def _read_result(path: Path) -> bytes:
+def _read_result(path: Path, limit: int = RESULT_LIMIT_BYTES) -> bytes:
     with path.open("rb") as handle:
-        data = handle.read(RESULT_LIMIT_BYTES + 1)
-    if len(data) > RESULT_LIMIT_BYTES:
+        data = handle.read(limit + 1)
+    if len(data) > limit:
         raise ValueError("result too large")
     return data
 
 
-def _run_child(step: str, work: Path, runner: ProcessRunner):
+def _run_child(step: str, work: Path, runner: ProcessRunner, limit: int = RESULT_LIMIT_BYTES):
     args = [sys.executable, "-I", "-m", "rootflake.gate.isolated", step, str(work)]
     proc = runner.run(args, WALL_LIMIT_S)
     if proc.timed_out or proc.exit_code == -signal.SIGXCPU:
         return "timeout"
     if proc.exit_code != 0:
         return "error"
-    return _read_result(work / "result.json")
+    return _read_result(work / "result.json", limit)
 
 
 def validate_isolated(
@@ -161,7 +163,7 @@ def _decode_findings(data: bytes, paths: Sequence[str]) -> CheckResult:
             raise ValueError(f"bad code {code!r}")
         if path is not None and path not in allowed:
             raise ValueError(f"finding names a path outside the check: {path!r}")
-        if line is not None and (not isinstance(line, int) or isinstance(line, bool)):
+        if line is not None and (not isinstance(line, int) or isinstance(line, bool) or line < 1):
             raise ValueError(f"bad line {line!r}")
         out.append(Finding(code, path, line))
     return CheckResult(tuple(out))
@@ -187,7 +189,7 @@ def check_isolated(
         }
         (work / "request.json").write_text(json.dumps(request))
         try:
-            outcome = _run_child("check", work, runner)
+            outcome = _run_child("check", work, runner, CHECK_RESULT_LIMIT_BYTES)
             if outcome == "timeout":
                 return CheckResult((Finding("checker/checker_timeout", None),))
             if outcome == "error":
@@ -218,7 +220,7 @@ def _main_check(work: Path) -> None:
         target,
         request["overridden"],
     )
-    findings = [[f.code, f.path, f.line] for f in result.findings]
+    findings = [[f.code, f.path, f.line] for f in dict.fromkeys(result.findings)]
     (work / "result.json").write_bytes(json.dumps({"findings": findings}).encode())
 
 

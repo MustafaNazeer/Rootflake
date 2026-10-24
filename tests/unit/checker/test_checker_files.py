@@ -43,6 +43,13 @@ class TestReadSide:
         with pytest.raises(CheckerError):
             read_side(tmp_path, JAVA)
 
+    def test_a_hard_linked_file_is_refused(self, tmp_path):
+        real = write(tmp_path, "elsewhere/Real.java", FOO)
+        (tmp_path / JAVA).parent.mkdir(parents=True)
+        os.link(real, tmp_path / JAVA)
+        with pytest.raises(CheckerError):
+            read_side(tmp_path, JAVA)
+
     def test_a_non_regular_file_is_refused(self, tmp_path):
         (tmp_path / JAVA).parent.mkdir(parents=True)
         os.mkfifo(tmp_path / JAVA)
