@@ -31,6 +31,13 @@ def body_of(statements: str, helpers: str = "") -> str:
     )
 
 
+def jupiter_body(statements: str, helpers: str = "") -> str:
+    """A JUnit 5 test, whose assertions take the message last."""
+    return body_of(statements, helpers).replace(
+        "import static org.junit.Assert.*;", "import static org.junit.jupiter.api.Assertions.*;"
+    )
+
+
 REMOVED = "weaken_assertion/assertion_removed"
 
 
@@ -693,18 +700,19 @@ class TestLegitimateChangesKeepTheirMatch:
         assert codes(before, after, tmp_path) == set()
 
     @pytest.mark.parametrize(
-        "after",
-        ['assertEquals("why", e(), a());', 'assertEquals(e(), a(), "why");',
-         'assertEquals(e(), a(), () -> "why " + a());',
-         'assertEquals("why not " + n(), e(), a());'],
+        ("after", "side"),
+        [('assertEquals("why", e(), a());', body_of),
+         ('assertEquals(e(), a(), "why");', jupiter_body),
+         ('assertEquals(e(), a(), () -> "why " + a());', jupiter_body),
+         ('assertEquals("why not " + n(), e(), a());', body_of)],
         ids=["junit4_message", "junit5_message", "junit5_supplier", "concatenated"],
     )  # fmt: skip
-    def test_an_added_message_is_not_a_tolerance(self, tmp_path, after):
-        assert codes(body_of("assertEquals(e(), a());"), body_of(after), tmp_path) == set()
+    def test_an_added_message_is_not_a_tolerance(self, tmp_path, after, side):
+        assert codes(side("assertEquals(e(), a());"), side(after), tmp_path) == set()
 
     def test_a_message_beside_a_condition_is_not_trivially_true(self, tmp_path):
-        before = body_of('assertTrue(x().isDone(), "m");')
-        after = body_of('assertTrue(y().isDone(), "m");')
+        before = jupiter_body('assertTrue(x().isDone(), "m");')
+        after = jupiter_body('assertTrue(y().isDone(), "m");')
         assert REMOVED not in codes(before, after, tmp_path)
 
     @pytest.mark.parametrize("call", ['as("x")', 'describedAs("x")', 'withFailMessage("x")'])
@@ -872,9 +880,9 @@ class TestWeakeningsTheTableNames:
         ("before", "after"),
         [("assertThat(v()).isEqualTo(3);", "assertThat(v()).isEqualTo(v());"),
          ("assertThat(ok()).isTrue();", "assertThat(true).isTrue();"),
-         ('assertEquals(a(), b(), "m");', 'assertEquals(a(), a(), "m");'),
+         ('assertEquals("m", a(), b());', 'assertEquals("m", a(), a());'),
          ("assertTrue(x().equals(y()));", "assertTrue(x().equals(y()) | true);")],
-        ids=["assertj_self", "assertj_literal", "junit5_message_self", "single_bar_true"],
+        ids=["assertj_self", "assertj_literal", "message_self", "single_bar_true"],
     )  # fmt: skip
     def test_a_trivially_true_replacement_is_refused(self, tmp_path, before, after):
         assert REMOVED in codes(body_of(before), body_of(after), tmp_path)
@@ -1368,23 +1376,25 @@ class TestOneSidedBounds:
 
 class TestTypedMessagesAndMigration:
     @pytest.mark.parametrize(
-        ("after", "helper"),
-        [('assertEquals(e(), a(), String.format("got %s", a()));', ""),
-         ('assertEquals(String.format("got %s", a()), e(), a());', ""),
-         ('assertEquals(e(), a(), java.text.MessageFormat.format("got {0}", a()));', ""),
-         ('assertEquals(e(), a(), "got %s".formatted(a()));', ""),
-         ("assertEquals(e(), a(), why);", "  static final String why = reason();"),
-         ('String why = reason(); assertEquals(e(), a(), why);', "")],
+        ("after", "helper", "side"),
+        [('assertEquals(e(), a(), String.format("got %s", a()));', "", jupiter_body),
+         ('assertEquals(String.format("got %s", a()), e(), a());', "", body_of),
+         ('assertEquals(e(), a(), java.text.MessageFormat.format("got {0}", a()));', "",
+          jupiter_body),
+         ('assertEquals(e(), a(), "got %s".formatted(a()));', "", jupiter_body),
+         ("assertEquals(e(), a(), why);", "  static final String why = reason();", jupiter_body),
+         ('String why = reason(); assertEquals(e(), a(), why);', "", jupiter_body),
+         ('String why = reason(); assertEquals(why, e(), a());', "", body_of)],
         ids=["format_last", "format_first", "message_format", "formatted", "string_field",
-             "string_local"],
+             "string_local", "string_local_first"],
     )  # fmt: skip
-    def test_a_typed_message_is_not_a_tolerance(self, tmp_path, after, helper):
-        before = body_of("assertEquals(e(), a());", helper)
-        assert codes(before, body_of(after, helper), tmp_path) == set()
+    def test_a_typed_message_is_not_a_tolerance(self, tmp_path, after, helper, side):
+        before = side("assertEquals(e(), a());", helper)
+        assert codes(before, side(after, helper), tmp_path) == set()
 
     def test_a_double_local_is_still_a_tolerance(self, tmp_path):
-        before = body_of("assertEquals(e(), a());")
-        after = body_of("double why = delta(); assertEquals(e(), a(), why);")
+        before = jupiter_body("assertEquals(e(), a());")
+        after = jupiter_body("double why = delta(); assertEquals(e(), a(), why);")
         assert TOLERANCE in codes(before, after, tmp_path)
 
     def test_expected_exception_moved_into_assert_throws_is_kept(self, tmp_path):
@@ -1478,3 +1488,24 @@ def test_a_listed_class_name_declared_in_a_read_file_is_not_trusted(tmp_path):
             "{ public static void assertEquals(int a, int b) {} }"
     }  # fmt: skip
     assert REBOUND in codes(before, after, tmp_path, shadow)
+
+
+class TestMessageSlotByOwner:
+    def test_a_junit4_expected_value_change_beside_a_string_actual_is_kept(self, tmp_path):
+        before = body_of('String s = fmt(); assertEquals("format", "01/01/2020", s);')
+        after = body_of('String s = fmt(); assertEquals("format", "1/1/2020", s);')
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_junit4_actual_replaced_by_the_expected_string_is_refused(self, tmp_path):
+        before = body_of('String e = x(); String s = y(); assertEquals("m", e, s);')
+        after = body_of('String e = x(); String s = y(); assertEquals("m", e, e);')
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_string_name_is_no_message_where_the_owner_is_unknown(self, tmp_path):
+        source = body_of("assertEquals(e(), a());").replace(
+            "import static org.junit.Assert.*;", "import static x.Checks.*;"
+        )
+        after = source.replace(
+            "assertEquals(e(), a());", "String why = r(); assertEquals(e(), a(), why);"
+        )
+        assert codes(source, after, tmp_path) & {TOLERANCE, REMOVED}

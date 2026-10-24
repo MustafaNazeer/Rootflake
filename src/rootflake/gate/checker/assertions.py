@@ -546,7 +546,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                     roots_of(_split_arguments(unit, call.start + 1, _close(unit, call.start + 1))),
                     definitions,
                 ),
-                facts=facts,
+                facts=facts | _slot_fact(program, path, unit, call),
             )
         )
     for node in walk(body):
@@ -1162,16 +1162,63 @@ def _is_message(arg: str, facts: frozenset = frozenset()) -> bool:
 
 
 def payload(assertion: Assertion) -> tuple[str, ...]:
-    """The arguments without a message argument."""
+    """The arguments without a message argument. Where the assertion's class is known, only its
+    message position is read; otherwise a literal or formatted message is read at either end,
+    and a String typed name at neither, since it may be the value compared."""
     args = assertion.arguments
     least = _PAYLOAD.get(assertion.signature[0])
     if least is None:
         return args
-    if len(args) > least and _is_message(args[-1], assertion.facts):
+    slot = next((f[1] for f in assertion.facts if f[0] == "slot"), None)
+    facts = assertion.facts if slot else frozenset()
+    if slot != "first" and len(args) > least and _is_message(args[-1], facts):
         args = args[:-1]
-    if len(args) > least and _is_message(args[0], assertion.facts):
+    if slot != "last" and len(args) > least and _is_message(args[0], facts):
         args = args[1:]
     return args
+
+
+# Where each assertion class takes its message.
+_MESSAGE_FIRST = frozenset(
+    ["org.junit.Assert", "junit.framework.Assert", "junit.framework.TestCase",
+     "org.testng.AssertJUnit", "org.junit.Assume", "org.skyscreamer.jsonassert.JSONAssert"]
+)  # fmt: skip
+_MESSAGE_LAST = frozenset(
+    ["org.junit.jupiter.api.Assertions", "org.junit.jupiter.api.Assumptions", "org.testng.Assert"]
+)
+
+
+def _assertion_owner(program: Program, path: str, unit: CompilationUnit, call: Call) -> str | None:
+    """The class an assertion call belongs to, when the file's names settle it."""
+    if call.receiver not in (None, "<expr>") and call.receiver_at is not None:
+        name = _qualified_name(unit, call.receiver_at)
+        if "." in name:
+            return name
+        binding = program.resolve_type(path, name, call.receiver_at)
+        return binding.fqn if binding.kind == "library" else None
+    if call.receiver is not None or program.methods_by_name.get(call.name):
+        return None
+    singles = [
+        imp.name
+        for imp in unit.imports
+        if imp.static and not imp.wildcard and imp.name.rsplit(".", 1)[-1] == call.name
+    ]
+    if singles:
+        return _owner(singles[0]) if len(singles) == 1 else None
+    wild = [imp.name for imp in unit.imports if imp.static and imp.wildcard]
+    if any(owner not in LIBRARY_MEMBERS for owner in wild):
+        return wild[0] if len(wild) == 1 else None
+    having = [owner for owner in wild if call.name in LIBRARY_MEMBERS[owner]]
+    return having[0] if len(having) == 1 else None
+
+
+def _slot_fact(program: Program, path: str, unit: CompilationUnit, call: Call) -> frozenset:
+    owner = _assertion_owner(program, path, unit, call)
+    if owner in _MESSAGE_FIRST:
+        return frozenset([("slot", "first")])
+    if owner in _MESSAGE_LAST:
+        return frozenset([("slot", "last")])
+    return frozenset()
 
 
 def _trivially_true(assertion: Assertion) -> bool:
