@@ -499,3 +499,21 @@ def _parses(source: str) -> bool:
         return True
     except Unparsable:
         return False
+
+
+@pytest.mark.parametrize(
+    "member", ["List<@interface> x;", "int @ x;", "List<@> y() {}"], ids=["interface", "bare", "method"]
+)
+def test_a_stray_at_sign_in_a_member_type_ends_as_unparsable_not_a_hang(member):
+    start = time.perf_counter()
+    with pytest.raises(Unparsable):
+        unit("class A { " + member + " }")
+    assert time.perf_counter() - start < 1
+
+
+def test_a_long_else_if_chain_walks_without_recursion():
+    from rootflake.gate.checker.tree import walk
+
+    chain = " else ".join(f"if (x == {n}) a();" for n in range(5000))
+    u, block = body(chain)
+    assert sum(1 for node in walk(u) if getattr(node, "kind", None) == "if") == 5000

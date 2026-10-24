@@ -529,14 +529,23 @@ class _Parser:
 
     def skip_annotations(self, i: int) -> int:
         while self.is_op(i, "@") and self.text(i + 1) != "interface":
+            if not self.is_ident(i + 1):
+                raise self.fail("expected an annotation name", i)
             _, i = self.annotation(i)
         return i
+
+    def past_annotations(self, i: int) -> int:
+        """Like skip_annotations, but a stray `@` that starts no annotation is unparsable."""
+        after = self.skip_annotations(i)
+        if after == i:
+            raise self.fail("unexpected @", i)
+        return after
 
     def member_stop(self, i: int, end: int) -> int:
         """The first `(`, `=` or `;` of a member that is not inside a type annotation."""
         while i < end:
             if self.is_op(i, "@"):
-                i = self.skip_annotations(i)
+                i = self.past_annotations(i)
                 continue
             token = self.tokens[i]
             if token.kind == "op" and token.text in ("(", "=", ";"):
@@ -551,7 +560,7 @@ class _Parser:
         out, i = [], start
         while i < end:
             if self.is_op(i, "@"):
-                i = self.skip_annotations(i)
+                i = self.past_annotations(i)
                 continue
             if self.text(i) != "final":
                 out.append(self.text(i))
