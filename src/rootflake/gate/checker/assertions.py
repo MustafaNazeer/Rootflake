@@ -1412,8 +1412,71 @@ def _soft_assertions(program: Program, path: str, method: Method) -> tuple[dict,
     return unchecked, checked
 
 
-def _import_keys(unit: CompilationUnit) -> set[tuple[str, bool, bool]]:
-    return {(i.name, i.static, i.wildcard) for i in unit.imports}
+def _owner(name: str) -> str:
+    return name.rsplit(".", 1)[0]
+
+
+def _imports(unit: CompilationUnit) -> tuple[dict, set, dict, set]:
+    """Single type imports by simple name, type imports on demand, single static imports by
+    simple name, and static imports on demand."""
+    types, type_wild, members, member_wild = {}, set(), {}, set()
+    for imp in unit.imports:
+        simple = imp.name.rsplit(".", 1)[-1]
+        if imp.static and imp.wildcard:
+            member_wild.add(imp.name)
+        elif imp.static:
+            members.setdefault(simple, set()).add(imp.name)
+        elif imp.wildcard:
+            type_wild.add(imp.name)
+        else:
+            types.setdefault(simple, set()).add(imp.name)
+    return types, type_wild, members, member_wild
+
+
+def _import_rebinds(change: FileChange, ctx: Context) -> set[str]:
+    """Names an import change binds differently (ADR 0007 Decision 5, amended 2026-10-24).
+
+    Type names: a single import is unchanged where an on demand import of its package supplied
+    the name on the other side; a set of type imports on demand that only grows or only shrinks
+    rebinds nothing, since both sides must compile; a swap rebinds every type name. Member
+    names: any change to the static imports on demand rebinds every called name that no single
+    static import or declaration in the file supplies, since overload resolution spans them all.
+    """
+    b_types, b_wild, b_members, b_member_wild = _imports(change.before)
+    a_types, a_wild, a_members, a_member_wild = _imports(change.after)
+    names: set[str] = set()
+    for simple in set(b_types) | set(a_types):
+        old, new = b_types.get(simple, set()), a_types.get(simple, set())
+        if old == new:
+            continue
+        if not old and {_owner(n) for n in new} <= b_wild | {"java.lang"}:
+            continue
+        if not new and {_owner(n) for n in old} <= a_wild | {"java.lang"}:
+            continue
+        names.add(simple)
+    if b_wild - a_wild and a_wild - b_wild:
+        names.add("*types")
+        if _supertype_through_wildcard(change, ctx):
+            # A swapped on demand import can rebind an unqualified supertype, and with it every
+            # inherited assertion method.
+            names.add("*")
+    for simple in set(b_members) | set(a_members):
+        old, new = b_members.get(simple, set()), a_members.get(simple, set())
+        if old == new:
+            continue
+        owners = {_owner(n) for n in old | new}
+        if not old and b_member_wild == owners:
+            continue  # the only class an on demand import named supplies it now by name
+        if not new and a_member_wild == owners:
+            continue
+        names.add(simple)
+    if b_member_wild != a_member_wild:
+        declared = set(ctx.after.methods_by_name)
+        unit = change.after
+        for call in calls_in(unit, _Span(0, len(unit.tokens))):
+            if call.receiver is None and call.name not in a_members and call.name not in declared:
+                names.add(call.name)
+    return names
 
 
 def _rebound_names(change: FileChange, ctx: Context) -> frozenset[str]:
@@ -1427,16 +1490,7 @@ def _rebound_names(change: FileChange, ctx: Context) -> frozenset[str]:
     names: set[str] = set()
     if change.before.package != change.after.package:
         names.add("*")
-    for name, static, wildcard in _import_keys(change.before) ^ _import_keys(change.after):
-        if wildcard:
-            # A type import on demand binds only type names; a static one binds members too.
-            names.add("*" if static else "*types")
-            if not static and _supertype_through_wildcard(change, ctx):
-                # A swapped on demand import can rebind an unqualified supertype, and with it
-                # every inherited assertion method.
-                names.add("*")
-        else:
-            names.add(name.rsplit(".", 1)[-1])
+    names |= _import_rebinds(change, ctx)
     old_methods = {(p, m.name) for m_list in ctx.before.methods_by_name.values() for p, m in m_list}
     for name, found in ctx.after.methods_by_name.items():
         if any((p, name) not in old_methods for p, _ in found):

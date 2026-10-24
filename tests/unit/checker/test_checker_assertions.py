@@ -955,3 +955,55 @@ def test_a_name_declared_again_in_a_header_is_not_a_set(tmp_path, middle):
     before = body_of(f"{middle} assertEquals(a, b);", helper)
     after = body_of(f"{middle} assertEquals(new HashSet<>(a), new HashSet<>(b));", helper)
     assert RELAXED in codes(before, after, tmp_path)
+
+
+SINGLE_IMPORTS = (
+    "import org.junit.Test;\nimport static org.junit.Assert.assertEquals;\n"
+    "import static org.junit.Assert.assertTrue;\n"
+)
+
+
+def single_body(statements: str, extra_imports: str = "") -> str:
+    return (
+        f"package a;\n{SINGLE_IMPORTS}{extra_imports}public class FooTest {{\n"
+        f"  @Test public void testFoo() {{\n    {statements}\n  }}\n}}\n"
+    )
+
+
+class TestPerNameRebinding:
+    def test_a_static_wildcard_added_beside_single_imports_rebinds_nothing(self, tmp_path):
+        before = single_body("assertEquals(1, f());")
+        after = single_body("assertEquals(1, f());", "import static org.awaitility.Awaitility.*;\n")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_type_wildcard_replaced_by_its_single_imports_rebinds_nothing(self, tmp_path):
+        statements = 'assertEquals(List.of("x"), names(String.valueOf(1)));'
+        before = single_body(statements, "import java.util.*;\n")
+        after = single_body(statements, "import java.util.List;\n")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_static_wildcard_replaced_by_singles_from_the_same_class_rebinds_nothing(
+        self, tmp_path
+    ):
+        before = body_of("assertEquals(1, f());")
+        after = before.replace(
+            "import static org.junit.Assert.*;", "import static org.junit.Assert.assertEquals;"
+        )
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_type_wildcard_added_alone_rebinds_no_type_name(self, tmp_path):
+        before = single_body("assertEquals(Limits.MAX, f());")
+        after = single_body("assertEquals(Limits.MAX, f());", "import x.*;\n")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_static_wildcard_added_beside_another_rebinds_its_member_names(self, tmp_path):
+        before = body_of("assertEquals(1, f());")
+        after = before.replace(
+            "import org.junit.Test;\n", "import org.junit.Test;\nimport static x.Lenient.*;\n"
+        )
+        assert REBOUND in codes(before, after, tmp_path)
+
+    def test_a_single_type_import_moved_to_another_package_rebinds_it(self, tmp_path):
+        before = single_body("assertEquals(Limits.MAX, f());", "import x.Limits;\n")
+        after = single_body("assertEquals(Limits.MAX, f());", "import y.Limits;\n")
+        assert REBOUND in codes(before, after, tmp_path)
