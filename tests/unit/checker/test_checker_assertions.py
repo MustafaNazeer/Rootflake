@@ -1437,3 +1437,30 @@ class TestMoreKindsTwoAndThree:
         helper = "  Queue q;"
         old, new = (with_imports(body_of(s, helper), IS_IMPORTS) for s in (before, after))
         assert codes(old, new, tmp_path) == set()
+
+
+class TestKnownStaticMembers:
+    def add_import(self, line: str) -> str:
+        before = body_of("assertEquals(1, f());")
+        return before.replace("import org.junit.Test;\n", f"import org.junit.Test;\n{line}\n")
+
+    @pytest.mark.parametrize(
+        "line",
+        ["import static org.awaitility.Awaitility.*;", "import static org.mockito.Mockito.*;"],
+        ids=["awaitility", "mockito"],
+    )
+    def test_a_listed_class_without_the_name_rebinds_nothing(self, tmp_path, line):
+        before = body_of("assertEquals(1, f());")
+        assert codes(before, self.add_import(line), tmp_path) == set()
+
+    def test_a_listed_class_declaring_the_name_rebinds_it(self, tmp_path):
+        before = body_of("assertEquals(1, f());")
+        after = self.add_import("import static org.junit.jupiter.api.Assertions.*;")
+        assert REBOUND in codes(before, after, tmp_path)
+
+    def test_the_table_lists_the_pinned_members(self):
+        from rootflake.gate.checker.assertions import LIBRARY_MEMBERS
+
+        assert "assertEquals" in LIBRARY_MEMBERS["org.junit.Assert"]
+        assert "await" in LIBRARY_MEMBERS["org.awaitility.Awaitility"]
+        assert "assertEquals" not in LIBRARY_MEMBERS["org.awaitility.Awaitility"]

@@ -7,8 +7,10 @@ follows after it). An assertion before the patch must reappear unchanged and no 
 or be matched by an added assertion that keeps its strength; otherwise it was removed.
 """
 
+import json
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 
 from rootflake.gate.checker.calls import Call, ExpansionBudget, calls_in, reach
 from rootflake.gate.checker.lexer import Unparsable, tokenize
@@ -26,6 +28,14 @@ from rootflake.gate.checker.syntax import (
 )
 from rootflake.gate.checker.tree import path_to, walk
 
+# Public static member names of commonly imported test library classes, read from each pinned
+# release (docs/source/test-library-semantics.md section 18).
+LIBRARY_MEMBERS = {
+    owner: frozenset(entry["methods"]) | frozenset(entry["fields"])
+    for owner, entry in json.loads(
+        Path(__file__).with_name("library_members.json").read_text(encoding="utf-8")
+    ).items()
+}
 _ROOT_EXACT = frozenset(
     ["fail", "await", "waitAtMost", "failBecauseExceptionWasNotThrown", "shouldHaveThrown",
      "expectThrows"]
@@ -2019,6 +2029,14 @@ def _import_rebinds(change: FileChange, ctx: Context) -> set[str]:
             continue
         names.add(simple)
     if b_member_wild != a_member_wild:
+        # A class whose public static members are listed rebinds only the names it declares;
+        # an unlisted class may declare any name.
+        changed = b_member_wild ^ a_member_wild
+        supplied = (
+            frozenset().union(*(LIBRARY_MEMBERS[owner] for owner in changed))
+            if all(owner in LIBRARY_MEMBERS for owner in changed)
+            else None
+        )
         declared = {
             method.name
             for decl in ctx.after.all_types(change.path)
@@ -2028,7 +2046,8 @@ def _import_rebinds(change: FileChange, ctx: Context) -> set[str]:
         unit = change.after
         for call in calls_in(unit, _Span(0, len(unit.tokens))):
             if call.receiver is None and call.name not in a_members and call.name not in declared:
-                names.add(call.name)
+                if supplied is None or call.name in supplied:
+                    names.add(call.name)
     return names
 
 
