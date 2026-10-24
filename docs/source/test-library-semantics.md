@@ -1,6 +1,6 @@
 # Test library semantics for the shortcut checker
 
-Checked on 2026-10-14; extended on 2026-10-22 with JUnit Pioneer, rerunner-jupiter, the Lucene test framework, Hamcrest, the retry APIs of several client libraries, and further Surefire, JUnit, TestNG, AssertJ and Awaitility facts; extended on 2026-10-23 with Google Truth, AssertJ map assertions, how Surefire 3.6.0 reports TestNG retries through the TestNG engine, JUnit's `@Order` on extension fields and classes, and which failure classes of the test libraries are `AssertionError` subclasses; extended on 2026-10-24 with which JUnit Jupiter test classes and methods are discovered, `allowZeroInvocations`, Testcontainers' `disabledWithoutDocker`, JUnit Pioneer's `@DisableIfTestFails`, AssertJ assumptions and description methods, Mockito's timed verification modes and what `verify` does with a bare `timeout` or `after`, the public static members of commonly imported test classes, JSONAssert's boolean overloads, and where each assertion library puts the failure message. This note records what the build plugins and test libraries that Rootflake's shortcut checker reasons about actually do, taken from each project's official documentation or from its source at a release tag. Every fact names the version it applies to. Where a source file is cited, line numbers refer to that file at the named tag. Anything I could not confirm from a primary source is marked **unverified**.
+Checked on 2026-10-14; extended on 2026-10-22 with JUnit Pioneer, rerunner-jupiter, the Lucene test framework, Hamcrest, the retry APIs of several client libraries, and further Surefire, JUnit, TestNG, AssertJ and Awaitility facts; extended on 2026-10-23 with Google Truth, AssertJ map assertions, how Surefire 3.6.0 reports TestNG retries through the TestNG engine, JUnit's `@Order` on extension fields and classes, and which failure classes of the test libraries are `AssertionError` subclasses; extended on 2026-10-24 with which JUnit Jupiter test classes and methods are discovered, `allowZeroInvocations`, Testcontainers' `disabledWithoutDocker`, JUnit Pioneer's `@DisableIfTestFails`, what happens to `ErrorCollector`, Truth's `Expect` and `ExpectedException` without `@Rule` and to `@Rule` in JUnit Jupiter tests, AssertJ assumptions and description methods, Mockito's timed verification modes and what `verify` does with a bare `timeout` or `after`, the public static members of commonly imported test classes, JSONAssert's boolean overloads, and where each assertion library puts the failure message. This note records what the build plugins and test libraries that Rootflake's shortcut checker reasons about actually do, taken from each project's official documentation or from its source at a release tag. Every fact names the version it applies to. Where a source file is cited, line numbers refer to that file at the named tag. Anything I could not confirm from a primary source is marked **unverified**.
 
 ## Versions checked
 
@@ -48,6 +48,7 @@ Added on 2026-10-24:
 |---|---|---|---|
 | Testcontainers JUnit Jupiter extension (2.x) | `org.testcontainers:testcontainers-junit-jupiter` | 2.0.5 (tag `2.0.5`, commit `5c448202ac69d073f746433d3e79f6a2bf0ec585`) | 2.0.5 (`lastUpdated` 20260420182027) |
 | Testcontainers JUnit Jupiter extension (1.x) | `org.testcontainers:junit-jupiter` | 1.21.4, for `disabledWithoutDocker` only | 1.21.4; the artifact has no 2.x release, since 2.0 publishes the extension as `testcontainers-junit-jupiter` (the 2.0.5 guide at https://java.testcontainers.org/test_framework_integration/junit_5/ gives that artifact ID) |
+| JUnit Jupiter migration support | `org.junit.jupiter:junit-jupiter-migrationsupport` | 5.14.4 | 6.1.3 overall (`lastUpdated` 20260807124333); 5.14.4 is the newest 5.x |
 | JUnit Pioneer | `org.junit-pioneer:junit-pioneer` | 2.3.0, as above | 3.0.0-RC1 (a release candidate, `lastUpdated` 20261023210809); 2.3.0 is the newest final release |
 
 Versions came from each artifact's `maven-metadata.xml` on https://repo1.maven.org/maven2/. The sandbox image does not pin a Surefire or Failsafe version: `sandbox/Dockerfile` pins Maven 3.9.16 only, so each target project runs whatever plugin version its own POM resolves. The Surefire and Failsafe facts below are for 3.6.0 and **have not been checked against older plugin versions**, which is what most target projects will actually use.
@@ -313,6 +314,88 @@ Source at the same tag: https://github.com/junit-team/junit4/blob/r4.13.2/src/ma
 * In `org.junit.Assert` the message is the **first** parameter: `assertTrue(String message, boolean condition)` (line 40), `assertEquals(String message, Object expected, Object actual)` (line 110), `assertEquals(String message, double expected, double actual, double delta)` (line 552), `assertThat(String reason, T actual, Matcher<? super T> matcher)` (line 962), and `assertThrows(String message, Class<T> expectedThrowable, ThrowingRunnable runnable)` (line 998). Each is documented with "@param message the identifying message for the `AssertionError`" (for example line 36).
 * `Assert.java` has no `Supplier` overload; the message is always a `String`.
 * So `assertEquals("a", x, y)` in JUnit 4 is a message and two values, while three `String` arguments to TestNG's `assertEquals` are actual, expected and message (section 4). Which one a call means depends on the import.
+
+### Rule fields without `@Rule`: `ErrorCollector`, Truth's `Expect`, `ExpectedException` (added 2026-10-24)
+
+#### Sources
+
+JUnit 4 at tag `r4.13.2` (commit `05fe2a64f59127c02135be22f416e91260d6ede6`):
+
+* https://github.com/junit-team/junit4/blob/r4.13.2/src/main/java/org/junit/rules/ErrorCollector.java
+* https://github.com/junit-team/junit4/blob/r4.13.2/src/main/java/org/junit/rules/Verifier.java
+* https://github.com/junit-team/junit4/blob/r4.13.2/src/main/java/org/junit/rules/ExpectedException.java
+* https://github.com/junit-team/junit4/blob/r4.13.2/src/main/java/org/junit/Rule.java
+* https://github.com/junit-team/junit4/blob/r4.13.2/src/main/java/org/junit/runners/BlockJUnit4ClassRunner.java
+* https://github.com/junit-team/junit4/blob/r4.13.2/src/main/java/org/junit/runners/ParentRunner.java
+* https://github.com/junit-team/junit4/blob/r4.13.2/src/main/java/org/junit/runners/model/TestClass.java
+* https://github.com/junit-team/junit4/blob/r4.13.2/src/main/java/org/junit/internal/runners/rules/RuleMemberValidator.java
+
+Google Truth at tag `v1.4.5` (commit `0c43ea072f7e8d9a6644db3229cfd3bbc359aaaf`), still the newest release on Maven Central on 2026-10-24 (`lastUpdated` 20250910142336):
+
+* https://github.com/google/truth/blob/v1.4.5/core/src/main/java/com/google/common/truth/Expect.java
+* https://github.com/google/truth/blob/v1.4.5/core/src/main/java/com/google/common/truth/StandardSubjectBuilder.java
+
+JUnit 5 at tag `r5.14.4` (commit `096fd696c1b22780e025a02417d42903e0022862`), module `junit-jupiter-migrationsupport`, under https://github.com/junit-team/junit-framework/tree/r5.14.4/junit-jupiter-migrationsupport/src/main/java/org/junit/jupiter/migrationsupport:
+
+* `rules/EnableRuleMigrationSupport.java`, `rules/TestRuleSupport.java`, `rules/VerifierSupport.java`, `rules/ExpectedExceptionSupport.java`, `rules/ExternalResourceSupport.java`, `rules/adapter/VerifierAdapter.java`, `rules/adapter/ExpectedExceptionAdapter.java`, `EnableJUnit4MigrationSupport.java`
+* the user guide page https://github.com/junit-team/junit-framework/blob/r5.14.4/documentation/modules/ROOT/pages/migrating-from-junit4.adoc
+
+#### How JUnit 4 finds rules
+
+* JUnit 4 applies a rule only through the runner. `BlockJUnit4ClassRunner.withRules` (lines 396 to 413) builds the rule chain from `getTestRules(target)` and `rules(target)` (lines 420 to 439), and both collect values only from members annotated with `@Rule`: `getTestClass().collectAnnotatedMethodValues(target, Rule.class, TestRule.class, collector)` and `collectAnnotatedFieldValues(target, Rule.class, TestRule.class, collector)` (lines 436 to 437). Class rules come only from `@ClassRule` members (`ParentRunner.classRules`, lines 277 to 282). A field of a rule type with neither annotation is never passed to `apply`, so its `Statement` never wraps the test.
+
+#### (a) `ErrorCollector` without `@Rule`
+
+* `ErrorCollector extends Verifier` (`ErrorCollector.java` line 37). `checkThat(value, matcher)` and `checkThat(reason, value, matcher)` (lines 65 and 74) call `checkSucceeds`, which catches any `Throwable` from the callable and passes it to `addError` (lines 88 to 100); `addError` appends it to a private list (lines 48 to 59). `checkThrows` (line 112, `@since 4.13`) also catches the `AssertionError` and calls `addError`. None of these methods throws a recorded failure.
+* The list is reported only by `verify()`, which calls `MultipleFailureException.assertEmpty(errors)` (lines 40 to 43). `verify()` is `protected` and its only caller in the JUnit 4.13.2 sources is the `Statement` that `Verifier.apply` returns, which runs `base.evaluate()` and then `verify()` (`Verifier.java` lines 31 to 39). A search of the whole `src/main/java` tree for `verify()` finds only those two declarations and that call.
+* So without `@Rule` (or `@ClassRule`), every `checkThat`, `checkSucceeds`, `checkThrows` and `addError` failure is recorded and never reported, and the test passes.
+
+#### (b) Truth's `Expect` without `@Rule`: the test fails, it does not pass
+
+* `Expect` is `public final class Expect extends StandardSubjectBuilder implements TestRule` (`Expect.java` line 84). Its failures go to an `ExpectationGatherer` that starts in phase `BEFORE` (line 91); only the `Statement` returned by `apply` moves it to `DURING` and, at the end, reports the gathered failures (lines 250 to 268, with `enterRuleContext` and `leaveRuleContext` at lines 100 to 121).
+* Every assertion entry point checks that phase first. Each `that(...)` overload goes through `about(...)` (for example `StandardSubjectBuilder.java` line 117 onward), and `about`, `withMessage` and `fail()` all call the private `metadata()` (lines 291 to 340), which calls `checkStatePreconditions()` (lines 342 to 345). `Expect` overrides that hook to call `gatherer.checkInRuleContext()` (`Expect.java` lines 245 to 248), and in phase `BEFORE` that throws `IllegalStateException("Assertion made on Expect instance, but it's not enabled as a @Rule.")` (lines 180 to 184).
+* So the premise does not hold for `Expect`: without `@Rule`, the first `expect.that(...)` throws `IllegalStateException`, and the test fails even when the assertion itself would pass. Removing `@Rule` from an `Expect` field turns the test red, not green. (`expect.hasFailures()`, lines 241 to 243, does not go through `metadata()` and does not throw.)
+* The same message string is present in `Expect.java` at Truth tags `release_0_28` through `release_0_46`, `release_1_0`, `release_1_1` and `release_1_1_3`; that it is reached from every `that(...)` call at those tags was not read.
+
+#### (c) `ExpectedException` without `@Rule`
+
+* `expect(Class)` calls `expect(instanceOf(type))` (`ExpectedException.java` lines 196 to 198), and `expect(Matcher)` only adds the matcher to a builder (lines 183 to 185). `expectMessage` and `expectCause` add matchers the same way (lines 209 to 238). None of them throws or checks anything.
+* Both checks live in the private `ExpectedExceptionStatement` that `apply` returns (lines 168 to 171 and 248 to 267): if the test throws, `handleException` matches the throwable against the expectations (lines 269 to 275); if it does not throw and an exception was expected, `failDueToMissingException` fails with "Expected test to throw %s" (lines 128 and 263 to 284).
+* So without `@Rule`, `thrown.expect(T.class)` has no effect: a test that throws nothing passes, and a test that throws `T` fails with that `T` propagating out of the test method, as it would with no rule at all.
+* `ExpectedException.none()` is `@Deprecated` since 4.13 in favour of `Assert.assertThrows` (lines 112 to 124), and the constructor is private (line 130).
+
+#### (d) `@Rule` on a public method that returns the rule
+
+* `@Rule` is `@Target({ElementType.FIELD, ElementType.METHOD})` (`Rule.java` line 89). Its Javadoc: "Annotates fields that reference rules or methods that return a rule. A field must be public, not static, and a subtype of `TestRule` (preferred) or `MethodRule`. A method must be public, not static, and must return a subtype of `TestRule` (preferred) or `MethodRule`" (lines 9 to 13), with an example where `@Rule public TemporaryFolder getFolder()` returns a private field that the test then uses directly (lines 44 to 60). The runner reports a member that breaks these rules as an initialization error (`collectInitializationErrors`, `validateFields` and `validateMethods`, lines 148 to 156 and 228 to 234; messages such as "must be public." at `RuleMemberValidator.java` line 223).
+* The runner treats both the same way: for a method, `TestClass.collectAnnotatedMethodValues` checks the declared return type and then invokes the method on the test instance (`TestClass.java` lines 278 to 300, invocation at line 292); for a field it reads the field (lines 244 to 258). The returned object is the rule that wraps the test. The Javadoc adds that method rules are applied before field rules unless `order` is set (lines 19 to 24).
+* So a `@Rule` method is equivalent to a `@Rule` field **only when the test makes its checks on the same object the method returns**. The method is invoked once per test when the runner builds the chain; if it returns a new instance on each call and the test calls the method again (for example `@Rule public ErrorCollector collector() { return new ErrorCollector(); }` with `collector().checkThat(...)` in the test), the test's checks go to an instance the runner never wraps, and the failures are lost as in (a).
+
+#### (e) JUnit Jupiter tests and `@Rule`
+
+* The JUnit 5.14.4 migration guide says: "the JUnit Jupiter programming model and extension model do not support JUnit 4 features such as `Rules` and `Runners` natively" (lines 3 to 4), "`@Rule` and `@ClassRule` no longer exist; superseded by `@ExtendWith` and `@RegisterExtension`" (lines 209 to 210), and "JUnit Jupiter does not and will not support JUnit 4 rules natively" (line 256). Neither `junit-jupiter-engine/src/main` nor `junit-jupiter-api/src/main` at the tag mentions `org.junit.Rule` or `org.junit.rules`, and the engine's build file (`junit-jupiter-engine/junit-jupiter-engine.gradle.kts`) declares no dependency on `junit:junit`.
+* The exception is `junit-jupiter-migrationsupport`. `@EnableRuleMigrationSupport` (`@since 5.0`) is `@ExtendWith(ExternalResourceSupport.class)`, `@ExtendWith(VerifierSupport.class)` and `@ExtendWith(ExpectedExceptionSupport.class)` (`EnableRuleMigrationSupport.java` lines 43 to 46); its Javadoc says "Currently, rules of type `Verifier`, `ExternalResource`, and `ExpectedException` rules are supported" (lines 27 to 28), and the guide adds "including subclasses of these types", naming `ErrorCollector` as a `Verifier` (lines 265 to 271). `@EnableJUnit4MigrationSupport` composes `@EnableRuleMigrationSupport` with `IgnoreCondition`. The three extensions can also be registered one by one with `@ExtendWith`.
+* Migration support still needs `@Rule`: `TestRuleSupport` takes methods that are `isAnnotated(method, Rule.class)` and return a `TestRule`, and fields from `findPublicAnnotatedFields(testInstance.getClass(), TestRule.class, Rule.class)` (`TestRuleSupport.java` lines 81 to 90), then keeps only members whose rule is an instance of the supported type (line 130). `@ClassRule` is not read. `VerifierAdapter.after()` calls `verify` (`VerifierAdapter.java` lines 30 to 31), and `ExpectedExceptionAdapter` calls `handleException` on a thrown exception and `failDueToMissingException` in `after()` when an exception was expected.
+* So in a Jupiter test, `@Rule` fields and methods are ignored unless a migration support extension is registered on the class; with it, only `Verifier`, `ExternalResource` and `ExpectedException` rules and their subclasses are honoured. Truth's `Expect` is none of these, so in a Jupiter test it is never entered and every `expect.that(...)` throws the `IllegalStateException` from (b), with or without migration support.
+
+#### Run check
+
+I compiled and ran small test classes with JDK 21 against `junit:junit:4.13.2`, `org.hamcrest:hamcrest-core:1.3`, `com.google.truth:truth:1.4.5` (with `com.google.guava:guava:33.4.3-android`, the version its parent POM declares), `org.junit.platform:junit-platform-console-standalone:1.14.4` and `org.junit.jupiter:junit-jupiter-migrationsupport:5.14.4`, each downloaded from Maven Central and checked against its published SHA1. JUnit 4 classes ran under `JUnitCore`; Jupiter classes ran under the console launcher with only the `junit-jupiter` engine.
+
+| Case | No `@Rule` (JUnit 4) | `@Rule` field (JUnit 4) | `@Rule` method returning a field (JUnit 4) | Jupiter, `@Rule` field, no migration support | Jupiter, `@Rule` field, `@EnableRuleMigrationSupport` |
+|---|---|---|---|---|---|
+| `collector.checkThat(1, equalTo(2))` | passes | fails, `AssertionError` | fails, `AssertionError` | passes | fails, `AssertionError` |
+| `collector.checkSucceeds` with a callable that throws | passes | fails with the thrown exception | not run | not run | not run |
+| `expect.that(1).isEqualTo(2)` | fails, `IllegalStateException` "not enabled as a @Rule" | fails, `AssertionErrorWithFacts` "1 expectation failed" | fails, `AssertionErrorWithFacts` | fails, `IllegalStateException` | fails, `IllegalStateException` |
+| `expect.that(1).isEqualTo(1)` | fails, `IllegalStateException` | passes | passes | fails, `IllegalStateException` | fails, `IllegalStateException` |
+| `thrown.expect(IllegalArgumentException.class)`, nothing thrown | passes | fails, "Expected test to throw an instance of java.lang.IllegalArgumentException" | fails, same message | passes | fails, same message |
+| `thrown.expect(IllegalArgumentException.class)`, then throws it | fails, `IllegalArgumentException` | passes | passes | fails, `IllegalArgumentException` | passes |
+
+Two more cases: a JUnit 4 `@Rule` method that returns `new ErrorCollector()` on every call, with `collector().checkThat(1, equalTo(2))` in the test, passes; and in a Jupiter class with `@EnableRuleMigrationSupport`, an `ErrorCollector` field without `@Rule` passes while a `@Rule public ErrorCollector viaMethod()` method returning a field fails as expected.
+
+#### Consequence for the checker
+
+* Removing `@Rule` (or `@ClassRule`) from an `ErrorCollector` or `ExpectedException` member, or from a member of any other `Verifier` subclass, silently turns its checks off, and so does moving a rule from a field to a method that returns a fresh instance. In a Jupiter class, removing `@EnableRuleMigrationSupport`, `@EnableJUnit4MigrationSupport` or the matching `@ExtendWith(VerifierSupport.class)` or `@ExtendWith(ExpectedExceptionSupport.class)` has the same effect.
+* Removing `@Rule` from a Truth `Expect` does not hide a failure; it makes every test that uses the `Expect` fail.
 
 ## 4. TestNG 7.12.0
 
@@ -762,7 +845,8 @@ What the file does not hold: static nested types (which a static import on deman
 * Surefire and Failsafe parameter names, user properties, and XML element names in versions older than 3.6.0.
 * How Surefire 3.6.0 records: each `@RepeatedTest` repetition and the repetitions skipped by `failureThreshold`; a JUnit 4 test skipped by a failed assumption.
 * How Surefire 3.6.0 records a TestNG `SUCCESS_PERCENTAGE_FAILURE` result and TestNG attempts marked `SKIP` because they were retried was read from the Surefire 3.6.0, TestNG engine 1.1.0 and TestNG 7.12.0 sources (section 1), not observed in a run; in particular the exact `name` attribute of each invocation's `testcase` was not confirmed. A project that declares another `testng-engine` version, or a retry analyzer set at run time by a listener rather than in `@Test` or an annotation transformer, was not checked; for the transformer case, that the engine sees the transformed retry analyzer when it builds its test tree is also unverified.
-* Google Truth before 1.4.5, and Truth's `containsAtLeast(...).inOrder()`, which was not read.
+* Google Truth before 1.4.5, and Truth's `containsAtLeast(...).inOrder()`, which was not read. For `Expect` without `@Rule`, only the presence of the "not enabled as a @Rule" message was checked at older tags.
+* Rule behaviour in JUnit 4 releases before 4.13.2, in `junit-jupiter-migrationsupport` before 5.14.4 or in the JUnit 6 line, and under the Vintage engine through Surefire 3.6.0 (the run check used `JUnitCore` and the console launcher, not Surefire). Custom runners and other rule types (for example `TestWatcher` or third party rules) were not checked.
 * JUnit 6.x, AssertJ 4.0.0-M1, and JSONAssert 2.0-rc1.
 * How Surefire 3.6.0 records the attempts that JUnit Pioneer's `@RetryingTest` and rerunner-jupiter's annotations turn into aborted executions (whether each appears as a `skipped` test case, and under which test case name), and the test case name it gives each invocation of a test template.
 * That `-Dtest` leaves `groups` and `excludedGroups` in force was read from the 3.6.0 source, not observed in a run. For TestNG under 3.6.0 the provider does not add a tag filter (`JUnitPlatformProvider.java` line 520 onward), and how the TestNG engine applies `groups` and `excludedGroups` there was not checked. Versions older than 3.6.0 were not checked.

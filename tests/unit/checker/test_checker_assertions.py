@@ -1566,3 +1566,45 @@ def test_a_project_class_named_like_junit_does_not_set_the_message_slot(tmp_path
     before = body_of("org.junit.Assert.assertEquals(e(), a());")
     after = body_of("String why = r(); org.junit.Assert.assertEquals(why, e(), a());")
     assert codes(before, after, tmp_path, shadow) & {TOLERANCE, REMOVED}
+
+
+class TestRuleActivation:
+    COLLECTOR = (
+        "import org.junit.rules.ErrorCollector;\nimport static org.hamcrest.Matchers.is;\n",
+        "ErrorCollector collector = new ErrorCollector();",
+        "collector.checkThat(f(), is(1));",
+    )
+    THROWN = (
+        "import org.junit.rules.ExpectedException;\n",
+        "ExpectedException thrown = ExpectedException.none();",
+        "thrown.expect(java.io.IOException.class); f();",
+    )
+
+    @pytest.mark.parametrize(
+        "form", [COLLECTOR, THROWN], ids=["error_collector", "expected_exception"]
+    )
+    def test_removing_the_rule_annotation_removes_its_assertions(self, tmp_path, form):
+        imports, field, statement = form
+        before = with_imports(body_of(statement, f"  @org.junit.Rule public {field}"), imports)
+        after = with_imports(body_of(statement, f"  public {field}"), imports)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_local_shadowing_the_rule_field_removes_its_assertions(self, tmp_path):
+        imports, field, statement = self.COLLECTOR
+        before = with_imports(body_of(statement, f"  @org.junit.Rule public {field}"), imports)
+        after = with_imports(
+            body_of(f"{field} {statement}", f"  @org.junit.Rule public {field}"), imports
+        )
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_truth_expect_without_its_rule_is_not_a_shortcut(self, tmp_path):
+        imports = "import com.google.common.truth.Expect;\n"
+        statement = "expect.that(f()).isEqualTo(1);"
+        before = with_imports(
+            body_of(statement, "  @org.junit.Rule public final Expect expect = Expect.create();"),
+            imports,
+        )
+        after = with_imports(
+            body_of(statement, "  public final Expect expect = Expect.create();"), imports
+        )
+        assert codes(before, after, tmp_path) == set()

@@ -475,6 +475,8 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
     consumed: set[int] = set()
     for call in calls_in(unit, body):
         rule = rules.get(call.receiver) if call.receiver else None
+        if rule is not None and _declared_in(unit, body, call.receiver):
+            rule = None  # a local of the same name shadows the rule field
         if call.name == "expect" and rule and rule[0] == "ExpectedException" and call.arity == 1:
             arguments = _split_arguments(unit, call.start + 1, _close(unit, call.start + 1))
             out.append(Assertion(
@@ -691,11 +693,40 @@ _RULE_CALLS = {
     "Expect": frozenset(["that", "withMessage", "about"]),
 }
 _BDD_OWNERS = frozenset(["BDDAssertions", "BDDMockito"])
+_NEEDS_RULE = frozenset(["ExpectedException", "ErrorCollector"])
+
+
+def _is_rule(program: Program, path: str, field) -> bool:
+    for annotation in field.annotations:
+        simple = annotation.name.rsplit(".", 1)[-1]
+        if simple not in ("Rule", "ClassRule"):
+            continue
+        if annotation.name in ("org.junit.Rule", "org.junit.ClassRule"):
+            return True
+        if program.resolve_type(path, annotation.name, annotation.start).kind == "library":
+            return True
+    return False
+
+
+def _declared_in(unit: CompilationUnit, body: Block, name: str) -> bool:
+    """Whether the body declares a local or parameter named name (`Type name`)."""
+    tokens = unit.tokens
+    for i in range(body.start + 1, body.end):
+        before = tokens[i - 1]
+        if (
+            tokens[i].kind == "ident"
+            and tokens[i].text == name
+            and (before.kind == "ident" or before.text in (">", "]"))
+        ):
+            return True
+    return False
 
 
 def _rule_fields(program: Program, path: str) -> dict[str, tuple[str, bool]]:
     """Fields of the JUnit 4 ExpectedException and ErrorCollector rule types and of Truth's
-    Expect, with whether the type resolves to its test library."""
+    Expect, with whether the type resolves to its test library. An ExpectedException or
+    ErrorCollector field without `@Rule` or `@ClassRule` checks nothing (JUnit 4.13.2), so it is
+    left out; an Expect without its rule fails the test, so it stays."""
     key = ("rule_fields", path)
     if key not in program.memo:
         out = {}
@@ -703,6 +734,8 @@ def _rule_fields(program: Program, path: str) -> dict[str, tuple[str, bool]]:
             for field in decl.fields:
                 simple = field.type.rsplit(".", 1)[-1]
                 if simple not in _RULE_CALLS:
+                    continue
+                if simple in _NEEDS_RULE and not _is_rule(program, path, field):
                     continue
                 credited = is_library(field.type) or (
                     program.resolve_type(path, simple, field.start).kind == "library"
