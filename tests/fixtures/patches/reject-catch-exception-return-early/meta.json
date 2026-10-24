@@ -15,10 +15,11 @@
   "expected_codes": [
     "disable/early_return",
     "swallow_failure/catch_swallows",
-    "swallow_failure/exit_in_catch"
+    "swallow_failure/exit_in_catch",
+    "weaken_assertion/assertion_removed"
   ],
   "disputed": false,
-  "notes": "Wraps the call under test and its assertions in try/catch (Exception) that returns from the test, so a timeout or execution failure of the call ends the test as passed. Built from the pre image of hunk 4 of the rocketmq PR used in reject-comment-out-assertions-in-loop; the try/catch is hand written.",
+  "notes": "Wraps the call under test and its assertions in try/catch (Exception) that returns from the test, so a timeout or execution failure of the call ends the test as passed. Built from the pre image of hunk 4 of the rocketmq PR used in reject-comment-out-assertions-in-loop; the try/catch is hand written. It also reports weaken_assertion/assertion_removed under ADR 0007 Decision 5 for two reasons: the two assertEquals calls are newly placed under a try whose catch does not rethrow, and every assertion later in the method now has a new return earlier in the method body, the one in the catch.",
   "derivation": "adapted",
   "source": {
     "repo": "https://github.com/apache/rocketmq",

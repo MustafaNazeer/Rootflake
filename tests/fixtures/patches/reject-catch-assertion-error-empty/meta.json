@@ -13,10 +13,11 @@
   },
   "expected_flags": [],
   "expected_codes": [
-    "swallow_failure/catch_swallows"
+    "swallow_failure/catch_swallows",
+    "weaken_assertion/assertion_removed"
   ],
   "disputed": false,
-  "notes": "Same assertion as reject-delete-assertion, kept but wrapped in try/catch (AssertionError) with an empty handler. Change from the original: instead of deleting the duplicated assertion and adding a comment, one copy is wrapped in the try block and the other is removed. In the source, the pull request description declares that the change was AI generated; it is used here as a real merged change and recorded as such.",
+  "notes": "Same assertion as reject-delete-assertion, kept but wrapped in try/catch (AssertionError) with an empty handler. Change from the original: instead of deleting the duplicated assertion and adding a comment, one copy is wrapped in the try block and the other is removed. In the source, the pull request description declares that the change was AI generated; it is used here as a real merged change and recorded as such. It also reports weaken_assertion/assertion_removed: under ADR 0007 Decision 5 an unchanged assertion newly placed under a try whose catch does not rethrow counts as removed, and the kept assertThat(...).isEmpty() now sits under such a try.",
   "derivation": "adapted",
   "source": {
     "repo": "https://github.com/apache/ozone",

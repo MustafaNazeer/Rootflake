@@ -14,10 +14,11 @@
   },
   "expected_flags": [],
   "expected_codes": [
+    "weaken_assertion/assertion_removed",
     "weaken_assertion/timing_bound_widened"
   ],
   "disputed": false,
-  "notes": "Raises the bound in assertFalse(System.currentTimeMillis() - startTime > 1000) to 10000, a wall clock assertion on an elapsed time, in a PR titled \"Server discovery prose tests flaky\"; the same hunk also raises the round trip time the loop waits for from 50 to 250 ms. Rejected: a raised numeric bound in an assertion that compares an elapsed time is a widened timing bound. The path validator also rejects it, because src/test/functional is outside the source sets a patch may touch, as in reject-assume-version-raised, which comes from the same PR and shares this pre image. One hunk of the PR is kept.",
+  "notes": "Raises the bound in assertFalse(System.currentTimeMillis() - startTime > 1000) to 10000, a wall clock assertion on an elapsed time, in a PR titled \"Server discovery prose tests flaky\"; the same hunk also raises the round trip time the loop waits for from 50 to 250 ms. Rejected: a raised numeric bound in an assertion that compares an elapsed time is a widened timing bound. The path validator also rejects it, because src/test/functional is outside the source sets a patch may touch, as in reject-assume-version-raised, which comes from the same PR and shares this pre image. One hunk of the PR is kept. It also reports weaken_assertion/assertion_removed under ADR 0007 Decision 5: an exit is identified by its statement and its full guard text, so the existing break under if (rttMillis > 50), now if (rttMillis > 250), is newly guarded, and the assertion after it in the loop counts as removed.",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/mongodb/mongo-java-driver",

@@ -13,10 +13,11 @@
   },
   "expected_flags": [],
   "expected_codes": [
-    "swallow_failure/catch_swallows"
+    "swallow_failure/catch_swallows",
+    "weaken_assertion/assertion_removed"
   ],
   "disputed": false,
-  "notes": "Same assertion as reject-equality-to-lower-bound, wrapped in try/catch (Throwable) that only prints the error, the pattern used in reject-retry-loop-swallows-throwable. Change from the original: the comment and isGreaterThanOrEqualTo line are replaced by the original assertEquals inside the try block. In the source, a commit message carries a co-author trailer naming an AI model; it is used here as a real merged change and recorded as such.",
+  "notes": "Same assertion as reject-equality-to-lower-bound, wrapped in try/catch (Throwable) that only prints the error, the pattern used in reject-retry-loop-swallows-throwable. Change from the original: the comment and isGreaterThanOrEqualTo line are replaced by the original assertEquals inside the try block. In the source, a commit message carries a co-author trailer naming an AI model; it is used here as a real merged change and recorded as such. It also reports weaken_assertion/assertion_removed: under ADR 0007 Decision 5 an unchanged assertion newly placed under a try whose catch does not rethrow counts as removed, and assertEquals(row.getField(2), 1L) now sits under such a try.",
   "derivation": "adapted",
   "source": {
     "repo": "https://github.com/apache/gravitino",
