@@ -24,7 +24,6 @@ reject-comment-out-test-annotation
 reject-composed-annotation-retrying-test
 reject-created-file-package-mismatch
 reject-delete-assertion
-reject-delete-test-file
 reject-delete-test-method
 reject-early-return-at-top-of-test
 reject-early-return-in-assertion-helper
@@ -100,7 +99,6 @@ reject-soft-assertions-without-assert-all
 reject-surefire-excluded-groups-flaky-tag
 reject-target-class-extends-changed
 reject-test-body-emptied
-reject-test-class-renamed-out-of-surefire
 reject-test-support-timing-constant-raised
 reject-testng-depends-on-methods-and-priority
 reject-testng-enabled-false

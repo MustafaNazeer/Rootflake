@@ -414,3 +414,13 @@ def test_every_declaration_annotation_in_the_fixtures_is_attached():
         for i in sorted(marks - annotation_starts(u)):
             missing.append(f"{path.relative_to(FIXTURES)}:{u.tokens[i].line}")
     assert missing == []
+
+
+def test_repeated_unclosed_generics_stay_linear():
+    statement = "x = " + "new A<b && " * 60000 + "c;"
+    start = time.perf_counter()
+    try:
+        unit("class A { void f() { " + statement + " } }")
+    except Unparsable:
+        pass
+    assert time.perf_counter() - start < 3

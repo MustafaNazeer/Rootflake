@@ -1,10 +1,11 @@
-"""Runs the patch validator in a child process under CPU, address space and wall limits.
+"""Runs the patch validator and the shortcut checker in a child process under limits.
 
-ADR 0007 Decision 1: a crash, a hang or a limit hit inside the validator must end as a
-reject, never as an accept and never as an infrastructure retry. The child reads the patch and
-the request from a private temporary folder and writes its result there, because a result can
-carry up to twenty whole files, far more than the captured output keeps. The child loads the
-override list from the package itself; the request has no field that could name another one.
+ADR 0007 Decision 1: a crash, a hang or a limit hit inside either step must end as a reject,
+never as an accept and never as an infrastructure retry. The child reads its request from a
+private temporary folder and writes its result there, because a validation result can carry up
+to twenty whole files, far more than the captured output keeps. The validator child loads the
+override list from the package itself; its request has no field that could name another one.
+The parent decodes every result strictly and refuses a finding on a path it did not ask about.
 """
 
 import base64
@@ -14,8 +15,10 @@ import resource
 import signal
 import sys
 import tempfile
+from collections.abc import Sequence
 from pathlib import Path
 
+from rootflake.gate.checker.check import CheckResult, Finding, Target, check
 from rootflake.gate.validator import Change, Rejection, Validation, path_syntax, validate
 from rootflake.sandbox.executor import DockerRunner, ProcessRunner
 
@@ -25,6 +28,9 @@ WALL_LIMIT_S = 60
 RESULT_LIMIT_BYTES = 256 << 20
 DEFAULT_RUNNER = DockerRunner()
 _RESULT_KEYS = ["changes", "overridden", "rejections"]
+_CODE_TYPES = frozenset(
+    ["disable", "retry", "weaken_assertion", "swallow_failure", "checker", "flag"]
+)
 
 
 def apply_limits(cpu_s: int = CPU_LIMIT_S, address_space: int = ADDRESS_SPACE_BYTES) -> None:
@@ -106,6 +112,16 @@ def _read_result(path: Path) -> bytes:
     return data
 
 
+def _run_child(step: str, work: Path, runner: ProcessRunner):
+    args = [sys.executable, "-I", "-m", "rootflake.gate.isolated", step, str(work)]
+    proc = runner.run(args, WALL_LIMIT_S)
+    if proc.timed_out or proc.exit_code == -signal.SIGXCPU:
+        return "timeout"
+    if proc.exit_code != 0:
+        return "error"
+    return _read_result(work / "result.json")
+
+
 def validate_isolated(
     patch: bytes,
     pristine: Path,
@@ -118,21 +134,70 @@ def validate_isolated(
         (work / "patch.diff").write_bytes(patch)
         request = {"pristine": str(pristine), "project": project, "test": test}
         (work / "request.json").write_text(json.dumps(request))
-        args = [sys.executable, "-I", "-m", "rootflake.gate.isolated", str(work)]
-        proc = runner.run(args, WALL_LIMIT_S)
-        if proc.timed_out or proc.exit_code == -signal.SIGXCPU:
-            return Validation((Rejection("validator_timeout"),))
-        if proc.exit_code != 0:
-            return Validation((Rejection("validator_error"),))
         try:
-            return _decode(_read_result(work / "result.json"))
+            outcome = _run_child("validate", work, runner)
+            if outcome == "timeout":
+                return Validation((Rejection("validator_timeout"),))
+            if outcome == "error":
+                return Validation((Rejection("validator_error"),))
+            return _decode(outcome)
         except OSError, ValueError, RecursionError, binascii.Error:
             return Validation((Rejection("validator_error"),))
 
 
-def main(folder: str) -> None:
-    apply_limits()
-    work = Path(folder)
+def _decode_findings(data: bytes, paths: Sequence[str]) -> CheckResult:
+    result = json.loads(data)
+    if not isinstance(result, dict) or sorted(result) != ["findings"]:
+        raise ValueError("bad result object")
+    if not isinstance(result["findings"], list):
+        raise ValueError("findings is not a list")
+    allowed = set(paths)
+    out = []
+    for item in result["findings"]:
+        if not isinstance(item, list) or len(item) != 3:
+            raise ValueError(f"bad finding {item!r}")
+        code, path, line = item
+        if not isinstance(code, str) or code.split("/", 1)[0] not in _CODE_TYPES:
+            raise ValueError(f"bad code {code!r}")
+        if path is not None and path not in allowed:
+            raise ValueError(f"finding names a path outside the check: {path!r}")
+        if line is not None and (not isinstance(line, int) or isinstance(line, bool)):
+            raise ValueError(f"bad line {line!r}")
+        out.append(Finding(code, path, line))
+    return CheckResult(tuple(out))
+
+
+def check_isolated(
+    paths: Sequence[str],
+    pristine: Path,
+    workspace: Path,
+    target: Target | None,
+    overridden: Sequence[str] = (),
+    runner: ProcessRunner = DEFAULT_RUNNER,
+) -> CheckResult:
+    error = CheckResult((Finding("checker/checker_error", None),))
+    with tempfile.TemporaryDirectory(prefix="rootflake-check-") as folder:
+        work = Path(folder)
+        request = {
+            "paths": list(paths),
+            "pristine": str(pristine),
+            "workspace": str(workspace),
+            "target": target and {"class": target.class_name, "method": target.method},
+            "overridden": list(overridden),
+        }
+        (work / "request.json").write_text(json.dumps(request))
+        try:
+            outcome = _run_child("check", work, runner)
+            if outcome == "timeout":
+                return CheckResult((Finding("checker/checker_timeout", None),))
+            if outcome == "error":
+                return error
+            return _decode_findings(outcome, paths)
+        except OSError, ValueError, RecursionError:
+            return error
+
+
+def _main_validate(work: Path) -> None:
     request = json.loads((work / "request.json").read_text())
     validation = validate(
         (work / "patch.diff").read_bytes(),
@@ -143,5 +208,24 @@ def main(folder: str) -> None:
     (work / "result.json").write_bytes(_encode(validation))
 
 
+def _main_check(work: Path) -> None:
+    request = json.loads((work / "request.json").read_text())
+    target = request["target"] and Target(request["target"]["class"], request["target"]["method"])
+    result = check(
+        request["paths"],
+        Path(request["pristine"]),
+        Path(request["workspace"]),
+        target,
+        request["overridden"],
+    )
+    findings = [[f.code, f.path, f.line] for f in result.findings]
+    (work / "result.json").write_bytes(json.dumps({"findings": findings}).encode())
+
+
+def main(step: str, folder: str) -> None:
+    apply_limits()
+    {"validate": _main_validate, "check": _main_check}[step](Path(folder))
+
+
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2])

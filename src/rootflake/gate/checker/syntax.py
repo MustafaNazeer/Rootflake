@@ -189,6 +189,10 @@ class CompilationUnit:
     types: list[TypeDecl]
 
 
+class _OverBudget(Unparsable):
+    """Raised past the scan budget; never swallowed by a caller that tolerates a failed scan."""
+
+
 def _match_brackets(tokens: list[Token]) -> list[int]:
     partner = [-1] * len(tokens)
     stack: list[int] = []
@@ -230,6 +234,9 @@ class _Parser:
         self.tokens = tokens
         self.partner = _match_brackets(tokens)
         self.depth = 0
+        # Generic brackets cannot be matched up front, so a failed scan may repeat; this budget
+        # keeps the total linear in the file instead of quadratic in one crafted statement.
+        self.angle_budget = 4 * len(tokens) + 1000
 
     # Small helpers.
 
@@ -269,6 +276,9 @@ class _Parser:
     def skip_angles(self, i: int, end: int) -> int:
         depth = 0
         while i < end:
+            self.angle_budget -= 1
+            if self.angle_budget < 0:
+                raise _OverBudget("generic brackets scanned too often", self.line(i))
             if self.is_op(i, "<"):
                 depth += 1
             elif self.is_op(i, ">"):
@@ -582,6 +592,8 @@ class _Parser:
                 if self.is_op(i, "<"):
                     try:
                         i = self.skip_angles(i, end)
+                    except _OverBudget:
+                        raise
                     except Unparsable:
                         return None
                 elif self.is_op(i, ".") and self.is_ident(i + 1):
