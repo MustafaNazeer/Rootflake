@@ -548,7 +548,9 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                     roots_of(_split_arguments(unit, call.start + 1, _close(unit, call.start + 1))),
                     definitions,
                 ),
-                facts=facts | _slot_fact(program, path, unit, call),
+                facts=facts
+                | _slot_fact(program, path, unit, call)
+                | _definition_facts(program, path, body, start, end),
             )
         )
     for node in walk(body):
@@ -771,6 +773,70 @@ def _number(text: str) -> float | None:
         return sign * float(words[0].rstrip("dDfFlL").replace("_", ""))
     except ValueError:
         return None
+
+
+def _assignment_texts(
+    program: Program, path: str, start: int = 0, end: int | None = None
+) -> dict[str, tuple[str, ...]]:
+    """Every value assigned to each name in a token range (the whole file by default),
+    initializers included, in order."""
+    tokens = program.units[path].tokens
+    end = len(tokens) if end is None else end
+    key = ("assignment_texts", path, start, end)
+    if key not in program.memo:
+        out: dict[str, list[str]] = {}
+        for i in range(start, end - 1):
+            token, after = tokens[i], tokens[i + 1]
+            if token.kind != "ident" or after.kind != "op" or after.text not in _ASSIGNMENTS:
+                continue
+            depth, j = 0, i + 2
+            while j < len(tokens):
+                text = tokens[j].text if tokens[j].kind == "op" else ""
+                if text in ("(", "[", "{"):
+                    depth += 1
+                elif text in (")", "]", "}"):
+                    if depth == 0:
+                        break
+                    depth -= 1
+                elif text in (";", ",") and depth == 0:
+                    break
+                j += 1
+            value = " ".join(t.text for t in tokens[i + 1 : j])
+            out.setdefault(token.text, []).append(value)
+        program.memo[key] = {name: tuple(found) for name, found in out.items()}
+    return program.memo[key]
+
+
+def _definition_facts(program: Program, path: str, body: Block, start: int, end: int) -> frozenset:
+    """For each name the assertion reads, every value assigned to it: within the method for a
+    name the method declares, across the file otherwise. An assertion whose text is unchanged
+    but whose tolerance, bound or mode local changed is then not a twin."""
+    unit = program.units[path]
+    file_wide = _assignment_texts(program, path)
+    local = _assignment_texts(program, path, body.start, body.end)
+    names = {
+        unit.tokens[i].text
+        for i in range(start, end)
+        if unit.tokens[i].kind == "ident" and unit.tokens[i - 1].text != "."
+    }
+    out = set()
+    for name in names:
+        texts = local.get(name) if _declared_in(unit, body, name) else file_wide.get(name)
+        if texts:
+            out.add(("defs", name, texts))
+    return frozenset(out)
+
+
+def _defs(a: Assertion) -> frozenset:
+    return frozenset(f for f in a.facts if f[0] == "defs")
+
+
+def _resolved_argument(a: Assertion, text: str) -> str:
+    """A name assigned exactly once in the file stands for what it is assigned."""
+    found = [f[2] for f in a.facts if f[0] == "defs" and f[1] == text]
+    if found and len(found[0]) == 1 and found[0][0].startswith("= "):
+        return found[0][0][2:]
+    return text
 
 
 def _assignment_counts(tokens, start: int, end: int) -> dict[str, int]:
@@ -1261,13 +1327,18 @@ def _assertion_owner(program: Program, path: str, unit: CompilationUnit, call: C
     return having[0] if len(having) == 1 else None
 
 
+JSON_ASSERT = "org.skyscreamer.jsonassert.JSONAssert"
+
+
 def _slot_fact(program: Program, path: str, unit: CompilationUnit, call: Call) -> frozenset:
+    """The assertion's resolved class, and where that class takes its message."""
     owner = _assertion_owner(program, path, unit, call)
+    found = {("owner", owner)} if owner else set()
     if owner in _MESSAGE_FIRST:
-        return frozenset([("slot", "first")])
+        found.add(("slot", "first"))
     if owner in _MESSAGE_LAST:
-        return frozenset([("slot", "last")])
-    return frozenset()
+        found.add(("slot", "last"))
+    return frozenset(found)
 
 
 def _trivially_true(assertion: Assertion) -> bool:
@@ -1784,15 +1855,31 @@ def _json_mode(a: Assertion) -> bool:
     qualified = ("JSONAssert . ", "org . skyscreamer . jsonassert . JSONAssert . ")
     if not a.credited or not a.text.startswith(qualified) or not a.arguments:
         return False
-    last = a.arguments[-1]
-    return last in ("true", "false") or last.startswith("JSONCompareMode . ")
+    return len(a.arguments) >= 3  # JSONAssert has no delta; its last argument is the mode
+
+
+_JSON_STRICT = frozenset(
+    ["true", "STRICT", "NON_EXTENSIBLE", "JSONCompareMode . STRICT",
+     "JSONCompareMode . NON_EXTENSIBLE"]
+)  # fmt: skip
+
+
+def _is_json_assert(a: Assertion) -> bool:
+    """Whether the assertion call is JSONAssert's, qualified or statically imported."""
+    qualified = ("JSONAssert . ", "org . skyscreamer . jsonassert . JSONAssert . ")
+    return a.text.startswith(qualified) or ("owner", JSON_ASSERT) in a.facts
 
 
 def _json_lenient(a: Assertion) -> bool:
-    if "JSONAssert" not in a.text:
+    """A JSONAssert call whose mode, read through a local, is anything but `true`, STRICT or
+    NON_EXTENSIBLE: LENIENT, STRICT_ORDER, false, or a comparator, whose customizations can
+    accept anything."""
+    if not _is_json_assert(a) or len(a.arguments) < 3:
         return False
-    loose = ("JSONCompareMode . LENIENT", "JSONCompareMode . STRICT_ORDER")
-    return any(m in a.text for m in loose) or (bool(a.arguments) and a.arguments[-1] == "false")
+    mode = _strip_parens(_resolved_argument(a, a.arguments[-1]))
+    if mode.startswith("org . skyscreamer . jsonassert . "):
+        mode = mode[len("org . skyscreamer . jsonassert . ") :]
+    return mode not in _JSON_STRICT
 
 
 # Chain and matcher bounds: (side, strict) for each, or both sides for the between forms.
@@ -1849,6 +1936,8 @@ def _looser(old: Assertion, new: Assertion) -> bool:
     """A bound on a shared subject lowered (lower side), raised (upper side), made inclusive,
     or no longer readable as a number; within the same assertion, a dropped side too."""
     old_bounds, new_bounds = _bounds(old), _bounds(new)
+    if set(old_bounds) != set(new_bounds):
+        return False  # bounds on other subjects belong to another assertion
     same_form = old.signature == new.signature
     for subject, sides in old_bounds.items():
         if subject not in new_bounds:
@@ -1860,7 +1949,7 @@ def _looser(old: Assertion, new: Assertion) -> bool:
                     return True
                 continue
             new_value, new_strict, new_text = found
-            if new_text == text and new_strict == strict:
+            if new_text == text and new_strict == strict and new_value == value:
                 continue
             if value is None or new_value is None:
                 return True
@@ -1890,7 +1979,7 @@ def _shares_subject(old: Assertion, new: Assertion) -> bool:
 
 def _weakening(old: Assertion, new: Assertion) -> str | None:
     """The named weakening of Decision 5 that turns old into new, if any."""
-    if old.text == new.text:
+    if old.text == new.text and _defs(old) == _defs(new):
         return None
     if _json_lenient(new) and not _json_lenient(old) and ("JSONAssert" in old.text
                                                           or _is_exact(old)):  # fmt: skip
@@ -1990,6 +2079,7 @@ def _match(
                     new
                     for new in pool
                     if new.text == old.text
+                    and _defs(new) == _defs(old)
                     and (not new.scanned_only or (old.scanned_only and new.origin == old.origin))
                     and _guard_ok(old, new)
                 ),
@@ -2025,7 +2115,8 @@ def _match(
         matched = max(candidates, key=lambda n: len(old.subject & n.subject), default=None)
         if matched is not None:
             pool.remove(matched)
-            if matched.text != old.text and old.subject and not old.subject & matched.subject:
+            changed = matched.text != old.text or _defs(matched) != _defs(old)
+            if changed and old.subject and not old.subject & matched.subject:
                 results.append((old, "flag/assertion_subject_replaced", matched))
             continue
 

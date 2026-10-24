@@ -1608,3 +1608,44 @@ class TestRuleActivation:
             body_of(statement, "  public final Expect expect = Expect.create();"), imports
         )
         assert codes(before, after, tmp_path) == set()
+
+
+class TestValuesBehindUnchangedText:
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("double eps = 0.01; assertEquals(1.0, d(), eps);",
+          "double eps = 0.5; assertEquals(1.0, d(), eps);"),
+         ("double eps = 0.01; assertThat(d()).isCloseTo(1.0, within(eps));",
+          "double eps = 0.5; assertThat(d()).isCloseTo(1.0, within(eps));"),
+         ("long max = 100; assertTrue(elapsed() < max);",
+          "long max = 1000; assertTrue(elapsed() < max);"),
+         ("long lo = 5; assertTrue(n() >= lo);", "long lo = 1; assertTrue(n() >= lo);")],
+        ids=["delta", "within", "upper_bound", "lower_bound"],
+    )  # fmt: skip
+    def test_a_widened_value_behind_the_same_text(self, tmp_path, before, after):
+        assert TOLERANCE in codes(body_of(before), body_of(after), tmp_path)
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("boolean strict = true; JSONAssert.assertEquals(e(), a(), strict);",
+          "boolean strict = false; JSONAssert.assertEquals(e(), a(), strict);"),
+         ("JSONAssert.assertEquals(e(), a(), true);",
+          "boolean strict = false; JSONAssert.assertEquals(e(), a(), strict);"),
+         ("JSONAssert.assertEquals(e(), a(), JSONCompareMode.STRICT);",
+          "JSONAssert.assertEquals(e(), a(), LENIENT);"),
+         ("JSONAssert.assertEquals(e(), a(), JSONCompareMode.STRICT);",
+          "JSONAssert.assertEquals(e(), a(), new CustomComparator(JSONCompareMode.STRICT, c()));"),
+         ("JSONAssert.assertEquals(e(), a(), JSONCompareMode.STRICT);",
+          "JSONCompareMode mode = JSONCompareMode.LENIENT; "
+          "JSONAssert.assertEquals(e(), a(), mode);")],
+        ids=["strict_local", "literal_to_local", "static_imported_lenient", "custom_comparator",
+             "mode_local"],
+    )  # fmt: skip
+    def test_a_lenient_json_mode_in_any_form_is_refused(self, tmp_path, before, after):
+        old, new = (with_imports(body_of(s), JSON_IMPORTS) for s in (before, after))
+        assert codes(old, new, tmp_path) & {REMOVED, RELAXED}
+
+    def test_an_unchanged_local_keeps_the_twin(self, tmp_path):
+        source = body_of("double eps = 0.01; g(); assertEquals(1.0, d(), eps);")
+        changed = source.replace("g();", "h();")
+        assert codes(source, changed, tmp_path) == set()
