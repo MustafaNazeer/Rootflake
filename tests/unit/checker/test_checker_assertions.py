@@ -1464,3 +1464,17 @@ class TestKnownStaticMembers:
         assert "assertEquals" in LIBRARY_MEMBERS["org.junit.Assert"]
         assert "await" in LIBRARY_MEMBERS["org.awaitility.Awaitility"]
         assert "assertEquals" not in LIBRARY_MEMBERS["org.awaitility.Awaitility"]
+
+
+def test_a_listed_class_name_declared_in_a_read_file_is_not_trusted(tmp_path):
+    before = body_of("assertEquals(1, f());")
+    after = before.replace(
+        "import org.junit.Test;\n",
+        "import org.junit.Test;\nimport static org.awaitility.Awaitility.*;\n",
+    )
+    shadow = {
+        "src/test/java/org/awaitility/Awaitility.java":
+            "package org.awaitility; public class Awaitility "
+            "{ public static void assertEquals(int a, int b) {} }"
+    }  # fmt: skip
+    assert REBOUND in codes(before, after, tmp_path, shadow)

@@ -2030,12 +2030,16 @@ def _import_rebinds(change: FileChange, ctx: Context) -> set[str]:
         names.add(simple)
     if b_member_wild != a_member_wild:
         # A class whose public static members are listed rebinds only the names it declares;
-        # an unlisted class may declare any name.
+        # an unlisted class, or a listed name a read file declares itself, may declare any name.
         changed = b_member_wild ^ a_member_wild
+        trusted = all(
+            owner in LIBRARY_MEMBERS
+            and owner not in ctx.before.types_by_fqn
+            and owner not in ctx.after.types_by_fqn
+            for owner in changed
+        )
         supplied = (
-            frozenset().union(*(LIBRARY_MEMBERS[owner] for owner in changed))
-            if all(owner in LIBRARY_MEMBERS for owner in changed)
-            else None
+            frozenset().union(*(LIBRARY_MEMBERS[owner] for owner in changed)) if trusted else None
         )
         declared = {
             method.name
