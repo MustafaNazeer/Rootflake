@@ -6,54 +6,23 @@ inside it is a reject with a `checker/` code, never an accept.
 """
 
 from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
+from rootflake.gate.checker import survive
 from rootflake.gate.checker.files import MAX_FILES, CheckerError, read_side
 from rootflake.gate.checker.lexer import Unparsable, tokenize
-from rootflake.gate.checker.syntax import CompilationUnit, parse
+from rootflake.gate.checker.model import CheckResult, Context, FileChange, Finding, Target
+from rootflake.gate.checker.syntax import parse
 
-
-@dataclass(frozen=True)
-class Finding:
-    code: str
-    path: str | None
-    line: int | None = None
-
-    @property
-    def is_flag(self) -> bool:
-        return self.code.startswith("flag/")
-
-
-@dataclass(frozen=True)
-class Target:
-    class_name: str
-    method: str | None
-
-
-@dataclass(frozen=True)
-class CheckResult:
-    findings: tuple[Finding, ...]
-
-    @property
-    def verdict(self) -> Literal["reject", "accept", "accept_flagged"]:
-        if any(not finding.is_flag for finding in self.findings):
-            return "reject"
-        return "accept_flagged" if self.findings else "accept"
-
-
-@dataclass(frozen=True)
-class FileChange:
-    path: str
-    before: CompilationUnit | None
-    after: CompilationUnit
+__all__ = ["CheckResult", "FileChange", "Finding", "Target", "check"]
+RULES = (survive,)
 
 
 def _judge(
     changes: list[FileChange], target: Target | None, overridden: Sequence[str]
 ) -> list[Finding]:
-    return []
+    context = Context(changes, target, overridden)
+    return [finding for rule in RULES for finding in rule.findings(context)]
 
 
 def _read(paths: Sequence[str], pristine: Path, workspace: Path):
@@ -94,5 +63,7 @@ def check(
         if any(f.code.startswith("checker/") for f in findings):
             return CheckResult(tuple(findings))
         return CheckResult(tuple(findings + _judge(changes, target, overridden)))
+    except Unparsable as error:
+        return CheckResult((Finding("checker/unparsable", None, error.line),))
     except Exception:
         return CheckResult((Finding("checker/checker_error", None),))
