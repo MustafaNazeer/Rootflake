@@ -298,11 +298,20 @@ class TestFormat:
         patch = modify(TEST_FILE, FOO, FOO_FIXED).replace("@@ -1,5 +1,5 @@", "@@ -1,6 +1,5 @@")
         self.reject(patch, repo, "format")
 
-    def test_an_empty_line_inside_a_hunk_is_rejected(self, tmp_path):
+    def test_an_empty_line_inside_a_hunk_is_read_as_an_empty_context_line(self, tmp_path):
         before = "a\n\nb\n"
         root = tree(tmp_path / "repo", {TEST_FILE: before})
         patch = modify(TEST_FILE, before, "a\n\nc\n").replace("\n \n", "\n\n")
-        self.reject(patch, root, "format")
+        assert "\n\n" in patch
+        result = run(patch, root)
+        assert result.accepted
+        assert result.changes[0].content == b"a\n\nc\n"
+
+    def test_an_empty_line_that_does_not_match_the_pristine_file_is_rejected(self, tmp_path):
+        before = "a\nx\nb\n"
+        root = tree(tmp_path / "repo", {TEST_FILE: before})
+        patch = modify(TEST_FILE, before, "a\nx\nc\n").replace("\n x\n", "\n\n")
+        self.reject(patch, root, "does_not_apply")
 
     def test_a_patch_without_a_final_newline_is_rejected(self, repo):
         self.reject(modify(TEST_FILE, FOO, FOO_FIXED).rstrip("\n"), repo, "format")
@@ -600,7 +609,7 @@ class TestCreateVersusModify:
         root = tree(tmp_path / "repo", {"src/test/java/Dir.java/x": "x\n"})
         path = "src/test/java/Dir.java"
         result = run(modify(path, FOO, FOO_FIXED), root)
-        assert Rejection("symlink", path) in result.rejections
+        assert Rejection("not_regular", path) in result.rejections
 
     def test_modifying_a_file_with_an_executable_bit_is_rejected(self, repo):
         (repo / TEST_FILE).chmod(0o744)
@@ -642,7 +651,20 @@ class TestCreateVersusModify:
 
     def test_creating_under_a_parent_that_is_a_file_is_rejected(self, repo):
         path = TEST_FILE + "/Inner.java"
-        assert Rejection("symlink", path) in run(created(path), repo).rejections
+        assert Rejection("not_regular", path) in run(created(path), repo).rejections
+
+    def test_modifying_a_fifo_is_rejected(self, tmp_path):
+        root = tree(tmp_path / "repo", {})
+        (root / "src/test/resources").mkdir(parents=True)
+        os.mkfifo(root / "src/test/resources/pipe.txt")
+        path = "src/test/resources/pipe.txt"
+        assert Rejection("not_regular", path) in run(modify(path, "a\n", "b\n"), root).rejections
+
+    def test_creating_a_file_under_a_file_the_patch_creates_is_rejected(self, repo):
+        outer, inner = "src/test/resources/a", "src/test/resources/a/b.txt"
+        for patch in (created(outer) + created(inner), created(inner) + created(outer)):
+            result = run(patch, repo)
+            assert Rejection("already_exists", inner) in result.rejections
 
     def test_a_hunk_that_does_not_match_the_pristine_file_is_rejected(self, repo):
         stale = FOO.replace("assertTrue(true)", "assertTrue(false)")
@@ -909,6 +931,26 @@ class TestOverrides:
         result = run(patch, root, overrides=(lift(),))
         assert Rejection("size", PROPS) in result.rejections
 
+    def test_a_lifted_size_still_checks_for_binary_content(self, tmp_path):
+        path = "src/test/resources/big.dat"
+        before = b"head\n" + b"\0\xff" * 600000 + b"\n"
+        root = tree(tmp_path / "repo", {path: before})
+        patch = f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n"
+        patch += "@@ -1 +1 @@\n-head\n+HEAD\n"
+        result = run(patch, root, overrides=(lift(rule="size", path=path),))
+        assert result.rejections == (Rejection("binary", path),)
+
+    def test_a_lifted_size_admits_a_large_pristine_file(self, tmp_path):
+        path = "src/test/resources/big.txt"
+        before = "a" * (MAX_FILE_BYTES + MAX_PATCH_BYTES) + "\nb\n"
+        root = tree(tmp_path / "repo", {path: before})
+        patch = f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n"
+        patch += "@@ -2 +2 @@\n-b\n+c\n"
+        result = run(patch, root, overrides=(lift(rule="size", path=path),))
+        assert result.accepted
+        assert result.overridden == (Rejection("size", path),)
+        assert result.changes[0].content.endswith(b"\nc\n")
+
     def test_a_denied_test_engine_file_can_be_lifted(self, repo):
         path = "src/test/resources/junit-platform.properties"
         entry = lift(rule="denied_test_engine_config", path=path)
@@ -998,7 +1040,10 @@ def applied(pristine: Path, workspace: Path, result) -> Path:
     shutil.copytree(pristine, workspace, symlinks=True)
     for change in result.changes:
         target = workspace / change.path
-        target.parent.mkdir(parents=True, exist_ok=True)
+        for parent in reversed(target.relative_to(workspace).parents[:-1]):
+            if not (workspace / parent).exists():
+                (workspace / parent).mkdir()
+                (workspace / parent).chmod(0o755)
         target.write_bytes(change.content)
         if change.created:
             target.chmod(0o644)
@@ -1093,6 +1138,26 @@ class TestCheckAfterApply:
     def test_a_new_empty_directory_is_caught(self, setup):
         root, work, result = setup
         (work / "src" / "extra").mkdir()
+        self.mismatch(root, work, result)
+
+    def test_a_created_directory_with_another_mode_is_caught(self, tmp_path):
+        root = tree(tmp_path / "repo", {TEST_FILE: FOO})
+        path = "src/test/java/org/example/sub/Waits.java"
+        result = run(created(path, "class Waits {}\n"), root)
+        work = applied(root, tmp_path / "work", result)
+        (work / "src/test/java/org/example/sub").chmod(0o777)
+        self.mismatch(root, work, result)
+
+    def test_a_created_directory_at_0755_passes(self, tmp_path):
+        root = tree(tmp_path / "repo", {TEST_FILE: FOO})
+        path = "src/test/java/org/example/sub/Waits.java"
+        result = run(created(path, "class Waits {}\n"), root)
+        work = applied(root, tmp_path / "work", result)
+        assert check_after_apply(root, work, result) == result
+
+    def test_a_changed_existing_directory_mode_is_caught(self, setup):
+        root, work, result = setup
+        (work / "src" / "test").chmod(0o777)
         self.mismatch(root, work, result)
 
     def test_a_new_fifo_is_caught(self, setup):

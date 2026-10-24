@@ -20,7 +20,7 @@ MAX_SECTIONS = 20
 MAX_FILE_BYTES = 1024 * 1024
 
 # A patch can remove at most its own length from a file, so a larger pristine file cannot end
-# under the file limit and is rejected without being read.
+# under the file limit and is rejected without being read, unless an override lifts its size.
 _MAX_PRISTINE_BYTES = MAX_FILE_BYTES + MAX_PATCH_BYTES
 MAX_PATH_BYTES = 1024
 MAX_COMPONENT_BYTES = 255
@@ -140,9 +140,11 @@ def _parse_hunk(lines: list[str], i: int, path: str) -> tuple[_Hunk, int]:
     i += 1
     old_seen = new_seen = 0
     while old_seen < old_count or new_seen < new_count:
-        if i >= len(lines) or not lines[i]:
+        if i >= len(lines):
             raise _Reject("format", path)
-        tag, text = lines[i][0], lines[i][1:] + "\n"
+        # git reads an empty line inside a hunk as an empty context line that lost its space.
+        line = lines[i] or " "
+        tag, text = line[0], line[1:] + "\n"
         i += 1
         if tag not in " -+":
             raise _Reject("format", path)
@@ -334,15 +336,19 @@ def _existence(section: _Section, pristine: Path) -> Rejection | None:
         info = _lstat(directory)
         if info is None:
             return None if section.created else Rejection("not_found", path)
-        if not stat.S_ISDIR(info.st_mode):
+        if stat.S_ISLNK(info.st_mode):
             return Rejection("symlink", path)
+        if not stat.S_ISDIR(info.st_mode):
+            return Rejection("not_regular", path)
     info = _lstat(pristine / path)
     if section.created:
         return None if info is None else Rejection("already_exists", path)
     if info is None:
         return Rejection("not_found", path)
-    if not stat.S_ISREG(info.st_mode):
+    if stat.S_ISLNK(info.st_mode):
         return Rejection("symlink", path)
+    if not stat.S_ISREG(info.st_mode):
+        return Rejection("not_regular", path)
     if info.st_mode & 0o111:
         return Rejection("mode", path)
     return None
@@ -378,9 +384,11 @@ def _pristine_case_collision(path: str, pristine: Path) -> Rejection | None:
     return None
 
 
-def _content(path: str, content: bytes) -> Rejection | None:
-    if len(content) > MAX_FILE_BYTES:
-        return Rejection("size", path)
+def _size(path: str, size: int, limit: int = MAX_FILE_BYTES) -> Rejection | None:
+    return Rejection("size", path) if size > limit else None
+
+
+def _binary(path: str, content: bytes) -> Rejection | None:
     if b"\0" in content:
         return Rejection("binary", path)
     try:
@@ -399,7 +407,7 @@ def _denied_by_content(path: str, before: bytes, after: bytes) -> Rejection | No
 
 
 def _path_problems(
-    section: _Section, pristine: Path, colliding: bool
+    section: _Section, pristine: Path, colliding: bool, under_created: bool
 ) -> Iterator[Rejection | None]:
     # Lazy and ordered: a path that fails the syntax rule, which no override lifts, stops the
     # section before any later check touches the filesystem with it.
@@ -409,13 +417,15 @@ def _path_problems(
     yield _module(path, pristine)
     yield _denied_by_name(path)
     yield _existence(section, pristine)
+    yield Rejection("already_exists", path) if under_created else None
     yield Rejection("case_collision", path) if colliding else None
     if section.created:
         yield _pristine_case_collision(path, pristine)
 
 
 def _content_problems(path: str, original: bytes, content: bytes) -> Iterator[Rejection | None]:
-    yield _content(path, content)
+    yield _size(path, len(content))
+    yield _binary(path, content)
     yield _denied_by_content(path, original, content)
 
 
@@ -469,18 +479,22 @@ def validate(
             if problem is None:
                 continue
             if (problem.path, problem.code) in lifts:
-                overridden.append(problem)
+                if problem not in overridden:
+                    overridden.append(problem)
                 continue
             rejections.append(problem)
             return True
         return False
 
+    created = {section.path for section in sections if section.created}
     for section in sections:
-        if blocked(_path_problems(section, pristine, section.path in colliding)):
-            continue
         path = section.path
-        if not section.created and os.lstat(pristine / path).st_size > _MAX_PRISTINE_BYTES:
-            rejections.append(Rejection("size", path))
+        under_created = any(prefix in created for prefix in _prefixes(path)[:-1])
+        if blocked(_path_problems(section, pristine, path in colliding, under_created)):
+            continue
+        if not section.created and blocked(
+            iter([_size(path, os.lstat(pristine / path).st_size, _MAX_PRISTINE_BYTES)])
+        ):
             continue
         original = b"" if section.created else (pristine / path).read_bytes()
         try:
@@ -506,7 +520,7 @@ def _snapshot(root: Path) -> dict[str, tuple]:
                 info = entry.stat(follow_symlinks=False)
                 rel = Path(entry.path).relative_to(root).as_posix()
                 if stat.S_ISDIR(info.st_mode):
-                    entries[rel] = ("dir",)
+                    entries[rel] = ("dir", stat.S_IMODE(info.st_mode))
                     pending.append(Path(entry.path))
                 elif stat.S_ISREG(info.st_mode):
                     entries[rel] = ("file", stat.S_IMODE(info.st_mode), Path(entry.path))
@@ -536,7 +550,7 @@ def check_after_apply(pristine: Path, workspace: Path, validation: Validation) -
     contents: dict[str, bytes] = {}
     for change in validation.changes:
         for prefix in _prefixes(change.path)[:-1]:
-            expected.setdefault(prefix, ("dir",))
+            expected.setdefault(prefix, ("dir", 0o755))
         mode = 0o644 if change.created else expected[change.path][1]
         expected[change.path] = ("file", mode, None)
         contents[change.path] = change.content
