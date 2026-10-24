@@ -1,6 +1,6 @@
 # Test library semantics for the shortcut checker
 
-Checked on 2026-10-14; extended on 2026-10-22 with JUnit Pioneer, rerunner-jupiter, the Lucene test framework, Hamcrest, the retry APIs of several client libraries, and further Surefire, JUnit, TestNG, AssertJ and Awaitility facts; extended on 2026-10-23 with Google Truth, AssertJ map assertions, how Surefire 3.6.0 reports TestNG retries through the TestNG engine, JUnit's `@Order` on extension fields and classes, and which failure classes of the test libraries are `AssertionError` subclasses. This note records what the build plugins and test libraries that Rootflake's shortcut checker reasons about actually do, taken from each project's official documentation or from its source at a release tag. Every fact names the version it applies to. Where a source file is cited, line numbers refer to that file at the named tag. Anything I could not confirm from a primary source is marked **unverified**.
+Checked on 2026-10-14; extended on 2026-10-22 with JUnit Pioneer, rerunner-jupiter, the Lucene test framework, Hamcrest, the retry APIs of several client libraries, and further Surefire, JUnit, TestNG, AssertJ and Awaitility facts; extended on 2026-10-23 with Google Truth, AssertJ map assertions, how Surefire 3.6.0 reports TestNG retries through the TestNG engine, JUnit's `@Order` on extension fields and classes, and which failure classes of the test libraries are `AssertionError` subclasses; extended on 2026-10-24 with which JUnit Jupiter test classes and methods are discovered, `allowZeroInvocations`, Testcontainers' `disabledWithoutDocker`, JUnit Pioneer's `@DisableIfTestFails`, AssertJ assumptions and description methods, Mockito's timed verification modes, JSONAssert's boolean overloads, and where each assertion library puts the failure message. This note records what the build plugins and test libraries that Rootflake's shortcut checker reasons about actually do, taken from each project's official documentation or from its source at a release tag. Every fact names the version it applies to. Where a source file is cited, line numbers refer to that file at the named tag. Anything I could not confirm from a primary source is marked **unverified**.
 
 ## Versions checked
 
@@ -41,6 +41,14 @@ Added on 2026-10-23:
 | Google Truth | `com.google.truth:truth` | 1.4.5 | 1.4.5 (`lastUpdated` 20250910142336) |
 | TestNG engine for the JUnit Platform | `org.junit.support:testng-engine` | 1.1.0, the version Surefire 3.6.0 adds by default | 1.1.0 |
 | opentest4j | `org.opentest4j:opentest4j` | 1.3.0, the version JUnit 5.14.4 builds against (`gradle/libs.versions.toml` at tag `r5.14.4`, line 16) | 1.3.0 |
+
+Added on 2026-10-24:
+
+| Library | Coordinates | Version checked | Latest on Maven Central on 2026-10-24 |
+|---|---|---|---|
+| Testcontainers JUnit Jupiter extension (2.x) | `org.testcontainers:testcontainers-junit-jupiter` | 2.0.5 (tag `2.0.5`, commit `5c448202ac69d073f746433d3e79f6a2bf0ec585`) | 2.0.5 (`lastUpdated` 20260420182027) |
+| Testcontainers JUnit Jupiter extension (1.x) | `org.testcontainers:junit-jupiter` | 1.21.4, for `disabledWithoutDocker` only | 1.21.4; the artifact has no 2.x release, since 2.0 publishes the extension as `testcontainers-junit-jupiter` (the 2.0.5 guide at https://java.testcontainers.org/test_framework_integration/junit_5/ gives that artifact ID) |
+| JUnit Pioneer | `org.junit-pioneer:junit-pioneer` | 2.3.0, as above | 3.0.0-RC1 (a release candidate, `lastUpdated` 20261023210809); 2.3.0 is the newest final release |
 
 Versions came from each artifact's `maven-metadata.xml` on https://repo1.maven.org/maven2/. The sandbox image does not pin a Surefire or Failsafe version: `sandbox/Dockerfile` pins Maven 3.9.16 only, so each target project runs whatever plugin version its own POM resolves. The Surefire and Failsafe facts below are for 3.6.0 and **have not been checked against older plugin versions**, which is what most target projects will actually use.
 
@@ -219,6 +227,58 @@ Sources at tag `r5.14.4`: https://github.com/junit-team/junit-framework/blob/r5.
 * On extension fields: by default, extensions registered with `@RegisterExtension`, or with `@ExtendWith` on fields, "will be ordered using an algorithm that is deterministic but intentionally nonobvious"; to register them "in an explicit order", the fields are annotated with `@Order`, and a field without it gets `Order.DEFAULT` (`RegisterExtension.java` lines 73 to 86; guide source lines 161 to 181). The guide adds that an order value above the default "allows *before* callback extensions to be registered last and *after* callback extensions to be registered first". So `@Order` on a field changes the order in which extension callbacks run around each test, and does not change the order of the tests.
 * On classes: `ClassOrderer` orders top level test classes relative to each other and `@Nested` classes relative to their siblings; it is chosen globally with the configuration parameter `junit.jupiter.testclass.order.default`, or for `@Nested` classes with `@TestClassOrder` (`ClassOrderer.java` lines 23 to 40 and 77, since 5.8; `TestClassOrder.java` lines 24 to 37, which also says a `@TestClassOrder` "always overrides a global `ClassOrderer`"). With `ClassOrderer.OrderAnnotation`, classes are sorted by `@Order`, and classes without it go after the annotated ones unless a value above the default is used (lines 150 to 170). So `@Order` on a class pins class order only when that orderer is configured, which can be done in `junit-platform.properties`.
 
+### Which test classes and methods are discovered (added 2026-10-24)
+
+Sources at tag `r5.14.4` (commit `096fd696c1b22780e025a02417d42903e0022862`):
+
+* https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-jupiter-engine/src/main/java/org/junit/jupiter/engine/discovery/predicates/IsTestableMethod.java and `IsTestMethod.java` in the same folder
+* https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-jupiter-engine/src/main/java/org/junit/jupiter/engine/discovery/predicates/TestClassPredicates.java
+* https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-jupiter-engine/src/main/java/org/junit/jupiter/engine/discovery/ClassSelectorResolver.java
+* https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-platform-launcher/src/main/java/org/junit/platform/launcher/LauncherConstants.java, https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-platform-launcher/src/main/java/org/junit/platform/launcher/core/DiscoveryIssueCollector.java and https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-platform-launcher/src/main/java/org/junit/platform/launcher/core/DiscoveryIssueNotifier.java
+* User guide pages: https://docs.junit.org/5.14.4/writing-tests/test-classes-and-methods.html, https://docs.junit.org/5.14.4/writing-tests/definitions.html, https://docs.junit.org/5.14.4/writing-tests/nested-tests.html and https://docs.junit.org/5.14.4/running-tests/discovery-issues.html (sources under `documentation/modules/ROOT/pages/` at the same tag)
+
+What the guide says: "test methods and lifecycle methods must not be `abstract` and must not return a value (except `@TestFactory` methods which are required to return a value)", and "Test classes, test methods, and lifecycle methods are not required to be `public`, but they must *not* be `private`" (test classes and methods page, source lines 3 to 13). A test class is "any top-level class, `static` member class, or `@Nested` class that contains at least one *test method*", and "Test classes must not be `abstract`" (definitions page, source lines 17 to 19). "*Only non-static nested classes* (i.e. *inner classes*) can serve as `@Nested` test classes" (nested tests page, source line 28).
+
+What the 5.14.4 code does:
+
+| Declaration | Discovered | What the engine reports | Source |
+|---|---|---|---|
+| `static` method annotated `@Test` | no | a `WARNING` discovery issue, "@Test method '...' must not be static. It will not be executed." | `IsTestableMethod.java` lines 41 to 43, 54 to 58, 72 to 79 |
+| `private` method annotated `@Test` | no | a `WARNING`, "... must not be private. It will not be executed." | lines 60 to 64 |
+| `@Test` method that returns a value | no | a `WARNING`, "... must not return a value. It will not be executed." | lines 66 to 70; `IsTestMethod.java` line 28 |
+| `abstract` method annotated `@Test` | no | nothing: the abstract check is a plain predicate, not a reporting condition | `IsTestableMethod.java` line 49 |
+| `private` test class, not abstract | no | a `WARNING`, "Test class '...' must not be private. It will not be executed." | `TestClassPredicates.java` lines 68, 122 to 126, 156 to 158 |
+| `abstract` test class | no (its tests run through a concrete subclass) | nothing | lines 100 to 103 (`isNotAbstract` is a plain check); an abstract class may also be private (lines 123 to 124) |
+| local or anonymous class with tests | no | a `WARNING`, "must not be a local class" or "must not be anonymous" | lines 69, 71, 128 to 131, 151 to 154 |
+| `static` member class with tests, no `@Nested` | yes, as a standalone test class, when it is itself selected | nothing | lines 100 to 103 and 146 to 149 (only inner classes are refused) |
+| inner (non static) class with tests, no `@Nested` | no | a `WARNING`. Reached through its enclosing class: "Inner class '...' looks like it was intended to be a test class but will not be executed. It must be static or annotated with @Nested." Selected directly: "Test class '...' must not be an inner class unless annotated with @Nested. It will not be executed." | `ClassSelectorResolver.java` lines 120 to 137 and 313 to 317; `TestClassPredicates.java` lines 146 to 149 |
+| `@Nested` on a `static` member class | only if discovered as a standalone class | a `WARNING`, "@Nested class '...' must not be static. It will only be executed if discovered as a standalone test class." | `TestClassPredicates.java` lines 133 to 144; `ClassSelectorResolver.java` lines 89 to 101 |
+| `@Nested` on a `private` inner class | no | a `WARNING`, "@Nested class '...' must not be private. It will not be executed." | `TestClassPredicates.java` lines 66, 91 to 98, 122 to 126 |
+| `@Nested` on an `abstract` inner class | no | nothing | lines 91 to 98 |
+
+Only a class that "looks like" a test class gets a class level warning: it must carry `@ClassTemplate`, have a `@Test`, `@TestFactory` or `@TestTemplate` method, or contain nested tests (`TestClassPredicates.java` lines 74 to 85; `ClassSelectorResolver.java` lines 113 to 117).
+
+What a discovery issue does to the run: the critical severity is set by `junit.platform.discovery.issue.severity.critical` and defaults to `ERROR` (`LauncherConstants.java` lines 225 to 249, `@since 1.13`; `DiscoveryIssueCollector.java` line 145). Every issue above is a `WARNING`, so by default it is only logged, at warning level (`DiscoveryIssueNotifier.java` lines 85 to 100), and the other tests run. The guide: "Non-critical issues will be logged but will not prevent the engine from executing its tests"; with an issue at or above the critical severity, the engine's tests "will not be executed" and the engine is "reported as failed" (discovery issues page, source lines 20 to 27). So under the defaults, making a failing `@Test` method `private` or `static`, or removing `@Nested` from an inner class, removes those tests from the run with only a log line, and no test result is written for them. Surefire's default exclude `**/*$*` (section 1) also keeps nested classes out of its own class scan, so a `static` member class is normally reached only through a pattern that names it.
+
+### `allowZeroInvocations` (added 2026-10-24)
+
+Sources at tag `r5.14.4`: https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-jupiter-params/src/main/java/org/junit/jupiter/params/ParameterizedTest.java, https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-jupiter-params/src/main/java/org/junit/jupiter/params/ParameterizedClass.java, https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-jupiter-params/src/main/java/org/junit/jupiter/params/ParameterizedInvocationContextProvider.java, https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-jupiter-params/src/main/java/org/junit/jupiter/params/ParameterizedTestExtension.java and https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-jupiter-engine/src/main/java/org/junit/jupiter/engine/descriptor/TemplateExecutor.java. For the version: the same `ParameterizedTest.java` at tags `r5.12.0` (https://github.com/junit-team/junit-framework/blob/r5.12.0/junit-jupiter-params/src/main/java/org/junit/jupiter/params/ParameterizedTest.java) and `r5.11.4`.
+
+* `@ParameterizedTest` has `boolean allowZeroInvocations() default false`, Javadoc: "Configure whether zero invocations are allowed for this parameterized test. Set this attribute to `true` if the absence of invocations is expected in some cases and should not cause a test failure" (`ParameterizedTest.java` lines 305 to 317).
+* **It arrived in 5.12, as believed.** The Javadoc says `@since 5.12`; at tag `r5.12.0` the attribute is `@API(status = EXPERIMENTAL, since = "5.12")` (line 306), it is absent at `r5.11.4`, and at `r5.14.4` it is `@API(status = MAINTAINED, since = "5.13.3")` (line 316).
+* `@ParameterizedClass` (`@since 5.13`, line 130) has the same attribute with the same wording (`ParameterizedClass.java` lines 222 to 230).
+* **Without it, no arguments is a failure.** When the argument sources yield nothing and the attribute is `false`, the provider throws `TemplateInvocationValidationException` with "Configuration error: You must configure at least one set of arguments for this @ParameterizedTest" (`ParameterizedInvocationContextProvider.java` lines 51 and 55 to 63). With it, the extension answers `true` to `mayReturnZeroTestTemplateInvocationContexts` (`ParameterizedTestExtension.java` lines 53 to 56), and the template executor's zero contexts check then passes (`TemplateExecutor.java` lines 76 to 78), so the parameterized test ends with no invocations and no failure.
+
+So adding `allowZeroInvocations = true` to a parameterized test whose argument source can come back empty turns a failing run into one with nothing executed.
+
+### Where the failure message goes (added 2026-10-24)
+
+Sources: https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-jupiter-api/src/main/java/org/junit/jupiter/api/Assertions.java at tag `r5.14.4`, and the guide page https://docs.junit.org/5.14.4/writing-tests/assertions.html (source `documentation/modules/ROOT/pages/writing-tests/assertions.adoc`).
+
+* In `org.junit.jupiter.api.Assertions` the message is the **last** parameter, and each message overload has a `Supplier<String>` twin: `assertTrue(boolean, Supplier<String>)` and `assertTrue(boolean, String)` (lines 190 and 213), `assertEquals(Object, Object, String)` and `assertEquals(Object, Object, Supplier<String>)` (lines 1155 and 1166), `assertEquals(double, double, double delta, String)` and the `Supplier` form (lines 1023 and 1033), `assertThrows(Class, Executable, String)` and the `Supplier` form (lines 3152 and 3178). The Javadoc: "If necessary, the failure message will be retrieved lazily from the supplied `messageSupplier`" (for example line 188).
+* The guide says assertion methods "optionally accept the assertion message as their third parameter, which can be either a `String` or a `Supplier<String>`" (source lines 7 to 8). "Third" holds for the two value forms only; in the delta overloads the message is fourth and in `assertTrue` it is second, so the reliable rule is "last".
+* Failed assertions throw `org.opentest4j.AssertionFailedError` "or a subclass thereof" unless otherwise noted (`Assertions.java` lines 34 to 35).
+
 JUnit 6.x (6.1.3 is the newest release) was not checked; these facts are for 5.14.4 only.
 
 ## 3. JUnit 4.13.2
@@ -246,6 +306,14 @@ Source at tag `r4.13.2` (commit `05fe2a64f59127c02135be22f416e91260d6ede6`): htt
 * JUnit 3's classes are still shipped in `junit:junit`: `junit.framework.AssertionFailedError extends AssertionError` (line 6) and `junit.framework.ComparisonFailure extends AssertionFailedError` (line 8). So two different classes have the simple name `ComparisonFailure`, and both are `AssertionError` subclasses.
 * `org.junit.internal.ArrayComparisonFailure extends AssertionError` (line 13).
 
+### Where the failure message goes (added 2026-10-24)
+
+Source at the same tag: https://github.com/junit-team/junit4/blob/r4.13.2/src/main/java/org/junit/Assert.java
+
+* In `org.junit.Assert` the message is the **first** parameter: `assertTrue(String message, boolean condition)` (line 40), `assertEquals(String message, Object expected, Object actual)` (line 110), `assertEquals(String message, double expected, double actual, double delta)` (line 552), `assertThat(String reason, T actual, Matcher<? super T> matcher)` (line 962), and `assertThrows(String message, Class<T> expectedThrowable, ThrowingRunnable runnable)` (line 998). Each is documented with "@param message the identifying message for the `AssertionError`" (for example line 36).
+* `Assert.java` has no `Supplier` overload; the message is always a `String`.
+* So `assertEquals("a", x, y)` in JUnit 4 is a message and two values, while three `String` arguments to TestNG's `assertEquals` are actual, expected and message (section 4). Which one a call means depends on the import.
+
 ## 4. TestNG 7.12.0
 
 ### Sources
@@ -268,6 +336,17 @@ Source at tag `r4.13.2` (commit `05fe2a64f59127c02135be22f416e91260d6ede6`): htt
 * `enabled` (default true): "Whether methods on this class/method are enabled." `@Test(enabled = false)` disables the method. The documentation also describes `@Ignore`, which "has a higher priority than individual @Test method annotations" and can be placed on a class or a package.
 * `expectedExceptions`: "If no exception or a different than one on this list is thrown, this test will be marked a failure." `expectedExceptionsMessageRegExp` (default `.*`) must match the message when `expectedExceptions` is set.
 * `singleThreaded` (added 2026-10-22; `Test.java` lines 157 to 166, `@Test` is `@Target({METHOD, TYPE})` at line 13): "If set to true, all the methods on this test class are guaranteed to run in the same thread, even if the tests are currently being run with parallel="true". This attribute can only be used at the class level and will be ignored if used at the method level." Default `false`.
+
+### Where the failure message goes, and argument order (added 2026-10-24)
+
+Sources at tag `7.12.0`: https://github.com/testng-team/testng/blob/7.12.0/testng-asserts/src/main/java/org/testng/Assert.java and https://github.com/testng-team/testng/blob/7.12.0/testng-core/src/main/java/org/testng/AssertJUnit.java
+
+* **The belief that TestNG's `Assert` puts the message first is false for the value assertions.** The class Javadoc: "Presents assertion methods with a more natural parameter order. The order is always **actualValue**, **expectedValue** [, message]" (`Assert.java` lines 22 to 24). Examples: `assertTrue(boolean condition, String message)` (line 55), `assertEquals(Object actual, Object expected, String message)` (line 127), `assertEquals(String actual, String expected, String message)` (line 655), `assertEquals(double actual, double expected, double delta, String message)` (line 696), `assertNotNull(Object object, String message)` (line 1490), `fail(String message)` (line 110).
+* **The exception assertions are the exception to that rule:** `assertThrows(String message, Class<T> throwableClass, ThrowingRunnable runnable)` (lines 2409 to 2410) and `expectThrows(String message, Class<T> throwableClass, ThrowingRunnable runnable)` (lines 2445 to 2446) put the message first.
+* `org.testng.Assert` has no `Supplier` overload.
+* TestNG also ships `org.testng.AssertJUnit`, "Renamed from `junit.framework.Assert`", whose methods take the message first and the expected value before the actual one: `assertTrue(String message, boolean condition)` (`AssertJUnit.java` line 21) and `assertEquals(String message, Object expected, Object actual)` (line 81).
+
+So in `org.testng.Assert.assertEquals(actual, expected, message)` the order is actual, expected, message, which is the reverse of JUnit's expected, actual for the two values.
 
 ## 5. AssertJ 3.27.7
 
@@ -326,6 +405,25 @@ Sources at the same tag: https://github.com/assertj/assertj/blob/assertj-build-3
 * Javadoc: each "Throws an AssertionError with a message explaining that a Throwable of given class was expected to be thrown but had not been" (`Fail.java` lines 115 to 129 and 133 to 145). `shouldHaveThrown` throws `Failures.instance().expectedThrowableNotThrown(throwableClass)`, which returns an `AssertionError` with the message "%s should have been thrown" (`Failures.java` lines 180 to 182).
 * So both are the AssertJ forms of the `try` and `fail` idiom: placed as the last statement of a `try`, they fail the test when the expected exception is not thrown.
 
+### Assumptions abort rather than fail (added 2026-10-24)
+
+Sources at the same tag: https://github.com/assertj/assertj/blob/assertj-build-3.27.7/assertj-core/src/main/java/org/assertj/core/api/Assumptions.java, https://github.com/assertj/assertj/blob/assertj-build-3.27.7/assertj-core/src/main/java/org/assertj/core/api/AssumptionExceptionFactory.java, https://github.com/assertj/assertj/blob/assertj-build-3.27.7/assertj-core/src/main/java/org/assertj/core/configuration/PreferredAssumptionException.java and https://github.com/assertj/assertj/blob/assertj-build-3.27.7/assertj-core/src/main/java/org/assertj/core/api/BDDAssumptions.java. For how JUnit Jupiter treats the thrown exception: https://github.com/junit-team/junit-framework/blob/r5.14.4/junit-jupiter-engine/src/main/java/org/junit/jupiter/engine/support/OpenTest4JAndJUnit4AwareThrowableCollector.java, https://github.com/junit-team/junit4/blob/r4.13.2/src/main/java/org/junit/internal/AssumptionViolatedException.java and https://github.com/testng-team/testng/blob/7.12.0/testng-core/src/main/java/org/testng/SkipException.java.
+
+* `org.assertj.core.api.Assumptions` is the "Entry point for assumption methods for different types, which allow to skip test execution on failed assumptions", `@since 2.9.0 / 3.9.0` (`Assumptions.java` lines 102 to 107). Its `assumeThat` overloads (for example `assumeThat(T)` at line 145 and `assumeThat(boolean)` at line 211) return proxies of the ordinary assertion classes, so every assertion method is available.
+* **Mechanism.** A ByteBuddy interceptor runs the real assertion and catches its `AssertionError`, then throws `assumptionNotMet(e)` instead (lines 122 to 133). `AssumptionExceptionFactory.assumptionNotMet` builds the preferred assumption exception with the message "assumption was not met due to: " followed by the assertion's message, and the `AssertionError` as its cause (`AssumptionExceptionFactory.java` lines 33 to 54). So the check is the same as the assertion's; only the exception thrown on failure differs.
+* **Which exception.** By default (`AUTO_DETECT`) AssertJ throws the first one found on the classpath, in this order: `org.testng.SkipException`, `org.junit.AssumptionViolatedException`, `org.opentest4j.TestAbortedException`; if none is present it throws `IllegalStateException` (`PreferredAssumptionException.java` lines 37 to 59). `Assumptions.setPreferredAssumptionException(...)` picks one explicitly (`Assumptions.java` lines 1536 to 1565).
+* **What the test runner does with it.** JUnit Jupiter treats `org.opentest4j.TestAbortedException` as aborted, and also `org.junit.internal.AssumptionViolatedException` (the superclass of `org.junit.AssumptionViolatedException`, line 14 of that file) when JUnit 4 is on the classpath (`OpenTest4JAndJUnit4AwareThrowableCollector.java` lines 24 to 26, 36 and 47 to 67). `org.testng.SkipException` is a plain `RuntimeException` (`SkipException.java` line 12) and is not in that list. So, reading these sources together: in a JUnit 5 project an AssertJ assumption aborts the test when only opentest4j, or opentest4j and JUnit 4, are on the test classpath; if TestNG is also on the classpath, the default mode throws `SkipException` and JUnit Jupiter would report a failure, not an abort. That last case was read from the code and not observed in a run.
+* `BDDAssumptions` (`public final class BDDAssumptions extends Assumptions`, line 105) offers the same assumptions under the name `given(...)` (for example line 134).
+
+### Description and failure message methods change only the message (added 2026-10-24)
+
+Sources at the same tag: https://github.com/assertj/assertj/blob/assertj-build-3.27.7/assertj-core/src/main/java/org/assertj/core/api/Descriptable.java and https://github.com/assertj/assertj/blob/assertj-build-3.27.7/assertj-core/src/main/java/org/assertj/core/api/AbstractAssert.java
+
+* **`as` is an alias of `describedAs`.** The three `as` overloads, `as(String, Object...)`, `as(Supplier<String>)` and `as(Description)`, only call `describedAs` with the same argument (`Descriptable.java` lines 61 to 63, 95 to 97, 115 to 117). The `describedAs(String, Object...)` and `describedAs(Supplier<String>)` defaults wrap the text in a `TextDescription` or `LazyTextDescription` and call `describedAs(Description)` (lines 133 to 135 and 167 to 169).
+* **`describedAs` sets the description and returns the same assertion object.** `AbstractAssert.describedAs(Description)` stores it with `info.description(description)`, optionally prints it or hands it to a registered description consumer (both off unless configured), and returns `myself` (`AbstractAssert.java` lines 356 to 363). The Javadoc: "Sets the description of the assertion that is going to be called after", and it must be set "**before** calling the assertion otherwise it is ignored as the failing assertion breaks the chained call by throwing an AssertionError" (`Descriptable.java` lines 35 to 38). Its example shows the description in the failure message as `[check Frodo's age]` (lines 48 to 52).
+* **`withFailMessage` is an alias of `overridingErrorMessage`.** Both `withFailMessage` overloads only call `overridingErrorMessage` (`AbstractAssert.java` lines 754 to 757 and 774 to 777, Javadoc "Alternative method for `AbstractAssert#overridingErrorMessage`"). `overridingErrorMessage(String, Object...)` and `overridingErrorMessage(Supplier<String>)` store the text with `info.overridingErrorMessage(...)` and return `myself` (lines 713 to 717 and 734 to 738); the Javadoc: "Overrides AssertJ default error message by the given one", with the same "set it **before**" warning (lines 697 to 712).
+* So all four only record text on the assertion's `info` and return the same object; none of them calls a check or changes the actual or expected value. Adding, removing or rewording one leaves what the chain asserts unchanged, provided its arguments have no side effects: the format arguments are ordinary Java expressions, evaluated when the method is called (the `Supplier` forms defer only the message text).
+
 ## 6. JSONAssert 1.5.3
 
 ### Sources
@@ -347,6 +445,12 @@ Each mode combines two settings: extensible (extra fields in the actual JSON are
 | `STRICT_ORDER` | yes | yes |
 
 The Javadoc: when extensibility is not allowed "any additional fields will cause the test to fail"; when it is allowed "all values must still match". With strict ordering "JSON arrays must be in strict sequence". The boolean overload `assertEquals(expected, actual, boolean strict)` maps `true` to `STRICT` and `false` to `LENIENT`. So `STRICT` to `NON_EXTENSIBLE` relaxes only array order, while any move to `LENIENT` or `STRICT_ORDER` also accepts extra fields.
+
+### The boolean `strict` overloads, confirmed (added 2026-10-24)
+
+* `JSONAssert.java` at the tag has 20 methods with a `boolean strict` parameter: `assertEquals` and `assertNotEquals`, each with and without a leading `String message`, for an expected `String` against an actual `JSONObject` (lines 64, 79, 95, 112), against a `JSONArray` (lines 200, 215, 229, 244), against a `String` (lines 334, 349, 363, 378), and for `JSONObject` against `JSONObject` (lines 591, 606, 620, 635) and `JSONArray` against `JSONArray` (lines 713, 728, 742, 757).
+* Every one of them has a body that passes `strict ? JSONCompareMode.STRICT : JSONCompareMode.LENIENT` to the matching `JSONCompareMode` overload (for example lines 66, 336 and 593; the expression occurs 20 times in the file). So `strict = false` is exactly `JSONCompareMode.LENIENT` and `strict = true` is exactly `JSONCompareMode.STRICT`, for both `assertEquals` and `assertNotEquals`. Changing `true` to `false` therefore both accepts extra fields and stops checking array order.
+* In JSONAssert the optional message is the **first** parameter (for example `assertEquals(String message, String expectedStr, String actualStr, boolean strict)`, line 349).
 
 ## 7. Awaitility 4.3.0
 
@@ -390,6 +494,18 @@ Source at tag `awaitility-4.3.0` (commit `e3ff879b33c10261ae8d58e50ecf601b2037bd
 
 Replacing `verify(mock)` or `times(n)` with `atLeast`, `atLeastOnce`, `atMost`, or `atMostOnce` turns an exact count into a bound.
 
+### `timeout(n)` and `after(n)` chained modes (added 2026-10-24)
+
+Sources at the same tag, under https://github.com/mockito/mockito/tree/v5.24.0/mockito-core/src/main/java/org/mockito: `Mockito.java` (link above), `verification/VerificationWithTimeout.java`, `verification/VerificationAfterDelay.java`, `verification/Timeout.java`, `verification/After.java`, `verification/VerificationMode.java`, `internal/verification/VerificationWrapper.java`, `internal/verification/VerificationOverTimeImpl.java`, `internal/verification/Description.java` and `internal/exceptions/Reporter.java`.
+
+* **The bare forms mean `times(1)`.** `timeout(long millis)` returns `new Timeout(millis, VerificationModeFactory.times(1))` and `after(long millis)` returns `new After(millis, VerificationModeFactory.times(1))` (`Mockito.java` lines 3871 to 3873 and 3926 to 3928). The Javadoc gives `verify(mock, timeout(100))` as "an alias to" `verify(mock, timeout(100).times(1))`, and the same for `after(100)` (lines 3854 to 3856 and 3887 to 3889).
+* **Chaining replaces the count and keeps the time.** `times(k)`, `atLeastOnce()`, `atLeast(k)`, `never()`, `atMostOnce()`, `atMost(k)` and `only()` on either object build the matching ordinary mode (`never()` as `atMost(0)`) and wrap it in a copy with the same duration (`VerificationWrapper.java` lines 27 to 56; `VerificationOverTimeImpl.copyWithVerificationMode`, lines 118 to 121). So `timeout(n).times(k)`, `timeout(n).atLeast(k)` and `timeout(n).atLeastOnce()` check exactly the counts that `times(k)`, `atLeast(k)` and `atLeastOnce()` check, with polling added. The Javadoc calls `atLeastOnce()` an "Alias to atLeast(1)" (`VerificationWithTimeout.java` lines 41 to 52).
+* **`timeout` returns on the first success.** `Timeout` uses `VerificationOverTimeImpl` with `returnOnSuccess` true and a 10 ms polling period (`Timeout.java` lines 28 to 37). Its `verify` runs the wrapped mode in a loop until the timer runs out; with `returnOnSuccess` it returns at the first pass, and on timeout it throws the last error (`VerificationOverTimeImpl.java` lines 80 to 102). The Javadoc: it "will immediately pass if it becomes true at any point" (`VerificationWithTimeout.java` lines 18 to 20).
+* **So `timeout(n).times(k)` and `timeout(n).atLeast(k)` are not identical.** The `timeout` Javadoc calls them "equivalent" because both pass "as soon as someMethod() has been called 2 times under 100 ms" (`Mockito.java` lines 3858 to 3862). From the loop above, `times(k)` passes only if some poll sees exactly `k` calls, so if more than `k` calls have happened by the first poll it keeps failing and throws when time runs out, while `atLeast(k)` passes. Changing `timeout(n).times(k)` to `timeout(n).atLeast(k)` or `timeout(n).atLeastOnce()` (for `k` of 1 or more) is therefore a relaxation from an exact count to a lower bound, as it is without `timeout`. This comparison is read from the code, not from a run.
+* **`timeout` refuses an upper bound.** The `VerificationWithTimeout` interface declares only `times`, `atLeastOnce`, `atLeast` and `only` (lines 39, 52, 66 and 84), and `Timeout.atMost(int)` and `Timeout.never()` throw `FriendlyReminderException`, "timeout() should not be used with atMost() or never() because...", followed by the reason that the test "would have passed immediately in concurrency" (`Timeout.java` lines 56 to 64; `Reporter.java` lines 834 to 846).
+* **`after` waits the full period.** `After` uses `returnOnSuccess` false (`After.java` line 30), so the loop keeps polling until time is up and passes only if the last poll passed; a mode that cannot recover, `AtMost` (and so `never()`) or `NoMoreInteractions`, fails at once (`VerificationOverTimeImpl.java` lines 104 to 116). The `VerificationAfterDelay` Javadoc: `times(n)` "Verifies that there are exactly N invocations during the given period. This will wait the full period given", `never()` "Allows verification that there are no invocations at any point during the given period", and `atLeast(n)` "Verifies that there is are least N invocations during the given period" (`VerificationAfterDelay.java` lines 29 to 48). The `after` Javadoc sums up the difference: "timeout() exits immediately with success when verification passes; after() awaits full duration to check if verification passes" (`Mockito.java` lines 3902 to 3906), and notes it is "Not yet implemented to work with InOrder verification" (line 3880).
+* **`description(...)` changes only the message, and the error class.** `VerificationMode.description(String)` (`@since 2.1.0`, `VerificationMode.java` lines 38 to 46) and the static `Mockito.description(String)`, which is `times(1).description(description)` (`Mockito.java` lines 4013 to 4024), wrap the mode in `Description`, whose `verify` runs the same mode and, on an `AssertionError`, throws `new MockitoAssertionError(e, description)` (`Description.java` lines 38 to 45). So it never changes what is checked, but it does turn an opentest4j or JUnit 4 `ArgumentsAreDifferent` into a `MockitoAssertionError` (see "Verification failure classes" below).
+
 ### Verification failure classes (added 2026-10-23)
 
 Sources at the same tag, in the folder https://github.com/mockito/mockito/tree/v5.24.0/mockito-core/src/main/java/org/mockito (files `exceptions/base/MockitoAssertionError.java`, the files in `exceptions/verification/` and its `opentest4j/` and `junit/` subfolders, and `internal/junit/ExceptionFactory.java`).
@@ -398,7 +514,7 @@ Sources at the same tag, in the folder https://github.com/mockito/mockito/tree/v
 * In `org.mockito.exceptions.verification`, `WantedButNotInvoked`, `TooFewActualInvocations`, `TooManyActualInvocations`, `NeverWantedButInvoked`, `NoInteractionsWanted`, `VerificationInOrderFailure` and `ArgumentsAreDifferent` each extend `MockitoAssertionError`.
 * **The arguments mismatch error usually is not a `MockitoAssertionError`.** `ExceptionFactory.createArgumentsAreDifferentException` returns `org.mockito.exceptions.verification.opentest4j.ArgumentsAreDifferent` (which extends `org.opentest4j.AssertionFailedError`) when opentest4j is on the classpath, otherwise `org.mockito.exceptions.verification.junit.ArgumentsAreDifferent` (which extends `junit.framework.ComparisonFailure`) when JUnit 4 is, and only otherwise the `MockitoAssertionError` subclass (`ExceptionFactory.java` lines 19 to 46). All three are `AssertionError` subclasses, but a `catch (MockitoAssertionError e)` does not catch the first two.
 
-## 9. JUnit Pioneer 2.3.0, `@RetryingTest`
+## 9. JUnit Pioneer 2.3.0, `@RetryingTest` and `@DisableIfTestFails`
 
 ### Sources
 
@@ -414,6 +530,18 @@ Source at tag `v2.3.0` (commit `3b2ae595df32269700bdb62a994bf03410ca9b9e`):
 * Javadoc: it "retries a failing test a certain number of times before the test actually shows up as failing". With `@RetryingTest(n)` the method "is executed as long as it keeps failing, but no more than n times", and all executions except possibly the last "show up as being ignored/aborted"; "Only if all n executions fail, is the last one marked as such" (lines 25 to 38). A method so annotated "MUST NOT be annotated with @Test" (lines 49 to 50). Before 0.7.0 it was called `@RepeatFailedTest` (line 66).
 * Attributes: `value` and its alias `maxAttempts` (the maximum number of executions), `minSuccess` (default 1), `suspendForMs` (default 0, a pause between executions), `onExceptions` (default empty, meaning retry on everything except `TestAbortedException`), and `name` (lines 118 to 163).
 * Mechanism: `RetryingTestExtension` implements `TestTemplateInvocationContextProvider` and `TestExecutionExceptionHandler` (`RetryingTestExtension.java` line 39). A failed execution that will be retried is rethrown as a `TestAbortedException` (lines 156 to 165); only when no attempts remain is a `MultipleFailuresError` thrown (lines 166 to 175). So the earlier failing attempts are reported as aborted, not failed, and a later passing attempt is reported as passed.
+
+### `@DisableIfTestFails` (added 2026-10-24)
+
+Sources at the same tag: https://github.com/junit-pioneer/junit-pioneer/blob/v2.3.0/src/main/java/org/junitpioneer/jupiter/DisableIfTestFails.java, https://github.com/junit-pioneer/junit-pioneer/blob/v2.3.0/src/main/java/org/junitpioneer/jupiter/DisableIfTestFailsExtension.java, and the documentation page https://junit-pioneer.org/docs/disable-if-test-fails/ (source `docs/disable-if-test-fails.adoc` at the tag).
+
+* The annotation is `org.junitpioneer.jupiter.DisableIfTestFails`, `@Target({ ElementType.TYPE })`, `@Inherited`, `@ExtendWith(DisableIfTestFailsExtension.class)`, with two attributes: `with()` (exception types, default empty, meaning "any exception") and `onAssertion()` (default `true`) (`DisableIfTestFails.java` lines 47 to 69). Javadoc: "Disables all remaining tests in a container if one of them failed"; "By default, all exceptions (including assertions, but exempting failed assumptions) will lead to disabling the remaining tests" (lines 21 to 26).
+* **The failing test still fails.** `handleTestExecutionException` records the failure in the class's extension store and then rethrows the same throwable (`DisableIfTestFailsExtension.java` lines 59 to 70). The documentation: "`test2` will fail with or without the extension but due to `@DisableIfTestFails`, `test3` will be disabled (instead of being executed)" (source line 19).
+* **Later tests are disabled, not failed.** Its `evaluateExecutionCondition` returns `ConditionEvaluationResult.disabled("Another failed with one of the specified exceptions.")` once that store entry exists (lines 50 to 57). Tests that already ran keep their results; which tests come "after" depends on execution order.
+* **What counts.** A `TestAbortedException` never disables; an `AssertionError` disables exactly when `onAssertion` is true; any other throwable disables when it is an instance of one of the `with` types, or of anything when `with` is empty (lines 140 to 147, with the empty list replaced by `Throwable.class` at lines 97 to 104). The documentation: "The extension ignores aborted tests (e.g. due to failed assumptions) and won't disable tests because of that" (source line 21).
+* **Scope.** It may sit on a class, a superclass or an interface; on several, the `with` types are merged and `onAssertion` is or'ed (lines 28 to 33, 111 to 123). On a class with a nested class, "a failing test in the outer class will disable the nested class (if it runs later) and vice versa", but a failure in one implementation of an annotated interface disables only that class's remaining tests (lines 28 to 45). With parallel execution "no guarantee can be given how soon after a failed test other tests will be disabled" (documentation source line 68).
+
+So adding `@DisableIfTestFails` cannot turn a failing test into a passing one, but it does turn the tests that would have run after the first failure into skipped tests. In a run that counts only the target test, it changes nothing when the target fails first; when another test in the class fails first, the target is skipped instead of run.
 
 ## 10. rerunner-jupiter 2.1.5
 
@@ -575,6 +703,40 @@ opentest4j, tag `r1.3.0` (commit `214973bfa4e7e9be7d04e623202cc4147c7036d2`), un
 
 So a `catch` of any of the `AssertionError` subclasses above catches a real assertion failure of that library, and each library has more than one such class, under more than one simple name. Both `ComparisonFailure` and `AssertionFailedError` are simple names shared by two different classes. A failed assumption is not among them: opentest4j's `TestAbortedException` is a `RuntimeException`.
 
+## 16. Testcontainers 2.0.5, `@Testcontainers(disabledWithoutDocker = true)` (added 2026-10-24)
+
+### Sources
+
+Tag `2.0.5` (commit `5c448202ac69d073f746433d3e79f6a2bf0ec585`), module `modules/junit-jupiter`, published as `org.testcontainers:testcontainers-junit-jupiter`:
+
+* https://github.com/testcontainers/testcontainers-java/blob/2.0.5/modules/junit-jupiter/src/main/java/org/testcontainers/junit/jupiter/Testcontainers.java
+* https://github.com/testcontainers/testcontainers-java/blob/2.0.5/modules/junit-jupiter/src/main/java/org/testcontainers/junit/jupiter/TestcontainersExtension.java
+* https://github.com/testcontainers/testcontainers-java/blob/2.0.5/modules/junit-jupiter/src/main/java/org/testcontainers/junit/jupiter/EnabledIfDockerAvailable.java
+* For 1.x: https://github.com/testcontainers/testcontainers-java/blob/1.21.4/modules/junit-jupiter/src/main/java/org/testcontainers/junit/jupiter/TestcontainersExtension.java and `Testcontainers.java` in the same folder (tag `1.21.4`, commit `d509c81e3395215fad43971e968e638afd65f463`)
+
+### Facts
+
+* `org.testcontainers.junit.jupiter.Testcontainers` is `@Target(ElementType.TYPE)`, `@ExtendWith(TestcontainersExtension.class)`, `@Inherited`, with `boolean disabledWithoutDocker() default false`, Javadoc "Whether tests should be disabled (rather than failing) when Docker is not available" (`Testcontainers.java` lines 57 to 67). The class Javadoc adds that it "can be used on a superclass in the test hierarchy as well" (lines 22 to 24).
+* `TestcontainersExtension` implements `ExecutionCondition` (lines 35 to 36). `evaluateExecutionCondition` finds `@Testcontainers` on the test class or an enclosing class (lines 163 to 184) and then: with `disabledWithoutDocker` true, returns `enabled("Docker is available")` when the Docker detector finds Docker and `disabled("disabledWithoutDocker is true and Docker is not available")` otherwise; with it false, always `enabled("disabledWithoutDocker is false")` (lines 185 to 193).
+* So with `disabledWithoutDocker = true` and no reachable Docker, every test in the class is disabled, reported by JUnit as skipped with that reason, and none of them runs. With the default `false`, the tests run, and containers that cannot start make them fail.
+* The same attribute, default and condition logic are in 1.21.4 (`Testcontainers.java` line 67; `TestcontainersExtension.java` lines 186 to 192). Versions before 1.21.4 were not checked.
+* A related annotation, `@EnabledIfDockerAvailable` (`@Target({ ElementType.TYPE, ElementType.METHOD })`, `@ExtendWith(EnabledIfDockerAvailableCondition.class)`), documented as "a JUnit Jupiter extension to enable tests only if Docker is available", can sit on a method as well as a class (`EnabledIfDockerAvailable.java` lines 11 to 18). It exists at both tags.
+
+Consequence for Rootflake: the sandbox gives a target no Docker, so adding `disabledWithoutDocker = true` (or `@EnabledIfDockerAvailable`) to a Docker based test class turns its failures into skips there.
+
+## 17. Where the failure message goes, by library (added 2026-10-24)
+
+| Library and class | Message position | `Supplier<String>` form | Value order | Source |
+|---|---|---|---|---|
+| JUnit 5, `org.junit.jupiter.api.Assertions` | last | yes | expected, actual | section 2 |
+| JUnit 4, `org.junit.Assert` | first | no | expected, actual | section 3 |
+| TestNG, `org.testng.Assert`, value assertions | last | no | actual, expected | section 4 |
+| TestNG, `org.testng.Assert`, `assertThrows` and `expectThrows` | first | no | | section 4 |
+| TestNG, `org.testng.AssertJUnit` | first | no | expected, actual | section 4 |
+| JSONAssert, `org.skyscreamer.jsonassert.JSONAssert` | first | no | expected, actual | section 6 |
+| AssertJ | not a parameter: `as`, `describedAs`, `withFailMessage`, `overridingErrorMessage` before the check | yes, for all four | | section 5 |
+| Mockito `verify` | not a parameter: `description(String)` on the mode | no | | section 8 |
+
 ## Not verified
 
 * Surefire and Failsafe parameter names, user properties, and XML element names in versions older than 3.6.0.
@@ -588,4 +750,9 @@ So a `catch` of any of the `AssertionError` subclasses above catches a real asse
 * `BadApple` in Lucene versions other than 8.11.4, 9.0.0, 9.1.0, 9.12.0, 9.12.3, 10.0.0 and 10.5.2, and whether Solr or other projects define their own `BadApple`.
 * How RandomizedRunner reports a test ignored by a disabled group (for example as JUnit 4 ignored, and so as `skipped` in Surefire's report).
 * Hamcrest 1.3 and the older `hamcrest-library` artifact; only 3.0 and 2.2 were checked.
+* JUnit Jupiter discovery rules and discovery issue reporting before 5.14.4; the discovery issue mechanism is `@since 1.13` of the Platform, so older releases skip the same declarations without a warning, but that was not read. How Surefire 3.6.0 shows a discovery warning (in the console log or not at all) was not checked.
+* How Surefire 3.6.0 records a test disabled by an execution condition, such as `@DisableIfTestFails` or `@Testcontainers(disabledWithoutDocker = true)`, and a parameterized test that ran with zero invocations.
+* That a TestNG `SkipException` thrown by an AssertJ assumption fails a JUnit Jupiter test was read from the AssertJ 3.27.7 and JUnit 5.14.4 sources, not observed in a run. How the TestNG engine treats AssertJ's assumption exceptions was not checked.
+* Testcontainers releases other than 2.0.5 and 1.21.4, and the Docker detector's own checks.
+* JUnit Pioneer 3.0.0-RC1.
 * Spring Framework releases before 7.0.9 were not read; the 7.0.9 `RetryTemplate` and `@Retryable` are marked `@since 7.0`. The retry libraries were checked at one version each (two for Failsafe), and older releases may use other names.

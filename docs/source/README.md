@@ -9,7 +9,7 @@ Notes on the datasets, tools, and papers Rootflake builds on. Each note is writt
 | [nondex.md](nondex.md) | NonDex detector: Maven coordinates and release, Java and Maven requirements, invocation | 2026-10-12 |
 | [ifixflakies.md](ifixflakies.md) | iFixFlakies: victim and brittle definitions behind OD-Vic and OD-Brit, how it repairs order dependent tests | 2026-10-12 |
 | [flakyfix.md](flakyfix.md) | FlakyFix (arXiv 2307.00012): what it claims and how it measured it | 2026-10-12 |
-| [test-library-semantics.md](test-library-semantics.md) | Surefire and Failsafe rerun, skip, and filter settings and rerun XML; JUnit 5, JUnit 4, TestNG, AssertJ, JSONAssert, Awaitility, and Mockito behaviors the shortcut checker relies on | 2026-10-14 |
+| [test-library-semantics.md](test-library-semantics.md) | Surefire and Failsafe rerun, skip, and filter settings and rerun XML; JUnit 5, JUnit 4, TestNG, AssertJ, JSONAssert, Awaitility, Mockito, Testcontainers, and JUnit Pioneer behaviors the shortcut checker relies on, including test discovery and message argument order | 2026-10-24 |
 
 ## Pinned versions at a glance
 
