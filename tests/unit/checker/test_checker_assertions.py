@@ -148,7 +148,7 @@ class TestKindOne:
 
     def test_a_different_assertion_does_not_match(self, tmp_path):
         before = body_of("assertEquals(1, f());")
-        after = body_of("assertNotNull(f());")
+        after = body_of("assertFalse(g());")
         assert REMOVED in codes(before, after, tmp_path)
 
 
@@ -264,3 +264,152 @@ def test_a_string_literal_with_spaces_is_constant_for_assert_not_null(tmp_path, 
     before = body_of("int v = f(); assertNotNull(obj(v));")
     after = body_of(f"int v = f(); assertNotNull({literal});")
     assert REMOVED in codes(before, after, tmp_path)
+
+
+IMPORTS_7B = (
+    "import org.junit.Test;\n"
+    "import static org.junit.Assert.*;\n"
+    "import static org.assertj.core.api.Assertions.*;\n"
+    "import static org.hamcrest.Matchers.*;\n"
+    "import static org.mockito.Mockito.*;\n"
+    "import static org.awaitility.Awaitility.await;\n"
+    "import org.skyscreamer.jsonassert.JSONAssert;\n"
+    "import org.skyscreamer.jsonassert.JSONCompareMode;\n"
+)
+
+
+def body_7b(statements: str) -> str:
+    return (
+        f"package a;\n{IMPORTS_7B}public class FooTest {{\n"
+        f"  @Test public void testFoo() {{\n    {statements}\n  }}\n}}\n"
+    )
+
+
+def codes_7b(before: str, after: str, tmp_path: Path) -> set[str]:
+    return codes(body_7b(before), body_7b(after), tmp_path)
+
+
+class TestKindTwo:
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertThat(xs).containsExactly(1, 2);",
+          "assertThat(xs).containsExactlyInAnyOrder(1, 2);"),
+         ("assertThat(xs).containsExactlyElementsOf(ys);",
+          "assertThat(xs).containsExactlyInAnyOrderElementsOf(ys);"),
+         ("assertThat(m).containsExactlyEntriesOf(n);",
+          "assertThat(m).containsExactlyInAnyOrderEntriesOf(n);"),
+         ("assertThat(xs, contains(1, 2));", "assertThat(xs, containsInAnyOrder(1, 2));"),
+         ("assertThat(xs).containsExactly(1, 2).inOrder();",
+          "assertThat(xs).containsExactly(1, 2);"),
+         ("JSONAssert.assertEquals(e, a, JSONCompareMode.STRICT);",
+          "JSONAssert.assertEquals(e, a, JSONCompareMode.NON_EXTENSIBLE);")],
+        ids=["assertj", "elements_of", "entries_of", "hamcrest", "truth_in_order", "jsonassert"],
+    )  # fmt: skip
+    def test_an_allowlisted_order_relaxation_is_a_match(self, tmp_path, before, after):
+        assert codes_7b(before, after, tmp_path) == set()
+
+    def test_a_relaxation_on_other_values_is_not_a_match(self, tmp_path):
+        before = "assertThat(xs).containsExactly(1, 2);"
+        after = "assertThat(xs).containsExactlyInAnyOrder(1);"
+        assert REMOVED in codes_7b(before, after, tmp_path)
+
+    def test_jsonassert_lenient_is_not_a_match(self, tmp_path):
+        before = "JSONAssert.assertEquals(e, a, JSONCompareMode.STRICT);"
+        after = "JSONAssert.assertEquals(e, a, JSONCompareMode.LENIENT);"
+        assert codes_7b(before, after, tmp_path) != set()
+
+
+class TestKindThree:
+    def test_an_assertion_moved_into_until_asserted(self, tmp_path):
+        before = "assertEquals(1, f());"
+        after = "await().atMost(5, SECONDS).untilAsserted(() -> assertEquals(1, f()));"
+        assert REMOVED not in codes_7b(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        "condition", ["() -> collect.size() == count", "() -> count == collect.size()",
+                      "() -> collect.size().equals(count)"]
+    )  # fmt: skip
+    def test_an_equality_moved_into_until(self, tmp_path, condition):
+        before = "assertEquals(count, collect.size());"
+        after = f"await().atMost(5, SECONDS).until({condition});"
+        assert REMOVED not in codes_7b(before, after, tmp_path)
+
+    def test_an_assertion_moved_into_some_other_lambda_is_removed(self, tmp_path):
+        before = "assertEquals(1, f());"
+        after = "later(() -> assertEquals(1, f()));"
+        assert REMOVED in codes_7b(before, after, tmp_path)
+
+
+RELAXED = "weaken_assertion/equality_relaxed"
+
+
+class TestNamedWeakenings:
+    @pytest.mark.parametrize(
+        "after",
+        ["assertThat(row.get()).isGreaterThanOrEqualTo(1L);", "assertNotNull(row.get());",
+         "assertThat(row.get()).isNotNull();", "assertThat(row.get(), notNullValue());",
+         'assertTrue(row.get().startsWith("CREATE"));', 'assertTrue(row.get().contains("x"));'],
+    )  # fmt: skip
+    def test_an_equality_relaxed(self, tmp_path, after):
+        assert codes_7b("assertEquals(1L, row.get());", after, tmp_path) == {RELAXED}
+
+    def test_an_equality_relaxed_to_a_summary(self, tmp_path):
+        before = "assertEquals(expected, list);"
+        after = "assertEquals(expected.size(), list.size());"
+        assert codes_7b(before, after, tmp_path) == {RELAXED}
+
+    def test_a_disjunction_added_to_assert_true(self, tmp_path):
+        before = "assertTrue(v == 1);"
+        assert codes_7b(before, "assertTrue(v == 1 || v == 2);", tmp_path) == {RELAXED}
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertEquals(1.0, d, 0.01);", "assertEquals(1.0, d, 0.1);"),
+         ("assertEquals(1.0, d);", "assertEquals(1.0, d, 0.1);"),
+         ("assertThat(c).isBetween(n - 100, n + 100);",
+          "assertThat(c).isBetween(n - 1000, n + 1000);"),
+         ("assertThat(d).isCloseTo(1.0, within(0.01));",
+          "assertThat(d).isCloseTo(1.0, within(0.5));"),
+         ("assertThat(d, closeTo(1.0, 0.01));", "assertThat(d, closeTo(1.0, 0.5));")],
+    )  # fmt: skip
+    def test_a_widened_tolerance(self, tmp_path, before, after):
+        assert codes_7b(before, after, tmp_path) == {"weaken_assertion/tolerance_widened"}
+
+    def test_a_narrower_tolerance_is_a_match(self, tmp_path):
+        assert (
+            codes_7b("assertEquals(1.0, d, 0.1);", "assertEquals(1.0, d, 0.01);", tmp_path) == set()
+        )
+
+    @pytest.mark.parametrize("mode", ["atLeastOnce()", "atLeast(1)", "atMost(3)", "atMostOnce()"])
+    def test_a_relaxed_verification_mode(self, tmp_path, mode):
+        before = "verify(listener, times(2)).onRead(x);"
+        after = f"verify(listener, {mode}).onRead(x);"
+        assert codes_7b(before, after, tmp_path) == {"weaken_assertion/verification_mode_relaxed"}
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertThrows(IllegalArgumentException.class, () -> f());",
+          "assertThrows(Exception.class, () -> f());"),
+         ("assertThatThrownBy(() -> f()).isInstanceOf(RateLimitException.class);",
+          "assertThatThrownBy(() -> f()).isInstanceOf(RuntimeException.class);"),
+         ("assertThatThrownBy(() -> f()).isExactlyInstanceOf(IOException.class);",
+          "assertThatThrownBy(() -> f()).isInstanceOf(IOException.class);")],
+    )  # fmt: skip
+    def test_a_broadened_expected_exception(self, tmp_path, before, after):
+        assert codes_7b(before, after, tmp_path) == {
+            "weaken_assertion/expected_exception_broadened"
+        }
+
+    def test_unchecked_soft_assertions(self, tmp_path):
+        before = "assertThat(results).hasSize(3);"
+        after = (
+            "SoftAssertions softly = new SoftAssertions(); softly.assertThat(results).hasSize(3);"
+        )
+        assert codes_7b(before, after, tmp_path) == {"weaken_assertion/soft_assertions_unchecked"}
+
+    def test_soft_assertions_checked_with_assert_all_are_a_match(self, tmp_path):
+        before = "assertThat(results).hasSize(3);"
+        after = ("SoftAssertions softly = new SoftAssertions(); "
+                 "softly.assertThat(results).hasSize(3);"
+                 " softly.assertAll();")  # fmt: skip
+        assert codes_7b(before, after, tmp_path) == set()

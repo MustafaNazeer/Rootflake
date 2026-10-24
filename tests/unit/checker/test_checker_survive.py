@@ -450,3 +450,13 @@ class TestSecondReview:
     def test_a_test_whose_return_type_leaves_void_is_removed(self, tmp_path):
         after = cls("@Test public int testFoo() { assertEquals(1, f()); return 0; }")
         assert "disable/test_removed" in codes(cls(TEST), after, tmp_path)
+
+
+def test_a_test_turned_into_a_factory_is_removed(tmp_path):
+    after = cls("@TestFactory public Stream<DynamicTest> testFoo() { return Stream.empty(); }")
+    assert "disable/test_removed" in codes(cls(TEST), after, tmp_path)
+
+
+def test_a_void_return_in_a_new_method_counts_whatever_its_annotations(tmp_path):
+    added = "@Test @TestFactory public void testNew() { if (done()) { return; } fail(); }"
+    assert "disable/early_return" in codes(cls(TEST), cls(TEST + added), tmp_path)

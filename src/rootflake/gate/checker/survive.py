@@ -136,11 +136,16 @@ def _outside_nested(body) -> Iterator:
 
 
 def _returns(method: Method) -> int:
-    """Returns outside nested lambdas and classes; a @TestFactory must return its tests."""
-    if any(simple(a) == "TestFactory" for a in method.annotations):
-        return 0
+    """Returns outside nested lambdas and classes. A void `return;` always counts; a value
+    return does not in a non void @TestFactory, which must return its tests."""
+    factory = any(simple(a) == "TestFactory" for a in method.annotations)
+    value_ok = factory and method.return_type not in (None, "void")
     return sum(
-        1 for n in _outside_nested(method.body) if isinstance(n, Statement) and n.kind == "return"
+        1
+        for n in _outside_nested(method.body)
+        if isinstance(n, Statement)
+        and n.kind == "return"
+        and (n.end - n.start == 2 or not value_ok)
     )
 
 
@@ -184,8 +189,8 @@ def _removals(change: FileChange, ctx: Context) -> Iterator[Finding]:
             if not retried:
                 yield Finding("disable/test_removed", change.path, new.line)
             continue
-        factory = "TestFactory" in annotation_names(new.annotations, ctx.after)
-        if method.return_type == "void" and new.return_type != "void" and not factory:
+        if method.return_type == "void" and new.return_type != "void":
+            # Jupiter does not run a non void @Test, and becoming a factory changes what runs.
             yield Finding("disable/test_removed", change.path, new.line)
         is_target = target is not None and key[0] == target.dotted and key[1] == target.method
         old_names = annotation_names(method.annotations, ctx.before) & TEST_ANNOTATIONS
