@@ -150,9 +150,7 @@ class TestTypeResolution:
         assert (b.kind, b.fqn) == ("declared", "a.Base.Override")
 
     def test_a_member_type_does_not_reach_its_own_class_header(self):
-        b = self.resolve(
-            "package a; @Override class T { @interface Override {} }", "Override"
-        )
+        b = self.resolve("package a; @Override class T { @interface Override {} }", "Override")
         assert b.kind == "java_lang"
 
     def test_a_type_declared_in_the_same_file(self):

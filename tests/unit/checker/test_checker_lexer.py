@@ -128,6 +128,32 @@ class TestUnicodeEscapes:
         assert [(t.text, t.line) for t in tokens] == [("a", 1), ("b", 1), ("c", 2)]
 
 
+BACKSLASH = chr(0x5C)
+ESCAPED_BACKSLASH = BACKSLASH + "u005c"
+
+
+class TestEscapedBackslash:
+    # After an escape that yields a backslash (u005c), JDK 8 and 11 reset the count of
+    # preceding backslashes and JDK 17 counts the escaped one, so a raw backslash right after it
+    # starts an escape on one and not the other. The checker refuses that case.
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "// " + ESCAPED_BACKSLASH + BACKSLASH + "u000a int hidden = 1;",
+            "// " + ESCAPED_BACKSLASH + BACKSLASH + BACKSLASH + "u000a x",
+            's = "' + ESCAPED_BACKSLASH + BACKSLASH + 'u0041";',
+        ],
+        ids=["comment_line_break", "two_raw_after", "in_a_string"],
+    )
+    def test_an_escaped_backslash_followed_by_a_raw_backslash_is_unparsable(self, source):
+        with pytest.raises(Unparsable):
+            tokenize(source)
+
+    def test_an_escaped_backslash_followed_by_other_text_is_fine(self):
+        source = 's = "' + ESCAPED_BACKSLASH + 'n";'
+        assert texts(source) == ["s", "=", '"' + BACKSLASH + 'n"', ";"]
+
+
 class TestUnparsable:
     @pytest.mark.parametrize(
         "source",
@@ -184,7 +210,7 @@ def test_every_fixture_pre_image_tokenizes():
 
 @pytest.mark.parametrize(
     "ignorable",
-    ["​", "­", "⁠", "﻿", "\u0085", "\u009f"],
+    ["\u200b", "\u00ad", "\u2060", "\ufeff", "\u0085", "\u009f"],
     ids=["zero_width_space", "soft_hyphen", "word_joiner", "bom", "c1_next_line", "c1_last"],
 )
 def test_an_identifier_with_an_ignorable_character_is_unparsable(ignorable):
@@ -197,3 +223,39 @@ def test_an_identifier_with_an_ignorable_character_is_unparsable(ignorable):
 def test_an_escaped_ignorable_character_in_an_identifier_is_unparsable():
     with pytest.raises(Unparsable):
         tokenize("assert\\u200bEquals(1, 2);")
+
+
+def _sides(fixture_id: str, tmp_path: Path) -> tuple[list[str], list[str]]:
+    from test_checker_fixtures import checked_paths, trees
+
+    fixture = FIXTURES / fixture_id
+    pristine, workspace = trees(fixture, tmp_path)
+    [path] = [p for p in checked_paths((fixture / "patch.diff").read_text()) if p.endswith(".java")]
+    before = [t.text for t in tokenize((pristine / path).read_text(encoding="utf-8"))]
+    after = [t.text for t in tokenize((workspace / path).read_text(encoding="utf-8"))]
+    return before, after
+
+
+@pytest.mark.parametrize(
+    "fixture_id",
+    [
+        "reject-unicode-escape-line-break-hides-annotation",
+        "reject-unicode-escape-closes-comment-early",
+    ],
+)
+def test_an_escape_that_ends_a_comment_exposes_the_annotation_as_javac_does(tmp_path, fixture_id):
+    before, after = _sides(fixture_id, tmp_path)
+    count = sum(1 for a, b in zip(after, after[1:], strict=False) if (a, b) == ("@", "Ignore"))
+    assert (
+        count
+        == sum(1 for a, b in zip(before, before[1:], strict=False) if (a, b) == ("@", "Ignore")) + 1
+    )
+
+
+@pytest.mark.parametrize(
+    "fixture_id",
+    ["reject-unicode-escape-opens-hidden-comment", "reject-line-separator-in-line-comment"],
+)
+def test_a_hidden_comment_removes_the_assertion_as_javac_does(tmp_path, fixture_id):
+    before, after = _sides(fixture_id, tmp_path)
+    assert after.count("assertEquals") == before.count("assertEquals") - 1

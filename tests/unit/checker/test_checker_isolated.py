@@ -77,7 +77,8 @@ def test_the_wall_limit_applies(trees):
 
 
 @pytest.mark.parametrize(
-    "proc", [ProcResult(-1, b"", b"", True), ProcResult(-signal.SIGXCPU, b"", b"", False)],
+    "proc",
+    [ProcResult(-1, b"", b"", True), ProcResult(-signal.SIGXCPU, b"", b"", False)],
     ids=["wall", "cpu"],
 )
 def test_a_limit_hit_is_a_checker_timeout(trees, proc):

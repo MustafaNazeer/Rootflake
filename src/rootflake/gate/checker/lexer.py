@@ -79,7 +79,13 @@ def _translate(raw: str) -> tuple[str, list[int]]:
             if len(digits) != 4 or not set(digits) <= _HEX:
                 lines = lines or _raw_lines(raw)
                 raise Unparsable("malformed unicode escape", lines[i])
-            out.append(chr(int(digits, 16)))
+            char = chr(int(digits, 16))
+            if char == "\\" and raw[j + 4 : j + 5] == "\\":
+                lines = lines or _raw_lines(raw)
+                raise Unparsable(
+                    "escaped backslash before a backslash reads differently by JDK", lines[i]
+                )
+            out.append(char)
             origin.append(i)
             i, backslashes = j + 4, 0
             continue
