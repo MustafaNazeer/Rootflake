@@ -1273,7 +1273,7 @@ SUBJECT = "flag/assertion_subject_replaced"
 class TestSubjectRoots:
     @pytest.mark.parametrize(
         ("before", "after", "imports"),
-        [("assertEquals(3, q.size());", "assertEquals(3, Arrays.asList(1, 2, 3).size());", ""),
+        [("assertEquals(3, q.size());", "assertEquals(3, Arrays.asList(1, 2, g()).size());", ""),
          ("assertTrue(s.isRunning());", "await().until(() -> t.isRunning());", AWAIT_IMPORTS),
          ('String s = f(); assertEquals("x", s);', 'String s = "x"; assertEquals("x", s);', "")],
         ids=["method_name_only", "wait_on_another_receiver", "local_now_literal"],
@@ -1509,3 +1509,60 @@ class TestMessageSlotByOwner:
             "assertEquals(e(), a());", "String why = r(); assertEquals(e(), a(), why);"
         )
         assert codes(source, after, tmp_path) & {TOLERANCE, REMOVED}
+
+
+class TestLiteralSubjects:
+    @pytest.mark.parametrize(
+        ("before", "after", "helper"),
+        [('assertEquals("x", f());', 'String s = "x"; assertEquals("x", s);', ""),
+         ("assertThat(f()).isNotEmpty();", 'assertThat("x").isNotEmpty();', ""),
+         ("assertNotEquals(e(), a());", "assertNotEquals(1, 2);", ""),
+         ("assertNull(a());", "assertNull(null);", ""),
+         ("assertTrue(f().isEmpty());", 'assertTrue("".isEmpty());', ""),
+         ('assertThat(f()).contains("b");', 'assertThat("abc").contains("b");', ""),
+         ("assertThat(f()).hasSize(2);", "assertThat(Arrays.asList(1, 2)).hasSize(2);", ""),
+         ('assertFalse(f().equals("b"));', 'assertFalse("a".equals("b"));', ""),
+         ("assertThat(f()).isNotEqualTo(2);", "assertThat(1).isNotEqualTo(2);", ""),
+         ('assertEquals("x", f());', 'assertEquals("x", X);', '  static final String X = "x";'),
+         ("assertEquals(List.of(1), f());",
+          "List<Integer> l = List.of(1); assertEquals(List.of(1), l);", ""),
+         ("assertTrue(Objects.equals(a(), b()));",
+          "assertTrue(java.util.Objects.equals(b(), b()));", "")],
+        ids=["literal_local", "assertj_literal_subject", "not_equals_literals", "null_null",
+             "call_on_literal", "assertj_contains_literal", "literal_factory", "equals_literals",
+             "assertj_not_equal_literals", "literal_constant", "factory_local",
+             "qualified_objects_equals"],
+    )  # fmt: skip
+    def test_compared_values_that_are_all_literals_are_refused(
+        self, tmp_path, before, after, helper
+    ):
+        assert REMOVED in codes(body_of(before, helper), body_of(after, helper), tmp_path)
+
+    def test_hamcrest_reason_and_literal_boolean_is_refused(self, tmp_path):
+        before, after = (
+            with_imports(
+                body_of(s).replace(
+                    "import static org.assertj.core.api.Assertions.assertThat;\n", ""
+                ),
+                HAMCREST_IMPORTS,
+            )
+            for s in ('assertThat("c", ok());', 'assertThat("c", true);')
+        )
+        assert REMOVED in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [('assertEquals("x", f());', 'assertEquals("y", f());'),
+         ("assertEquals(List.of(1), f());", "assertEquals(List.of(1, 2), f());"),
+         ("assertTrue(f().isEmpty());", "assertTrue(g().isEmpty());")],
+        ids=["expected_literal_changed", "expected_factory_changed", "subject_still_a_call"],
+    )  # fmt: skip
+    def test_a_literal_expectation_beside_a_real_value_is_kept(self, tmp_path, before, after):
+        assert REMOVED not in codes(body_of(before), body_of(after), tmp_path)
+
+
+def test_a_project_class_named_like_junit_does_not_set_the_message_slot(tmp_path):
+    shadow = {"src/test/java/org/junit/Assert.java": "package org.junit; public class Assert {}"}
+    before = body_of("org.junit.Assert.assertEquals(e(), a());")
+    after = body_of("String why = r(); org.junit.Assert.assertEquals(why, e(), a());")
+    assert codes(before, after, tmp_path, shadow) & {TOLERANCE, REMOVED}

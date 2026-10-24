@@ -391,7 +391,7 @@ def _local_definitions(unit: CompilationUnit, body: Block) -> dict[str, set[str]
             if token.kind == "ident" and tokens[i + 1].text == "=" and tokens[i + 1].kind == "op":
                 rhs = " ".join(t.text for t in tokens[i + 2 :])
                 roots = roots_of((rhs,))
-                if not roots and not _constant(rhs.rstrip(" ;")):
+                if not roots and not _literal_expression(rhs.rstrip(" ;")):
                     roots = {f"#{token.text}"}
                 out.setdefault(token.text, set()).update(roots)
     return out
@@ -755,7 +755,7 @@ def _assignment_counts(tokens, start: int, end: int) -> dict[str, int]:
     return out
 
 
-def _field_facts(program: Program, path: str) -> tuple[dict[str, list], dict[str, list]]:
+def _field_facts(program: Program, path: str) -> tuple[dict, dict, dict]:
     """Each field name's literal values and declared types. A field keeps a value only when it
     is declared once and nothing in the file assigns it again."""
     key = ("field_facts", path)
@@ -764,6 +764,7 @@ def _field_facts(program: Program, path: str) -> tuple[dict[str, list], dict[str
         assigned = _assignment_counts(unit.tokens, 0, len(unit.tokens))
         values: dict[str, list] = {}
         types: dict[str, list] = {}
+        literals: dict[str, list] = {}
         for decl in (n for n in walk(unit) if isinstance(n, TypeDecl)):
             for field in decl.fields:
                 for name in field.names:
@@ -772,7 +773,10 @@ def _field_facts(program: Program, path: str) -> tuple[dict[str, list], dict[str
                     reassigned = assigned.get(name, 0) > (1 if span else 0)
                     values.setdefault(name, []).append(None if reassigned else _number(text))
                     types.setdefault(name, []).append(field.type)
-        program.memo[key] = (values, types)
+                    literals.setdefault(name, []).append(
+                        bool(span) and not reassigned and _literal_expression(text)
+                    )
+        program.memo[key] = (values, types, literals)
     return program.memo[key]
 
 
@@ -782,7 +786,8 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
     A name declared more than once, or assigned, incremented or decremented after its
     declaration, has no value."""
     unit = program.units[path]
-    field_values, field_types = _field_facts(program, path)
+    field_values, field_types, field_literals = _field_facts(program, path)
+    literals = {name: list(found) for name, found in field_literals.items()}
     values = {name: list(found) for name, found in field_values.items()}
     types: dict[str, list] = {name: list(found) for name, found in field_types.items()}
     assigned = _assignment_counts(unit.tokens, body.start, body.end)
@@ -791,14 +796,17 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
         for param in method.params:
             values.setdefault(param.name, []).append(None)
             types.setdefault(param.name, []).append(param.type)
+            literals.setdefault(param.name, []).append(False)
     recorded: set[int] = set()
     for node in walk(body):
         if isinstance(node, Catch):
             types.setdefault(node.name, []).append(None)
+            literals.setdefault(node.name, []).append(False)
         elif isinstance(node, Lambda):
             for name in node.params:
                 values.setdefault(name, []).append(None)
                 types.setdefault(name, []).append(None)
+                literals.setdefault(name, []).append(False)
         elif isinstance(node, Statement) and node.kind == "local_var":
             tokens = unit.tokens[node.start : node.end]
             for i, token in enumerate(tokens[:-1]):
@@ -820,6 +828,10 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
                 values.setdefault(token.text, []).append(
                     value if initialized and not reassigned else None
                 )
+                initializer = " ".join(t.text for t in tokens[i + 2 : end])
+                literals.setdefault(token.text, []).append(
+                    initialized and not reassigned and _literal_expression(initializer)
+                )
                 types.setdefault(token.text, []).append(" ".join(t.text for t in tokens[:i]))
     # Any other `Type name` pair declares the name again (a for header, a resource, a pattern),
     # so the name keeps no fact.
@@ -831,7 +843,11 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
         if before.kind == "ident" or before.text in _PRIMITIVES or before.text in (">", "]"):
             values.setdefault(token.text, []).append(None)
             types.setdefault(token.text, []).append(None)
+            literals.setdefault(token.text, []).append(False)
     out = set()
+    for name, found in literals.items():
+        if len(found) == 1 and found[0]:
+            out.add(("literal", name))
     for name, found in types.items():
         if found and all(t is not None and _set_type(t) for t in found):
             out.add(("set", name))
@@ -1193,7 +1209,7 @@ def _assertion_owner(program: Program, path: str, unit: CompilationUnit, call: C
     if call.receiver not in (None, "<expr>") and call.receiver_at is not None:
         name = _qualified_name(unit, call.receiver_at)
         if "." in name:
-            return name
+            return name if is_library(name) and name not in program.types_by_fqn else None
         binding = program.resolve_type(path, name, call.receiver_at)
         return binding.fqn if binding.kind == "library" else None
     if call.receiver is not None or program.methods_by_name.get(call.name):
@@ -1224,6 +1240,8 @@ def _slot_fact(program: Program, path: str, unit: CompilationUnit, call: Call) -
 def _trivially_true(assertion: Assertion) -> bool:
     name = assertion.signature[0]
     args = tuple(_strip_parens(a) for a in payload(assertion))
+    if name in _LITERAL_JUDGED and args and _all_literal(assertion):
+        return True
     if name in ("assertEquals", "assertSame") and len(args) >= 2:
         return _same_values(args[-1], args[-2])
     if name in ("assertTrue", "assertFalse") and args:
@@ -1242,6 +1260,61 @@ def _trivially_true(assertion: Assertion) -> bool:
     if name in ("assertThat", "checkThat") and args:
         return _trivial_chain(assertion, args)
     return False
+
+
+# Factories that build a value from literals only (approved 2026-10-24).
+_LITERAL_FACTORIES = {
+    "List": frozenset(["of"]), "Set": frozenset(["of"]), "Map": frozenset(["of", "entry"]),
+    "Arrays": frozenset(["asList"]),
+    "Collections": frozenset(["singletonList", "singleton", "emptyList", "emptySet",
+                              "emptyMap"]),
+}  # fmt: skip
+_LITERAL_JUDGED = frozenset([*_PAYLOAD, "assertThat", "then", "checkThat"])
+
+
+def _literal_tokens(tokens, names: frozenset[str], skip: frozenset[str] = frozenset()) -> bool:
+    """Whether every value the tokens name is a literal: each name not after a dot is a name
+    bound only to a literal, or a literal factory such as `List.of`; a member called on a literal
+    is a literal. A creation, `this` or any other name is not."""
+    for i, token in enumerate(tokens):
+        if token.kind == "keyword" and token.text in ("new", "this", "super"):
+            return False
+        if token.kind != "ident" or (i and tokens[i - 1].text in (".", "::")):
+            continue
+        after = tokens[i + 1].text if i + 1 < len(tokens) else ""
+        if token.text in skip and after == "(":
+            continue
+        if token.text in names:
+            continue
+        factory = _LITERAL_FACTORIES.get(token.text)
+        if factory and after == "." and i + 2 < len(tokens) and tokens[i + 2].text in factory:
+            continue
+        return False
+    return True
+
+
+def _literal_expression(text: str, names: frozenset[str] = frozenset()) -> bool:
+    if not text.strip():
+        return False
+    try:
+        tokens = tokenize(_without_literals(text))
+    except Unparsable:
+        return False
+    return _literal_tokens(tokens, names)
+
+
+def _all_literal(assertion: Assertion) -> bool:
+    """Every value an assertion compares, past its own call name, is a literal, so it can never
+    fail or never pass whatever the code under test does."""
+    try:
+        tokens = tokenize(_without_literals(assertion.text))
+    except Unparsable:
+        return False
+    first = next((i for i, t in enumerate(tokens) if t.text == "("), None)
+    if first is None:
+        return False
+    names = frozenset(f[1] for f in assertion.facts if f[0] == "literal")
+    return _literal_tokens(tokens[first:], names, MATCHER_FACTORIES | _DESCRIPTIONS)
 
 
 def _same_values(a: str, b: str) -> bool:
@@ -1288,6 +1361,8 @@ def _branches(text: str) -> tuple[str, str] | None:
 def _equals_self(condition: str) -> bool:
     """`x.equals(x)` or `Objects.equals(x, x)`, with the same expression on both sides."""
     words = condition.split()
+    if words[:4] == ["java", ".", "util", "."]:
+        words = words[4:]
     if words[:4] == ["Objects", ".", "equals", "("] and words[-1] == ")":
         found = _first_arguments(words, frozenset(["equals"]))
         if found and len(found[0][1]) == 2:
