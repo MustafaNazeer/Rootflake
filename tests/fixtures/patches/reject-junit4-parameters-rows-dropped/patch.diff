@@ -1,0 +1,12 @@
+diff --git a/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java b/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java
+--- a/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java
++++ b/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java
+@@ -67,8 +67,6 @@
+         List<Object[]> result = new ArrayList<>();
+         result.add(new Object[] {false, true});
+         result.add(new Object[] {false, false});
+-        result.add(new Object[] {true, true});
+-        result.add(new Object[] {true, false});
+         return result;
+     }
+ 

@@ -1,0 +1,26 @@
+{
+  "id": "accept-new-test-factory-stream-of-dynamic-tests",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "new_test_factory_stream_of_dynamic_tests",
+  "target": {
+    "class": "com.google.cloud.gcs.analyticscore.client.InMemoryStorageContractTest",
+    "method": "unsupportedMethods_failLoudly"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Creates InMemoryStorageContractTest, a new test class with two @TestFactory methods: readChannelContract builds its dynamic tests from a table of cases, and unsupportedMethods_failLoudly returns Stream.of(dynamicTest(\"list\", ...), dynamicTest(\"get\", ...), dynamicTest(\"blobReadSession\", ...)), each checking an UnsupportedOperationException with assertThrows. A brand new @TestFactory takes nothing away: no test, assertion or parameter source existed before, so ADR 0007 Decisions 5 and 6 have nothing to compare and the checker must accept it with no code. It is not a flaky test fix; it adds contract tests for an in memory storage fake. The pull request description carries an automated review section whose verdict names a model (\"sil-critic\"), and it was opened and merged by the same account; it is used here as a real merged change and recorded as such. Verbatim: the single new file of the pull request, with the index line dropped. The target is the factory that returns Stream.of(dynamicTest(...)). Not from IDoFT: neither the repository nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/GoogleCloudPlatform/gcs-analytics-core",
+    "commit": "2a9ac58f3015deba0694369167a5113d440a5bc7",
+    "pr": "https://github.com/GoogleCloudPlatform/gcs-analytics-core/pull/408",
+    "base": "4e994bcfd7acf1a49247f84f7d4a71253d940a82",
+    "path": "test-lib/src/test/java/com/google/cloud/gcs/analyticscore/client/InMemoryStorageContractTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

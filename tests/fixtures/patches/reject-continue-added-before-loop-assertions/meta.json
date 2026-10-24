@@ -1,0 +1,31 @@
+{
+  "id": "reject-continue-added-before-loop-assertions",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "continue_added_before_loop_assertions",
+  "target": {
+    "class": "org.apache.rocketmq.test.client.consumer.pop.PopPriorityIT",
+    "method": "test_priority_consume_from_high_to_low"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/early_return",
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Adds if (message.getReconsumeTimes() > 0) { continue; } inside the loop of test_priority_consume_from_high_to_low, after the popped message is read and before the three assertEquals calls on its queue offset, queue id and priority, so any message that was consumed again skips every check on it. Rejected with disable/early_return, the code for an exit added to a test method under ADR 0007 Decision 6, and with weaken_assertion/assertion_removed under Decision 5: the three assertions after it now have a new continue earlier in the same method body, so each counts as removed. Adapted: no merged change with a permissive license was found that adds a continue before assertions in a test loop on its own. The three lines are hand written on the pre image of PopPriorityIT.java at the merge base of apache/rocketmq PR 10390, the pre image of reject-comment-out-assertions-in-loop; every context line is the pre image's own. The target is the test method the hunk changes. The repository has IDoFT rows for other tests, but PopPriorityIT does not appear in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/rocketmq",
+    "commit": "527273694e8ed1487ad5c84ebabdbf1f43bda124",
+    "pr": "https://github.com/apache/rocketmq/pull/10390",
+    "base": "41a3a3599013dd9babe6b43108ab9b3fda3e92c4",
+    "path": "test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

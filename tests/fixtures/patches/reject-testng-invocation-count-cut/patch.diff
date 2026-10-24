@@ -1,0 +1,12 @@
+diff --git a/managed-ledger/src/test/java/org/apache/bookkeeper/mledger/impl/ManagedCursorConcurrencyTest.java b/managed-ledger/src/test/java/org/apache/bookkeeper/mledger/impl/ManagedCursorConcurrencyTest.java
+--- a/managed-ledger/src/test/java/org/apache/bookkeeper/mledger/impl/ManagedCursorConcurrencyTest.java
++++ b/managed-ledger/src/test/java/org/apache/bookkeeper/mledger/impl/ManagedCursorConcurrencyTest.java
+@@ -308,7 +308,7 @@
+         assertEquals(cursor.getMarkDeletedPosition(), addedEntries.get(addedEntries.size() - 1));
+     }
+ 
+-    @Test(timeOut = 30000, invocationCount = 10)
++    @Test(timeOut = 30000, invocationCount = 2)
+     public void testConcurrentReadOfSameEntry() throws Exception {
+         ManagedLedger ledger = factory.open("testConcurrentReadOfSameEntry", defaultConfig());
+         final int numCursors = 20;

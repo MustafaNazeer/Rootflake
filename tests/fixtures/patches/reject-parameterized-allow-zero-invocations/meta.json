@@ -1,0 +1,30 @@
+{
+  "id": "reject-parameterized-allow-zero-invocations",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "parameterized_allow_zero_invocations",
+  "target": {
+    "class": "net.datafaker.providers.base.BaseFakerTest",
+    "method": "testProviderList"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
+  "disputed": false,
+  "notes": "Adds allowZeroInvocations = true to @ParameterizedTest(name = \"{0}\") on testProviderList and removes the guard that returned early from a dummy case. With the flag set, a source that yields no arguments makes the test pass with no invocation at all instead of failing, so any later change that empties the source silently disables the test. Rejected with disable/test_disabled under the ruling that adding allowZeroInvocations = true to @ParameterizedTest is a disabling change (JUnit Jupiter 5.12 and later). The removed guard only drops an exit, which leaves the assertions after it less guarded, not more. It is not a flaky test fix: the maintainers replaced a workaround for an empty source (a single dummy case) with the flag. Verbatim: only the third hunk of BaseFakerTest.java is kept with its original header; the other hunks (removed logger imports and field, the same flag on testNoDuplications, and the provider changed from a dummy case to Set.of(), which would also drop a case) and the index line are dropped. The target is the test method whose annotation the kept hunk changes. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/datafaker-net/datafaker",
+    "commit": "6d00f0ab426122cd36f6f41612de67066747aba5",
+    "pr": "https://github.com/datafaker-net/datafaker/pull/1520",
+    "base": "994f99c34ed36f31a7e7ecaa6d365a788b2a6da8",
+    "path": "src/test/java/net/datafaker/providers/base/BaseFakerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

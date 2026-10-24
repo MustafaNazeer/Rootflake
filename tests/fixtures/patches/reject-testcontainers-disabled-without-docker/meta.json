@@ -1,0 +1,29 @@
+{
+  "id": "reject-testcontainers-disabled-without-docker",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "testcontainers_disabled_without_docker",
+  "target": {
+    "class": "dev.jvmmcp.core.pg.PostgresSchemaReaderTest",
+    "method": null
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
+  "disputed": false,
+  "notes": "Changes @Testcontainers on PostgresSchemaReaderTest to @Testcontainers(disabledWithoutDocker = true), which the Testcontainers JUnit Jupiter extension documents as disabling the tests, rather than failing them, when Docker is not available. The commit message says it skips the tests on CI runners without Docker. Rejected with disable/test_disabled under the ruling that disabledWithoutDocker = true on @Testcontainers is a disabling attribute: in an environment where the container cannot start, the class reports as skipped instead of failing. It is not a flaky test fix. Verbatim: only the first hunk of PostgresSchemaReaderTest.java is kept; the hunks that drop the manual postgres.start() and postgres.stop() calls and the index line are dropped. No method target: the attribute acts on the whole class. No pull request: the commit was pushed directly. Not from IDoFT: neither the repository nor the test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/oscarbol09/jvm-mcp",
+    "commit": "be7b4b6645ab6fb553a498e8cd0677a8c1b947c4",
+    "base": "f94783ee9f4add2e4ff5d4e5953da1b2c3a2ecd2",
+    "path": "core/src/test/java/dev/jvmmcp/core/pg/PostgresSchemaReaderTest.java",
+    "license": "MIT",
+    "fetched": "2026-10-23"
+  }
+}

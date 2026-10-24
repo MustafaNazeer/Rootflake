@@ -1,0 +1,29 @@
+{
+  "id": "reject-junit4-enclosed-runner-removed",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit4_enclosed_runner_removed",
+  "target": {
+    "class": "org.apache.ignite.spi.discovery.zk.internal.ZookeeperValidatePathsTest",
+    "method": null
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/test_removed"
+  ],
+  "disputed": false,
+  "notes": "Removes @RunWith(Enclosed.class) from ZookeeperValidatePathsTest, whose tests all live in two public static nested classes. Without the Enclosed runner the outer class declares no test, and Surefire's default excludes (**/*$*, see the test library semantics note) skip the nested classes, so both nested test classes silently stop running. Rejected with disable/test_removed under the ruling that removing @RunWith(Enclosed.class) drops the tests it ran. Adapted: no merged change was found that removes an Enclosed runner. The removed line is hand made on ZookeeperValidatePathsTest.java as of the last commit that changed it, da22909747a9205b7097b2ab0b2b802a7b986a4f on the default branch; every context line is that file's own, and the now unused imports are left in place. No method target: the runner covers every nested test class. Not from IDoFT: neither the repository nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/ignite",
+    "commit": "da22909747a9205b7097b2ab0b2b802a7b986a4f",
+    "base": "da22909747a9205b7097b2ab0b2b802a7b986a4f",
+    "path": "modules/zookeeper/src/test/java/org/apache/ignite/spi/discovery/zk/internal/ZookeeperValidatePathsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

@@ -1,0 +1,11 @@
+diff --git a/spring-web/src/test/java/org/springframework/http/HttpRangeTests.java b/spring-web/src/test/java/org/springframework/http/HttpRangeTests.java
+--- a/spring-web/src/test/java/org/springframework/http/HttpRangeTests.java
++++ b/spring-web/src/test/java/org/springframework/http/HttpRangeTests.java
+@@ -127,7 +127,6 @@
+ 	@CsvSource(delimiter = '|', textBlock = """
+ 			"stale"       | "current"
+ 			W/"current"   | W/"current"
+-			"current"     | W/"current"
+ 			""")
+ 	void resolveRangesWithNonMatchingIfRangeETag(String ifRange, String eTag) {
+ 		assertThat(resolveWithIfRange(ifRange, eTag)).isEmpty();

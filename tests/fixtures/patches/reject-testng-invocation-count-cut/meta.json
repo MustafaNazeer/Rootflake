@@ -1,0 +1,29 @@
+{
+  "id": "reject-testng-invocation-count-cut",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "testng_invocation_count_cut",
+  "target": {
+    "class": "org.apache.bookkeeper.mledger.impl.ManagedCursorConcurrencyTest",
+    "method": "testConcurrentReadOfSameEntry"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/parameter_cases_dropped"
+  ],
+  "disputed": false,
+  "notes": "Cuts invocationCount on testConcurrentReadOfSameEntry from 10 to 2 in @Test(timeOut = 30000, invocationCount = 10). The test opens 20 cursors and reads the same entries from all of them at once, and runs ten times to give a race a chance to show; two runs drop eight of those chances. Rejected with disable/parameter_cases_dropped under the ruling that a lowered TestNG invocationCount loses cases. Without successPercentage it is not a retry. Adapted: no merged change with a permissive license was found that lowers an invocationCount on its own (a scan of the history of 25 pulsar test files that use invocationCount found none). The changed literal is hand written on ManagedCursorConcurrencyTest.java as of the last commit that changed it, 8b74450d8bebff175c87ade5588ffdec1db056fc on the default branch; every context and removed line is that file's own. Not from IDoFT: the repository has IDoFT rows for other tests, but this test class does not appear in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/pulsar",
+    "commit": "8b74450d8bebff175c87ade5588ffdec1db056fc",
+    "base": "8b74450d8bebff175c87ade5588ffdec1db056fc",
+    "path": "managed-ledger/src/test/java/org/apache/bookkeeper/mledger/impl/ManagedCursorConcurrencyTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

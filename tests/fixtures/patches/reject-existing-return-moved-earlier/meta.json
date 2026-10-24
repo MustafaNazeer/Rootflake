@@ -1,0 +1,29 @@
+{
+  "id": "reject-existing-return-moved-earlier",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "existing_return_moved_earlier",
+  "target": {
+    "class": "org.apache.commons.lang3.time.FastDateParserJava15BugTest",
+    "method": "testJava15BuggyLocaleTest"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/early_return"
+  ],
+  "disputed": false,
+  "notes": "Moves the existing if (buggyLocale == null) { return; } in testJava15BuggyLocaleTest from after the loop that looks the locale up to before it. buggyLocale is still null at that point, so the test now always returns before it searches for the locale and before it calls testSingleLocale. The return statement and its guard are unchanged; only its position moves. Rejected with disable/early_return under the ruling that an existing return moved earlier in a test method is an early return. Adapted: no merged change was found that moves a return earlier in a test. The hunk is hand made on FastDateParserJava15BugTest.java as of the last commit that changed it, 0a8ac74c8f008c8164d7db3c7a05f4106dfe3789 on the default branch; every context and removed line is that file's own, and the three added lines are the three removed ones. Not from IDoFT: the repository has IDoFT rows for other tests, but this test class does not appear in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/commons-lang",
+    "commit": "0a8ac74c8f008c8164d7db3c7a05f4106dfe3789",
+    "base": "0a8ac74c8f008c8164d7db3c7a05f4106dfe3789",
+    "path": "src/test/java/org/apache/commons/lang3/time/FastDateParserJava15BugTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

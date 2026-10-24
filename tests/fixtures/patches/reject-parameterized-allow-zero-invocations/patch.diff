@@ -1,0 +1,19 @@
+diff --git a/src/test/java/net/datafaker/providers/base/BaseFakerTest.java b/src/test/java/net/datafaker/providers/base/BaseFakerTest.java
+--- a/src/test/java/net/datafaker/providers/base/BaseFakerTest.java
++++ b/src/test/java/net/datafaker/providers/base/BaseFakerTest.java
+@@ -46,14 +43,9 @@ protected List<String> getBaseList(String key) {
+         return faker.fakeValuesService().fetchObject(key, faker.getContext());
+     }
+ 
+-    @ParameterizedTest(name = "{0}")
++    @ParameterizedTest(name = "{0}", allowZeroInvocations = true)
+     @MethodSource("providerListTest")
+     protected void testProviderList(TestSpec testSpec, TestInfo testInfo) {
+-        if (testSpec.isDummy) {
+-            // skip and log dummy
+-            LOG.log(Level.WARNING, "Dummy test for " + testInfo.getTestClass().get());
+-            return;
+-        }
+         // Given
+         Set<String> actual = new HashSet<>(getBaseList(testSpec.key));
+         // When

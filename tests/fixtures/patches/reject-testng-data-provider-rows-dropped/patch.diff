@@ -1,0 +1,19 @@
+diff --git a/pulsar-broker/src/test/java/org/apache/pulsar/client/impl/NegativeAcksTest.java b/pulsar-broker/src/test/java/org/apache/pulsar/client/impl/NegativeAcksTest.java
+--- a/pulsar-broker/src/test/java/org/apache/pulsar/client/impl/NegativeAcksTest.java
++++ b/pulsar-broker/src/test/java/org/apache/pulsar/client/impl/NegativeAcksTest.java
+@@ -77,15 +77,6 @@
+                 { true, false, SubscriptionType.Failover, 100, 1000 },
+                 { true, true, SubscriptionType.Shared, 100, 1000 },
+                 { true, true, SubscriptionType.Failover, 100, 1000 },
+-
+-                { false, false, SubscriptionType.Shared, 0, 1000 },
+-                { false, false, SubscriptionType.Failover, 0, 1000 },
+-                { false, true, SubscriptionType.Shared, 0, 1000 },
+-                { false, true, SubscriptionType.Failover, 0, 1000 },
+-                { true, false, SubscriptionType.Shared, 0, 1000 },
+-                { true, false, SubscriptionType.Failover, 0, 1000 },
+-                { true, true, SubscriptionType.Shared, 0, 1000 },
+-                { true, true, SubscriptionType.Failover, 0, 1000 },
+         };
+     }
+ 

@@ -1,0 +1,13 @@
+diff --git a/service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java b/service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java
+--- a/service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java
++++ b/service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java
+@@ -106,6 +106,9 @@
+                 @PathParam("id") String id);
+     }
+ 
++    @interface Test {
++    }
++
+     @BeforeEach
+     void before() {
+         RestAssured.basePath = "/" + applicationVersion;

@@ -1,0 +1,29 @@
+{
+  "id": "reject-skip-exception-thrown-through-variable",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "skip_exception_thrown_through_variable",
+  "target": {
+    "class": "org.killbill.billing.payment.TestJanitor",
+    "method": "testUnknownEntriesWithFailures"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/assumption_added"
+  ],
+  "disputed": false,
+  "notes": "Constructs a TestNG SkipException into a local variable at the start of testUnknownEntriesWithFailures and throws the variable whenever the CI environment variable is set: final org.testng.SkipException flaky = new org.testng.SkipException(\"Flaky, see https://github.com/killbill/killbill/issues/860\"); if (System.getenv(\"CI\") != null) { throw flaky; }. TestNG reports the test as skipped. Rejected with disable/assumption_added: a thrown SkipException outside a catch is a disable whether the throw names the exception or a variable holding it, so a checker that matches only throw new SkipException(...) misses it. The code is the same as reject-testng-skip-exception-thrown, which reports only disable/assumption_added for a thrown SkipException, and this fixture follows it. Adapted: built on reject-testng-skip-exception-thrown (the killbill commit of reject-testng-retry-analyzer); the four added lines are hand written on its pre image, with the message the commit itself uses, and every context line is the pre image's own.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/killbill/killbill",
+    "commit": "e3b153e9c9f65e698c8660bb8dfa901856359bb4",
+    "base": "a9731f4cadc6226854679c8ccd0947e3716c8f22",
+    "path": "payment/src/test/java/org/killbill/billing/payment/TestJanitor.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

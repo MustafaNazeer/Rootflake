@@ -1,0 +1,30 @@
+{
+  "id": "reject-test-class-made-abstract",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "test_class_made_abstract",
+  "target": {
+    "class": "com.azure.core.http.policy.RetryPolicyTests",
+    "method": null
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/test_removed"
+  ],
+  "disputed": false,
+  "notes": "Declares the test class RetryPolicyTests abstract. JUnit Jupiter does not run the tests of an abstract class (TestClassPredicates at r5.14.4 requires a standalone test class to be not abstract), and nothing in the patch extends it, so every test in the class silently stops running. Rejected with disable/test_removed under the ruling that a test class made abstract removes its tests. Adapted: no merged change was found that makes a test class abstract on its own. The modifier is hand written on the pre image of RetryPolicyTests.java at the merge base of Azure/azure-sdk-for-java PR 26548, the pre image of accept-tzd-format-in-utc; every context and removed line is the pre image's own. RetryPolicy here is the project's own class under test, not a retry library. Not from IDoFT: neither the repository nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/Azure/azure-sdk-for-java",
+    "commit": "f189ad600dea50f436f8aed0eb617f164e7ff2d3",
+    "pr": "https://github.com/Azure/azure-sdk-for-java/pull/26548",
+    "base": "339b4b351058fd1977c0d7ec174d31f7f1c99bc4",
+    "path": "sdk/core/azure-core/src/test/java/com/azure/core/http/policy/RetryPolicyTests.java",
+    "license": "MIT",
+    "fetched": "2026-10-14"
+  }
+}

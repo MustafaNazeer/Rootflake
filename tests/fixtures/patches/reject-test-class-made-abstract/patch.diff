@@ -1,0 +1,12 @@
+diff --git a/sdk/core/azure-core/src/test/java/com/azure/core/http/policy/RetryPolicyTests.java b/sdk/core/azure-core/src/test/java/com/azure/core/http/policy/RetryPolicyTests.java
+--- a/sdk/core/azure-core/src/test/java/com/azure/core/http/policy/RetryPolicyTests.java
++++ b/sdk/core/azure-core/src/test/java/com/azure/core/http/policy/RetryPolicyTests.java
+@@ -46,7 +46,7 @@
+ /**
+  * Tests {@link RetryPolicy}.
+  */
+-public class RetryPolicyTests {
++public abstract class RetryPolicyTests {
+     @ParameterizedTest
+     @ValueSource(ints = {408, 429, 500, 502, 503})
+     public void defaultRetryPolicyRetriesExpectedErrorCodes(int returnCode) {

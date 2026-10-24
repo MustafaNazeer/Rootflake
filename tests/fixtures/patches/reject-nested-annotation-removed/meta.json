@@ -1,0 +1,30 @@
+{
+  "id": "reject-nested-annotation-removed",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "nested_annotation_removed",
+  "target": {
+    "class": "com.adobe.abp.regola.rules.NotRuleTest$WithDelayedRuleTest",
+    "method": null
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/test_removed"
+  ],
+  "disputed": false,
+  "notes": "Removes @Nested from the inner class WithDelayedRuleTest of NotRuleTest. JUnit Jupiter runs an inner class's tests only when it is a valid @Nested class (TestClassPredicates at r5.14.4: an inner class that is not annotated with @Nested is not a standalone test class), so its test factIsValid, the test adobe/regola PR 92 deflaked, silently stops running. Rejected with disable/test_removed under the ruling that removing @Nested drops the tests of that class. Adapted: no merged change was found that removes @Nested on its own. The removed line is on the pre image of NotRuleTest.java at the merge base of adobe/regola PR 92, the pre image of reject-timing-bound-loosened; every context line is the pre image's own. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/adobe/regola",
+    "commit": "39f89ef280aa1af28edbe71b065c9876b6fd714c",
+    "pr": "https://github.com/adobe/regola/pull/92",
+    "base": "0d80abba999bf83ced6a045cebf329af2fd9d128",
+    "path": "src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

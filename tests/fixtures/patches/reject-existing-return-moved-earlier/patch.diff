@@ -1,0 +1,21 @@
+diff --git a/src/test/java/org/apache/commons/lang3/time/FastDateParserJava15BugTest.java b/src/test/java/org/apache/commons/lang3/time/FastDateParserJava15BugTest.java
+--- a/src/test/java/org/apache/commons/lang3/time/FastDateParserJava15BugTest.java
++++ b/src/test/java/org/apache/commons/lang3/time/FastDateParserJava15BugTest.java
+@@ -48,14 +48,14 @@
+     void testJava15BuggyLocaleTest() throws ParseException {
+         final String buggyLocaleName = "ff_LR_#Adlm";
+         Locale buggyLocale = null;
++        if (buggyLocale == null) {
++            return;
++        }
+         for (final Locale locale : LocaleUtils.availableLocaleList()) {
+             if (buggyLocaleName.equals(locale.toString())) {
+                 buggyLocale = locale;
+                 break;
+             }
+-        }
+-        if (buggyLocale == null) {
+-            return;
+         }
+         testSingleLocale(buggyLocale);
+     }

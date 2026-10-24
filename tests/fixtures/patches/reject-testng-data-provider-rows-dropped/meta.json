@@ -1,0 +1,29 @@
+{
+  "id": "reject-testng-data-provider-rows-dropped",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "testng_data_provider_rows_dropped",
+  "target": {
+    "class": "org.apache.pulsar.client.impl.NegativeAcksTest",
+    "method": "testNegativeAcks"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/parameter_cases_dropped"
+  ],
+  "disputed": false,
+  "notes": "Drops the last block of eight rows, the ones with a 0 ms redelivery delay and a 1000 ms ack timeout, from the Object[][] returned by the TestNG @DataProvider(name = \"variations\") that feeds testNegativeAcks, leaving 24 of 32 rows. Rejected with disable/parameter_cases_dropped under ADR 0007 Decision 6: a parameter source used by a test method may not lose cases, and Object[] rows are counted literally. Adapted: no merged change with a permissive license was found that drops @DataProvider rows on its own. The hunk is hand made on NegativeAcksTest.java as of the last commit that changed it, aa86e8de81611834de8128de76edc9e0a64bce18 on the default branch; every context and removed line is that file's own, and the hunk only removes the eight rows and the blank line before them. Not from IDoFT: the repository has IDoFT rows for other tests, but this test class does not appear in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/pulsar",
+    "commit": "aa86e8de81611834de8128de76edc9e0a64bce18",
+    "base": "aa86e8de81611834de8128de76edc9e0a64bce18",
+    "path": "pulsar-broker/src/test/java/org/apache/pulsar/client/impl/NegativeAcksTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

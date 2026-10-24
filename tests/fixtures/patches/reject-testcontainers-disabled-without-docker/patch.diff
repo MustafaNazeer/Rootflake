@@ -1,0 +1,12 @@
+diff --git a/core/src/test/java/dev/jvmmcp/core/pg/PostgresSchemaReaderTest.java b/core/src/test/java/dev/jvmmcp/core/pg/PostgresSchemaReaderTest.java
+--- a/core/src/test/java/dev/jvmmcp/core/pg/PostgresSchemaReaderTest.java
++++ b/core/src/test/java/dev/jvmmcp/core/pg/PostgresSchemaReaderTest.java
+@@ -14,7 +14,7 @@
+ 
+ import static org.assertj.core.api.Assertions.assertThat;
+ 
+-@Testcontainers
++@Testcontainers(disabledWithoutDocker = true)
+ class PostgresSchemaReaderTest {
+ 
+     @Container

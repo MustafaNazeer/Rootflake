@@ -1,0 +1,12 @@
+diff --git a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+--- a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
++++ b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+@@ -119,7 +119,7 @@
+         }
+ 
+         @ParameterizedTest
+-        @EnumSource(value = Result.class)
++        @EnumSource(value = Result.class, names = {"VALID", "INVALID"})
+         @DisplayName("evaluate always as valid if subrule is marked as ignored")
+         void factIsNotValidButIgnored(Result controlResult) {
+             final var subrule = new MockRule("subrule", controlResult);

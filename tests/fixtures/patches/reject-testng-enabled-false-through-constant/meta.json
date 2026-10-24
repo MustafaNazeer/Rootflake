@@ -1,0 +1,29 @@
+{
+  "id": "reject-testng-enabled-false-through-constant",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "testng_enabled_false_through_constant",
+  "target": {
+    "class": "org.killbill.billing.payment.TestJanitor",
+    "method": "testUnknownEntriesWithFailures"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
+  "disputed": false,
+  "notes": "Disables testUnknownEntriesWithFailures through a constant: the patch declares private static final boolean RUN_FLAKY_TESTS = false; and changes @Test(groups = \"slow\") to @Test(groups = \"slow\", enabled = RUN_FLAKY_TESTS). TestNG skips a method whose enabled attribute is false, and javac folds the constant, so this is the same as enabled = false with no literal false in the annotation. Rejected with disable/test_disabled: enabled set to false on a TestNG @Test, judged on the folded value. This replaces the requested form enabled = Boolean.FALSE, which javac refuses (\"element value must be a constant expression\", JLS 9.7.1, checked with javac 21), so a patch using it fails the build rather than reaching the checker. Adapted: built on reject-testng-enabled-false (the killbill commit of reject-testng-retry-analyzer); the three added lines are hand written on its pre image, and every context and removed line is the pre image's own.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/killbill/killbill",
+    "commit": "e3b153e9c9f65e698c8660bb8dfa901856359bb4",
+    "base": "a9731f4cadc6226854679c8ccd0947e3716c8f22",
+    "path": "payment/src/test/java/org/killbill/billing/payment/TestJanitor.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

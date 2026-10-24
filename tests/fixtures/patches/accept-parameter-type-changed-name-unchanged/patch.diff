@@ -1,0 +1,12 @@
+diff --git a/service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java b/service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java
+--- a/service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java
++++ b/service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java
+@@ -146,7 +146,7 @@
+ 
+     @ParameterizedTest
+     @MethodSource("solveRequestedScenarios")
+-    void datasetComputedEventCarriesSolveRequestedFlag(OperationOnPost operation, boolean expectedSolveRequested) {
++    void datasetComputedEventCarriesSolveRequestedFlag(OperationOnPost operation, Boolean expectedSolveRequested) {
+         EmployeeSchedule inputSchedule = createInputEmployeeSchedule();
+ 
+         post(inputSchedule, operation);

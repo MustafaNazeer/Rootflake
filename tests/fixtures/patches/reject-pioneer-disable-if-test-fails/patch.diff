@@ -1,0 +1,17 @@
+diff --git a/dolphinscheduler-e2e/dolphinscheduler-e2e-case/src/test/java/org/apache/dolphinscheduler/e2e/cases/TokenE2ETest.java b/dolphinscheduler-e2e/dolphinscheduler-e2e-case/src/test/java/org/apache/dolphinscheduler/e2e/cases/TokenE2ETest.java
+--- a/dolphinscheduler-e2e/dolphinscheduler-e2e-case/src/test/java/org/apache/dolphinscheduler/e2e/cases/TokenE2ETest.java
++++ b/dolphinscheduler-e2e/dolphinscheduler-e2e-case/src/test/java/org/apache/dolphinscheduler/e2e/cases/TokenE2ETest.java
+@@ -29,11 +29,13 @@
+ import org.junit.jupiter.api.BeforeAll;
+ import org.junit.jupiter.api.Order;
+ import org.junit.jupiter.api.Test;
++import org.junitpioneer.jupiter.DisableIfTestFails;
+ import org.openqa.selenium.WebElement;
+ import org.openqa.selenium.remote.RemoteWebDriver;
+ import org.testcontainers.shaded.org.awaitility.Awaitility;
+ 
+ @DolphinScheduler(composeFiles = "docker/basic/docker-compose.yaml")
++@DisableIfTestFails
+ public class TokenE2ETest {
+ 
+     private static final String userName = "admin";

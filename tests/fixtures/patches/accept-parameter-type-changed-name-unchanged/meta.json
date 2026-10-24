@@ -1,0 +1,26 @@
+{
+  "id": "accept-parameter-type-changed-name-unchanged",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "parameter_type_changed_name_unchanged",
+  "target": {
+    "class": "ai.timefold.solver.model.testmodel.EmployeeScheduleResourceTest",
+    "method": "datasetComputedEventCarriesSolveRequestedFlag"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Changes the type of the second parameter of the parameterized test datasetComputedEventCarriesSolveRequestedFlag from boolean to Boolean, keeping the method name, its @ParameterizedTest and @MethodSource(\"solveRequestedScenarios\") annotations and its body. JUnit passes the provider's Arguments.of(..., true) and Arguments.of(..., false) values to either type, and assertThat(event.isSolveRequested()).isEqualTo(expectedSolveRequested) compares the same values, so the test checks exactly what it checked before. The checker identifies a test by its class and method name, so a changed parameter type must not count as a removed test; it must accept this with no code. This stands for the case named in the ruling, a String parameter changed to ZoneId with the name unchanged: no test was found whose String source values are all valid ZoneId strings (the candidates use short time zone ids such as CST, which ZoneId.of refuses), so boxing a primitive parameter is used instead, which changes the declared type in the same way without changing the cases. Adapted: no merged change was found that changes only a test parameter's type. The changed type is hand written on the pre image of EmployeeScheduleResourceTest.java at the merge base of TimefoldAI/timefold-solver PR 2577, the pre image of reject-junit5-assume-true-false; every context and removed line is the pre image's own. Not from IDoFT: neither the repository nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/TimefoldAI/timefold-solver",
+    "commit": "f15f745a5a40ed4d65598e2ba2461b6f9fde7343",
+    "pr": "https://github.com/TimefoldAI/timefold-solver/pull/2577",
+    "base": "e5319b9c141bf0ed587a07657fee25dadc4f56ab",
+    "path": "service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

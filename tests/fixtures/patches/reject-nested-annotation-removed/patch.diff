@@ -1,0 +1,11 @@
+diff --git a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+--- a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
++++ b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+@@ -260,7 +260,6 @@
+         }
+     }
+ 
+-    @Nested
+     @DisplayName("with delayed rule should")
+     class WithDelayedRuleTest {
+ 

@@ -1,0 +1,25 @@
+{
+  "id": "accept-change-inside-assuming-that-executable",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "change_inside_assuming_that_executable",
+  "target": {
+    "class": "org.springframework.boot.convert.InetAddressFormatterTests",
+    "method": "convertFromInetAddressToStringShouldConvert"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Changes one statement inside the executable lambda of an existing assumingThat(isResolvable(\"example.com\"), () -> { ... }) in convertFromInetAddressToStringShouldConvert: InetAddress.getByName(\"example.com\") becomes InetAddress.getAllByName(\"example.com\")[0], which returns the same first address. The assumption's condition is unchanged, the assertion inside the lambda is unchanged and stays in the same lambda, so nothing is newly guarded or removed. The ruling is that a change inside the executable of an existing assumingThat is not a changed assumption, so the checker must accept this with no code. Adapted: no merged change was found that edits only the body of an assumingThat. The changed statement is hand written on InetAddressFormatterTests.java as of the last commit that changed it, e664baa4001e2a12cfd292771f63d747d86b831f on the default branch; every context and removed line is that file's own. Not from IDoFT: the repository has IDoFT rows for other tests, but this test class does not appear in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/spring-projects/spring-boot",
+    "commit": "e664baa4001e2a12cfd292771f63d747d86b831f",
+    "base": "e664baa4001e2a12cfd292771f63d747d86b831f",
+    "path": "core/spring-boot/src/test/java/org/springframework/boot/convert/InetAddressFormatterTests.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

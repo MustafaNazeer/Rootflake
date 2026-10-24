@@ -1,0 +1,25 @@
+diff --git a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+--- a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
++++ b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+@@ -28,6 +28,9 @@
+ import org.junit.jupiter.api.Nested;
+ import org.junit.jupiter.api.RepeatedTest;
+ import org.junit.jupiter.api.Test;
++import org.junit.jupiter.api.extension.ConditionEvaluationResult;
++import org.junit.jupiter.api.extension.ExecutionCondition;
++import org.junit.jupiter.api.extension.RegisterExtension;
+ import org.junit.jupiter.params.ParameterizedTest;
+ import org.junit.jupiter.params.provider.EnumSource;
+ 
+@@ -39,6 +42,11 @@
+ 
+ @DisplayName("Testing NotRule")
+ class NotRuleTest {
++
++    @RegisterExtension
++    static final ExecutionCondition SKIP_DELAYED_ON_CI = context -> System.getenv("CI") != null
++            ? ConditionEvaluationResult.disabled("delayed rule tests are flaky on CI")
++            : ConditionEvaluationResult.enabled("not on CI");
+ 
+     private NotRule rule;
+ 

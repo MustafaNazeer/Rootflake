@@ -1,0 +1,30 @@
+{
+  "id": "reject-assertj-assume-that-code-added",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "assertj_assume_that_code_added",
+  "target": {
+    "class": "ai.timefold.solver.model.testmodel.EmployeeScheduleResourceTest",
+    "method": "constraintWeightsAvailableAfterDatasetComputed"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/assumption_added"
+  ],
+  "disputed": false,
+  "notes": "Replaces the call post(inputSchedule); in constraintWeightsAvailableAfterDatasetComputed with assumeThatCode(() -> post(inputSchedule)).doesNotThrowAnyException(); and adds the static import of org.assertj.core.api.Assumptions.assumeThatCode. AssertJ assumptions abort the test instead of failing it, so when the request under test throws, the test is reported as skipped. Rejected with disable/assumption_added under the ruling that AssertJ assumeThatCode and the other assumeThat* methods of org.assertj.core.api.Assumptions are assumptions like JUnit's. post is not an assertion, so no assertion is removed. Adapted: no merged change was found that adds an AssertJ assumption to a flaky test. The two changed lines are hand written on the pre image of EmployeeScheduleResourceTest.java at the merge base of TimefoldAI/timefold-solver PR 2577, the pre image of reject-junit5-assume-true-false; every context and removed line is the pre image's own. Not from IDoFT: neither the repository nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/TimefoldAI/timefold-solver",
+    "commit": "f15f745a5a40ed4d65598e2ba2461b6f9fde7343",
+    "pr": "https://github.com/TimefoldAI/timefold-solver/pull/2577",
+    "base": "e5319b9c141bf0ed587a07657fee25dadc4f56ab",
+    "path": "service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

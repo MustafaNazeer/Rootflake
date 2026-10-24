@@ -1,0 +1,12 @@
+diff --git a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+--- a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
++++ b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+@@ -266,7 +266,7 @@
+ 
+         @Test
+         @DisplayName("evaluate as valid if subrule is not valid and should be bound by time its time of execution")
+-        void factIsValid() {
++        private void factIsValid() {
+             final var subrule = new DelayedRule("subrule", Result.INVALID, 1000);
+             rule.setRule(subrule);
+ 

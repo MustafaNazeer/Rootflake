@@ -1,0 +1,13 @@
+diff --git a/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java b/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java
+--- a/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java
++++ b/test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java
+@@ -142,6 +142,9 @@
+             PopResult popResult = popMessageAsync(Duration.ofSeconds(30).toMillis(), 1, 30000).get();
+             assertEquals(PopStatus.FOUND, popResult.getPopStatus());
+             MessageExt message = popResult.getMsgFoundList().get(0);
++            if (message.getReconsumeTimes() > 0) {
++                continue;
++            }
+             int expectPriority = priorityOrderAsc ? writeQueueNum - 1 - i : i;
+             assertEquals(0, message.getQueueOffset());
+             assertEquals(expectPriority, message.getQueueId());

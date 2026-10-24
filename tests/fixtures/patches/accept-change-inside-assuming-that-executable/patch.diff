@@ -1,0 +1,12 @@
+diff --git a/core/spring-boot/src/test/java/org/springframework/boot/convert/InetAddressFormatterTests.java b/core/spring-boot/src/test/java/org/springframework/boot/convert/InetAddressFormatterTests.java
+--- a/core/spring-boot/src/test/java/org/springframework/boot/convert/InetAddressFormatterTests.java
++++ b/core/spring-boot/src/test/java/org/springframework/boot/convert/InetAddressFormatterTests.java
+@@ -27,7 +27,7 @@
+ 	@ConversionServiceTest
+ 	void convertFromInetAddressToStringShouldConvert(ConversionService conversionService) {
+ 		assumingThat(isResolvable("example.com"), () -> {
+-			InetAddress address = InetAddress.getByName("example.com");
++			InetAddress address = InetAddress.getAllByName("example.com")[0];
+ 			String converted = conversionService.convert(address, String.class);
+ 			assertThat(converted).isEqualTo(address.getHostAddress());
+ 		});

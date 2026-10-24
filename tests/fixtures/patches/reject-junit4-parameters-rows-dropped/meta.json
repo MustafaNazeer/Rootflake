@@ -1,0 +1,30 @@
+{
+  "id": "reject-junit4-parameters-rows-dropped",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "junit4_parameters_rows_dropped",
+  "target": {
+    "class": "org.apache.rocketmq.test.client.consumer.pop.PopPriorityIT",
+    "method": null
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/parameter_cases_dropped"
+  ],
+  "disputed": false,
+  "notes": "Drops two of the four Object[] rows from the JUnit 4 @Parameterized.Parameters method params() of PopPriorityIT, the two that run with popConsumerKVServiceEnable set to true, so every test in the class runs only with the KV service off. Rejected with disable/parameter_cases_dropped under ADR 0007 Decision 6: a parameter source used by a test method may not lose cases, and Object[] rows are counted literally (four before, two after). Adapted: no merged change with a permissive license was found that drops @Parameterized.Parameters rows on its own. The hunk is hand made on the pre image of PopPriorityIT.java at the merge base of apache/rocketmq PR 10390, the pre image of reject-comment-out-assertions-in-loop; every context and removed line is the pre image's own, and the hunk only removes the two rows. No method target: the parameters apply to every test in the class. The repository has IDoFT rows for other tests, but PopPriorityIT does not appear in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/rocketmq",
+    "commit": "527273694e8ed1487ad5c84ebabdbf1f43bda124",
+    "pr": "https://github.com/apache/rocketmq/pull/10390",
+    "base": "41a3a3599013dd9babe6b43108ab9b3fda3e92c4",
+    "path": "test/src/test/java/org/apache/rocketmq/test/client/consumer/pop/PopPriorityIT.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

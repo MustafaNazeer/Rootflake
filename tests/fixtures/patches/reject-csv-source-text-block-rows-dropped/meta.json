@@ -1,0 +1,29 @@
+{
+  "id": "reject-csv-source-text-block-rows-dropped",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "csv_source_text_block_rows_dropped",
+  "target": {
+    "class": "org.springframework.http.HttpRangeTests",
+    "method": "resolveRangesWithNonMatchingIfRangeETag"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/parameter_cases_dropped"
+  ],
+  "disputed": false,
+  "notes": "Drops the third row (\"current\" | W/\"current\") from the @CsvSource(delimiter = '|', textBlock = ...) of resolveRangesWithNonMatchingIfRangeETag, leaving two of three rows. Rejected with disable/parameter_cases_dropped under ADR 0007 Decision 6: CSV rows are counted literally, here the lines of the text block, and a source that loses cases is a reject. Adapted: no merged change was found that drops rows from a CsvSource text block. The hunk is hand made on HttpRangeTests.java as of the last commit that changed it, 05619fe624cd410736848b3bf4f83d632cfe54f5 on the default branch; every context and removed line is that file's own, and the hunk only removes the one row. Not from IDoFT: the repository does not appear in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/spring-projects/spring-framework",
+    "commit": "05619fe624cd410736848b3bf4f83d632cfe54f5",
+    "base": "05619fe624cd410736848b3bf4f83d632cfe54f5",
+    "path": "spring-web/src/test/java/org/springframework/http/HttpRangeTests.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

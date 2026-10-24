@@ -1,0 +1,30 @@
+{
+  "id": "reject-execution-condition-qualified-name",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "execution_condition_qualified_name",
+  "target": {
+    "class": "net.datafaker.providers.base.BaseFakerTest",
+    "method": null
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/execution_condition"
+  ],
+  "disputed": false,
+  "notes": "Adds a nested class SkipDummySpecs implements org.junit.jupiter.api.extension.ExecutionCondition, written with fully qualified names and no import, that disables the tests whenever the CI environment variable is set, and registers it with @org.junit.jupiter.api.extension.ExtendWith(BaseFakerTest.SkipDummySpecs.class) on BaseFakerTest. Every test in the class and its subclasses is disabled on CI. Rejected with disable/execution_condition under the ruling that an ExecutionCondition implemented through a qualified name counts like one reached through an import. The class is declared in a file the checker reads, so the @ExtendWith it is registered with is judged by the same rule. Adapted: built on the pre image of reject-parameterized-allow-zero-invocations (BaseFakerTest.java at the parent of the datafaker-net/datafaker PR 1520 commit); the annotation line and the ten line class are hand written, and every context line is the pre image's own. No method target: the condition applies to every test in the class. Not from IDoFT: neither the repository nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/datafaker-net/datafaker",
+    "commit": "6d00f0ab426122cd36f6f41612de67066747aba5",
+    "pr": "https://github.com/datafaker-net/datafaker/pull/1520",
+    "base": "994f99c34ed36f31a7e7ecaa6d365a788b2a6da8",
+    "path": "src/test/java/net/datafaker/providers/base/BaseFakerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "id": "reject-enum-source-names-restricted",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "enum_source_names_restricted",
+  "target": {
+    "class": "com.adobe.abp.regola.rules.NotRuleTest$WithMockRuleTest",
+    "method": "factIsNotValidButIgnored"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/parameter_cases_dropped"
+  ],
+  "disputed": false,
+  "notes": "Adds names = {\"VALID\", \"INVALID\"} to @EnumSource(value = Result.class) on WithMockRuleTest.factIsNotValidButIgnored, so the test runs only for two constants of Result instead of every constant. Rejected with disable/parameter_cases_dropped under the ruling that cutting the names an @EnumSource yields drops cases; the checker cannot count the constants of an enum it does not read, and ADR 0007 Decision 6 rejects a changed source whose count cannot be established. Adapted: no merged change was found that narrows an @EnumSource. The names attribute is hand written on the pre image of NotRuleTest.java at the merge base of adobe/regola PR 92, the pre image of reject-timing-bound-loosened; every context and removed line is the pre image's own. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/adobe/regola",
+    "commit": "39f89ef280aa1af28edbe71b065c9876b6fd714c",
+    "pr": "https://github.com/adobe/regola/pull/92",
+    "base": "0d80abba999bf83ced6a045cebf329af2fd9d128",
+    "path": "src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

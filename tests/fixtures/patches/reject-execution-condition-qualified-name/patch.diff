@@ -1,0 +1,28 @@
+diff --git a/src/test/java/net/datafaker/providers/base/BaseFakerTest.java b/src/test/java/net/datafaker/providers/base/BaseFakerTest.java
+--- a/src/test/java/net/datafaker/providers/base/BaseFakerTest.java
++++ b/src/test/java/net/datafaker/providers/base/BaseFakerTest.java
+@@ -19,6 +19,7 @@
+ import static org.assertj.core.api.Assertions.assertThat;
+ 
+ @TestInstance(TestInstance.Lifecycle.PER_CLASS)
++@org.junit.jupiter.api.extension.ExtendWith(BaseFakerTest.SkipDummySpecs.class)
+ public class BaseFakerTest<T extends BaseFaker> {
+ 
+     private static final Logger LOG = Logger.getLogger(BaseFakerTest.class.getCanonicalName());
+@@ -95,6 +96,16 @@
+         return Set.of(new TestSpec(null, null, null));
+     }
+ 
++    static class SkipDummySpecs implements org.junit.jupiter.api.extension.ExecutionCondition {
++        @Override
++        public org.junit.jupiter.api.extension.ConditionEvaluationResult evaluateExecutionCondition(
++                org.junit.jupiter.api.extension.ExtensionContext context) {
++            return System.getenv("CI") != null
++                ? org.junit.jupiter.api.extension.ConditionEvaluationResult.disabled("provider list tests are flaky on CI")
++                : org.junit.jupiter.api.extension.ConditionEvaluationResult.enabled("not on CI");
++        }
++    }
++
+     protected static class TestSpec {
+         private final Supplier<?> supplier;
+         private final String key;

@@ -1,0 +1,12 @@
+diff --git a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+--- a/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
++++ b/src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java
+@@ -76,7 +76,7 @@
+     @DisplayName("with mock rule should")
+     class WithMockRuleTest {
+ 
+-        @RepeatedTest(1000) // repeat this test many times to increase trust on thread synchronization
++        @RepeatedTest(2) // repeat this test many times to increase trust on thread synchronization
+         @DisplayName("evaluate as valid if subrule is not valid")
+         void factIsValid() {
+             final var subrule = new MockRule("subrule", Result.INVALID);

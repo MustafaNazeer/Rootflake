@@ -1,0 +1,31 @@
+{
+  "id": "reject-dynamic-test-dropped-from-test-factory",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "dynamic_test_dropped_from_test_factory",
+  "target": {
+    "class": "com.google.cloud.gcs.analyticscore.client.InMemoryStorageContractTest",
+    "method": "unsupportedMethods_failLoudly"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/parameter_cases_dropped",
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Drops dynamicTest(\"get\", () -> assertUnsupported(\"get\", () -> s.get(BLOB))) from the Stream.of(...) returned by the @TestFactory unsupportedMethods_failLoudly, leaving two of three dynamic tests. Rejected with disable/parameter_cases_dropped under the ruling that a dynamicTest dropped from a @TestFactory loses a case. It also reports weaken_assertion/assertion_removed under ADR 0007 Decision 5: the factory method exists before and after, its lambdas are collected with it, and the dropped lambda held a call to the helper assertUnsupported, whose assertThat(assertThrows(...)) is in the before set and has no match after. Adapted: no merged change was found that drops a dynamic test. The hunk is hand made on InMemoryStorageContractTest.java as created by GoogleCloudPlatform/gcs-analytics-core PR 408, the source of accept-new-test-factory-stream-of-dynamic-tests, at its merge commit; every context and removed line is that file's own. Not from IDoFT: neither the repository nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/GoogleCloudPlatform/gcs-analytics-core",
+    "commit": "2a9ac58f3015deba0694369167a5113d440a5bc7",
+    "pr": "https://github.com/GoogleCloudPlatform/gcs-analytics-core/pull/408",
+    "base": "2a9ac58f3015deba0694369167a5113d440a5bc7",
+    "path": "test-lib/src/test/java/com/google/cloud/gcs/analyticscore/client/InMemoryStorageContractTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

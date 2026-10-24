@@ -1,0 +1,30 @@
+{
+  "id": "reject-pioneer-disable-if-test-fails",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "pioneer_disable_if_test_fails",
+  "target": {
+    "class": "org.apache.dolphinscheduler.e2e.cases.TokenE2ETest",
+    "method": null
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/test_disabled"
+  ],
+  "disputed": false,
+  "notes": "Adds JUnit Pioneer @DisableIfTestFails to the TokenE2ETest class. Pioneer documents that once one test in the class fails, every test launched after it is disabled instead of run, so a failure in one test turns the rest of the class into skips. Rejected with disable/test_disabled under the ruling that Pioneer's @DisableIfTestFails and @DisableIfArgument family are disabling annotations. The pull request adds the annotation to every e2e and api test class for easier debugging (\"all tests after the first failed one are disabled for better debugging\"); it is not a flaky test fix. Verbatim: the single hunk of TokenE2ETest.java, one of 26 test classes the pull request changes the same way; the rest of the pull request (schema and UI changes across about 100 files) is dropped. No method target: the annotation acts on the whole class. The repository has IDoFT rows for other tests (PluginParamsTransferTest), but neither this pull request nor this test class appears in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/dolphinscheduler",
+    "commit": "fee49557242a13307961e4280b404fbc846241de",
+    "pr": "https://github.com/apache/dolphinscheduler/pull/16544",
+    "base": "0f4bce18833ca91f38a6a58b705e269eaec5ba4c",
+    "path": "dolphinscheduler-e2e/dolphinscheduler-e2e-case/src/test/java/org/apache/dolphinscheduler/e2e/cases/TokenE2ETest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

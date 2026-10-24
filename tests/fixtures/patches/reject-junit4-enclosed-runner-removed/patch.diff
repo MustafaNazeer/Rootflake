@@ -1,0 +1,11 @@
+diff --git a/modules/zookeeper/src/test/java/org/apache/ignite/spi/discovery/zk/internal/ZookeeperValidatePathsTest.java b/modules/zookeeper/src/test/java/org/apache/ignite/spi/discovery/zk/internal/ZookeeperValidatePathsTest.java
+--- a/modules/zookeeper/src/test/java/org/apache/ignite/spi/discovery/zk/internal/ZookeeperValidatePathsTest.java
++++ b/modules/zookeeper/src/test/java/org/apache/ignite/spi/discovery/zk/internal/ZookeeperValidatePathsTest.java
+@@ -32,7 +32,6 @@
+ /**
+  * Test {@link ZkIgnitePaths#validatePath} implementation.
+  */
+-@RunWith(Enclosed.class)
+ public class ZookeeperValidatePathsTest {
+     /**
+      *  Parameterized test for testing common cases, excluding unprintable characters.

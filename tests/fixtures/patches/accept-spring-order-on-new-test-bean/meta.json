@@ -1,0 +1,25 @@
+{
+  "id": "accept-spring-order-on-new-test-bean",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "spring_order_on_new_test_bean",
+  "target": {
+    "class": "org.springframework.context.annotation.Gh29105Tests",
+    "method": "beanProviderWithParentContextReuseOrder"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Creates Gh29105Tests, a test whose two nested @Configuration classes each declare a @Bean method annotated with Spring's org.springframework.core.annotation.Order (@Order(-1) on customService, @Order(0) on defaultService), and asserts that a child context returns the beans in that order. The @Order here is Spring's bean ordering, imported by a single type import, not JUnit Jupiter's org.junit.jupiter.api.Order, and it sits on a @Bean factory method, not on a test method or a test class, so it pins no test order. ADR 0007 Decision 6 rejects @Order only when it resolves to org.junit.jupiter.api.Order and is placed on a method or a class that runs tests; the checker must accept this with no code. It is not a flaky test fix; it is the regression test of a Spring Framework bug fix (gh-29105). Verbatim: only the new test file of the commit is kept; the production change to DefaultListableBeanFactory.java, the other test change and the index line are dropped. No pull request: the commit closes issue gh-29105 directly. Not from IDoFT: the repository does not appear in pr-data.csv under any status.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/spring-projects/spring-framework",
+    "commit": "0d2bfc926f425c1c1219e38e5f06a5a9dca04e13",
+    "base": "4e9777696927fda00c2b428b91ba579a0775e19d",
+    "path": "spring-context/src/test/java/org/springframework/context/annotation/Gh29105Tests.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

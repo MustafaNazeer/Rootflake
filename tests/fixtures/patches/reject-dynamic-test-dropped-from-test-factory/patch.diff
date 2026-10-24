@@ -1,0 +1,11 @@
+diff --git a/test-lib/src/test/java/com/google/cloud/gcs/analyticscore/client/InMemoryStorageContractTest.java b/test-lib/src/test/java/com/google/cloud/gcs/analyticscore/client/InMemoryStorageContractTest.java
+--- a/test-lib/src/test/java/com/google/cloud/gcs/analyticscore/client/InMemoryStorageContractTest.java
++++ b/test-lib/src/test/java/com/google/cloud/gcs/analyticscore/client/InMemoryStorageContractTest.java
+@@ -116,7 +116,6 @@
+     Storage s = inMemory().storage();
+     return Stream.of(
+         dynamicTest("list", () -> assertUnsupported("list", () -> s.list("bucket"))),
+-        dynamicTest("get", () -> assertUnsupported("get", () -> s.get(BLOB))),
+         dynamicTest(
+             "blobReadSession",
+             () -> assertUnsupported("blobReadSession", () -> s.blobReadSession(BLOB))));

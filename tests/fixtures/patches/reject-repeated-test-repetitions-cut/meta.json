@@ -1,0 +1,30 @@
+{
+  "id": "reject-repeated-test-repetitions-cut",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "repeated_test_repetitions_cut",
+  "target": {
+    "class": "com.adobe.abp.regola.rules.NotRuleTest$WithMockRuleTest",
+    "method": "factIsValid"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/parameter_cases_dropped"
+  ],
+  "disputed": false,
+  "notes": "Cuts @RepeatedTest(1000) on WithMockRuleTest.factIsValid to @RepeatedTest(2), leaving the original comment (\"repeat this test many times to increase trust on thread synchronization\") in place. The test repeats 1000 times on purpose, to catch a rare thread synchronization failure, so running it twice drops 998 of the cases that could expose it. Rejected with disable/parameter_cases_dropped under the ruling that a lowered @RepeatedTest count loses cases like a parameter source does. Adapted: the merged reductions of @RepeatedTest counts that were found are in repositories without a license or in Kotlin. The changed literal is hand written on the pre image of NotRuleTest.java at the merge base of adobe/regola PR 92, the pre image of reject-timing-bound-loosened; every context and removed line is the pre image's own. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/adobe/regola",
+    "commit": "39f89ef280aa1af28edbe71b065c9876b6fd714c",
+    "pr": "https://github.com/adobe/regola/pull/92",
+    "base": "0d80abba999bf83ced6a045cebf329af2fd9d128",
+    "path": "src/test/java/com/adobe/abp/regola/rules/NotRuleTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

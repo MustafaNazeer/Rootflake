@@ -1,0 +1,30 @@
+{
+  "id": "reject-local-test-annotation-type-shadows-import",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "disable",
+  "variant": "local_test_annotation_type_shadows_import",
+  "target": {
+    "class": "ai.timefold.solver.model.testmodel.EmployeeScheduleResourceTest",
+    "method": "constraintWeightsAvailableAfterDatasetComputed"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "disable/test_removed"
+  ],
+  "disputed": false,
+  "notes": "Declares a member annotation type @interface Test { } inside EmployeeScheduleResourceTest. A member type shadows the single type import org.junit.jupiter.api.Test throughout the class body (JLS 6.4.1), so every @Test in the class now names the local annotation, which JUnit Jupiter does not know, and every plain @Test method silently stops running; javac accepts the file (checked with javac 21: the annotation on a method compiles to the member type). Rejected with disable/test_removed under the ruling that a locally declared @interface Test replacing the imported one removes the tests that use it. The target is the first plain @Test method after the declaration. Adapted: no merged change was found that does this. The three added lines are hand written on the pre image of EmployeeScheduleResourceTest.java at the merge base of TimefoldAI/timefold-solver PR 2577, the pre image of reject-junit5-assume-true-false; every context and removed line is the pre image's own. Not from IDoFT: neither the repository nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/TimefoldAI/timefold-solver",
+    "commit": "f15f745a5a40ed4d65598e2ba2461b6f9fde7343",
+    "pr": "https://github.com/TimefoldAI/timefold-solver/pull/2577",
+    "base": "e5319b9c141bf0ed587a07657fee25dadc4f56ab",
+    "path": "service/test-model/src/test/java/ai/timefold/solver/model/testmodel/EmployeeScheduleResourceTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}
