@@ -80,7 +80,8 @@ class TestRemoval:
 class TestNewGuards:
     @pytest.mark.parametrize(
         "after",
-        ["if (ci()) { assertEquals(1, f()); }", "for (int i = 0; i < n; i++) { assertEquals(1, f()); }",
+        ["if (ci()) { assertEquals(1, f()); }",
+         "for (int i = 0; i < n; i++) { assertEquals(1, f()); }",
          "run(() -> assertEquals(1, f()));",
          "try { assertEquals(1, f()); } catch (AssertionError e) { log(e); }"],
         ids=["if", "loop", "lambda", "swallowing_try"],
