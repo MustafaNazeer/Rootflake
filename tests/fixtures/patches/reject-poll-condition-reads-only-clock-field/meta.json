@@ -1,0 +1,30 @@
+{
+  "id": "reject-poll-condition-reads-only-clock-field",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "poll_condition_reads_only_clock_field",
+  "target": {
+    "class": "io.github.dhruv1110.jcachex.DefaultCacheTest",
+    "method": "testExpiration"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/timing_bound_widened"
+  ],
+  "disputed": false,
+  "notes": "The field twin of reject-poll-condition-reads-only-clock: the clock reading sits in a field instead of a local. testExpiration replaces Thread.sleep(200) with sleepUntil = System.currentTimeMillis() + 200; awaitTrue(() -> System.currentTimeMillis() >= sleepUntil, 1000);, where sleepUntil is a new instance field, private long sleepUntil;, declared without an initializer. awaitTrue is bounded and asserts when its deadline passes, but its condition reads System.currentTimeMillis and the field sleepUntil, and the only assignment to sleepUntil in the files the checker reads is that clock expression, so the field counts as a clock and the condition reads no state: the loop only waits out 200 ms, a fixed sleep written as a poll. ADR 0007 Decision 7 reads a field through every assignment to it in the files the checker reads and counts it as a clock when every such assignment is a clock expression; the field's default value is not an assignment. So the sleep in the helper is an added fixed sleep before the assertNull: weaken_assertion/timing_bound_widened. Adapted: built on reject-poll-condition-reads-only-clock, itself built on accept-created-poll-helper-replaces-sleep (dhruv1110/jcachex PR 118, at its merge base, with awaitMillis already removed from TestAwait.java). The field declaration hunk (two added lines after the asyncLoader mock) and the two added lines at the call site are hand written; the static import hunk, the removed Thread.sleep line, every context line and TestAwait.java are copied from that fixture. The hunk headers are recomputed and the index line of DefaultCacheTest.java names the blob of the new post image. The project builds with Gradle; the paths follow the Maven layout. Not from IDoFT: neither the PR nor the test class appears in pr-data.csv under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/dhruv1110/jcachex",
+    "commit": "4ffe088aec27ba2fb98274e30d1742b0672ab250",
+    "pr": "https://github.com/dhruv1110/jcachex/pull/118",
+    "base": "84118e9c0b2fb76cd1abb85963696dcf60b9c6f7",
+    "path": "jcachex-core/src/test/java/io/github/dhruv1110/jcachex/DefaultCacheTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}
