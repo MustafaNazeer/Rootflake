@@ -1397,3 +1397,43 @@ class TestTypedMessagesAndMigration:
             body_of("assertThrows(java.io.IOException.class, () -> f());", rule), imports
         )
         assert codes(before, after, tmp_path) == set()
+
+
+JSON_IMPORTS = "import org.skyscreamer.jsonassert.JSONAssert;\n"
+IS_IMPORTS = AWAIT_IMPORTS + "import static org.hamcrest.Matchers.is;\n"
+
+
+class TestMoreKindsTwoAndThree:
+    @pytest.mark.parametrize(
+        ("before", "after", "imports"),
+        [('assertEquals("[a, b]", names().toString());',
+          'assertThat(names()).as("names").containsExactlyInAnyOrder("b", "a");', ""),
+         ('assertThat(names().toString()).isEqualTo("[a, b]");',
+          'assertThat(names()).containsExactlyInAnyOrder("b", "a");', ""),
+         ("assertEquals(e(), a());", "JSONAssert.assertEquals(e(), a(), true);", JSON_IMPORTS),
+         ("assertEquals(e(), a());",
+          "JSONAssert.assertEquals(a(), e(), JSONCompareMode.NON_EXTENSIBLE);", JSON_IMPORTS)],
+        ids=["description_before_order_free", "assertj_to_string", "json_strict",
+             "json_non_extensible_swapped"],
+    )  # fmt: skip
+    def test_a_kind_two_form_is_kept(self, tmp_path, before, after, imports):
+        old, new = (with_imports(body_of(s), imports) for s in (before, after))
+        assert codes(old, new, tmp_path) == set()
+
+    def test_string_equality_to_lenient_json_is_still_refused(self, tmp_path):
+        before = with_imports(body_of("assertEquals(e(), a());"), JSON_IMPORTS)
+        after = with_imports(body_of("JSONAssert.assertEquals(e(), a(), false);"), JSON_IMPORTS)
+        assert codes(before, after, tmp_path) & {REMOVED, RELAXED}
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertFalse(q().isEmpty());", "await().until(() -> !q().isEmpty());"),
+         ("assertTrue(q().isReady());", "await().until(() -> { return q().isReady(); });"),
+         ("assertEquals(3, q.size());", "await().until(q::size, equalTo(3));"),
+         ("assertEquals(3, q.size());", "await().until(() -> q.size(), is(3));")],
+        ids=["negated", "block_lambda", "method_reference_supplier", "is_matcher"],
+    )  # fmt: skip
+    def test_a_kind_three_form_is_kept(self, tmp_path, before, after):
+        helper = "  Queue q;"
+        old, new = (with_imports(body_of(s, helper), IS_IMPORTS) for s in (before, after))
+        assert codes(old, new, tmp_path) == set()

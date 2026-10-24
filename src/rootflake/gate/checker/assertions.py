@@ -540,15 +540,13 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             )
         )
     for node in walk(body):
-        if (
-            isinstance(node, Lambda)
-            and node.expression is not None
-            and _wait_lambda(unit, node, declared)
-        ):
+        span = _lambda_value(node) if isinstance(node, Lambda) else None
+        if span is not None and _wait_lambda(unit, node, declared):
             if unit.tokens[node.start - 2].text != "until":
                 continue
-            expression = _text(unit, node.expression.start, node.expression.end)
-            operands = _equality_operands(unit, node.expression.start, node.expression.end)
+            first, last = span
+            expression = _text(unit, first, last)
+            operands = _equality_operands(unit, first, last)
             after = unit.tokens[node.end].text if node.end < len(unit.tokens) else ""
             if after == ",":
                 expected = _equal_to_argument(program, path, unit, node.end + 1)
@@ -556,10 +554,15 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             elif after != ")":
                 operands = None
             elif operands is None:
-                out.append(_wait_assertion(unit, body, declared, exits, node.expression.start,
-                                           "assertTrue", (expression,), node.start))  # fmt: skip
+                negated = unit.tokens[first].text == "!" and not _top_operators(
+                    unit, first + 1, last
+                )
+                name, condition = ("assertFalse", _text(unit, first + 1, last)) if negated else (
+                    "assertTrue", expression)  # fmt: skip
+                out.append(_wait_assertion(unit, body, declared, exits, first, name,
+                                           (condition,), node.start))  # fmt: skip
             if operands:
-                out.append(_wait_assertion(unit, body, declared, exits, node.expression.start,
+                out.append(_wait_assertion(unit, body, declared, exits, first,
                                            "assertEquals", operands, node.start))  # fmt: skip
     for call in calls_in(unit, body):
         tokens = unit.tokens
@@ -570,14 +573,20 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             and at >= 2
             and tokens[at - 1].text == "("
             and tokens[at - 2].text == "until"
-            and tokens[call.end].text == ")"
+            and tokens[call.end].text in (")", ",")
             and (tokens[at].kind == "ident" or tokens[at].text == "this")
             and _chain_root(unit, at - 2) in AWAIT_ROOTS
             and _chain_root(unit, at - 2) not in declared
         ):
-            receiver = _text(unit, at, at + 1)
-            out.append(_wait_assertion(unit, body, declared, exits, at, "assertTrue",
-                                       (f"{receiver} . {call.name} ( )",), at))  # fmt: skip
+            value = f"{_text(unit, at, at + 1)} . {call.name} ( )"
+            if tokens[call.end].text == ")":
+                out.append(_wait_assertion(unit, body, declared, exits, at, "assertTrue",
+                                           (value,), at))  # fmt: skip
+                continue
+            expected = _equal_to_argument(program, path, unit, call.end + 1)
+            if expected is not None:
+                out.append(_wait_assertion(unit, body, declared, exits, at, "assertEquals",
+                                           (expected, value), at))  # fmt: skip
     for node in walk(body):
         if isinstance(node, Statement) and node.kind == "try" and node.blocks:
             statements = node.blocks[0].statements
@@ -621,14 +630,32 @@ def _wait_assertion(unit, body, declared, exits, start, name, arguments, before)
 
 
 def _equal_to_argument(program: Program, path: str, unit: CompilationUnit, i: int) -> str | None:
-    """X in a closing `equalTo(X))` argument that resolves to Hamcrest."""
+    """X in a closing `equalTo(X))`, `is(X))` or `is(equalTo(X)))` argument that resolves to
+    Hamcrest; `is` of a value is `is(equalTo(value))`."""
     tokens = unit.tokens
-    if tokens[i].text != "equalTo" or tokens[i + 1].text != "(":
+    if tokens[i].text not in ("equalTo", "is") or tokens[i + 1].text != "(":
         return None
     close = _close(unit, i + 1)
-    if tokens[close + 1].text != ")" or not _library_call(program, path, "equalTo", i):
+    if tokens[close + 1].text != ")" or not _library_call(program, path, tokens[i].text, i):
         return None
+    if tokens[i].text == "is" and tokens[i + 2].text in ("equalTo", "is"):
+        inner = _equal_to_argument(program, path, unit, i + 2)
+        return inner if inner is not None and _close(unit, i + 3) == close - 1 else None
+    if tokens[i].text == "is" and tokens[i + 2].text in MATCHER_FACTORIES:
+        return None  # is(matcher) is that matcher, not an equality
     return _text(unit, i + 2, close)
+
+
+def _lambda_value(lam: Lambda) -> tuple[int, int] | None:
+    """The token span of what a lambda returns: its expression, or a block whose only statement
+    is `return c;`."""
+    if lam.expression is not None:
+        return lam.expression.start, lam.expression.end
+    if lam.body is not None and len(lam.body.statements) == 1:
+        only = lam.body.statements[0]
+        if only.kind == "return" and only.end - only.start > 2:
+            return only.start + 1, only.end - 1
+    return None
 
 
 def _fail_resolves(program: Program, path: str, unit: CompilationUnit, last: Statement) -> bool:
@@ -1303,9 +1330,22 @@ def _literal(token) -> str | None:
 
 def _to_string_equality(a: Assertion) -> tuple[str, str] | None:
     """The subject and the string literal of `assertEquals("[..]", subject.toString())`, in
-    either argument order."""
+    either argument order, `assertThat(subject.toString()).isEqualTo("[..]")`, or Hamcrest
+    `assertThat(subject.toString(), equalTo("[..]"))`."""
     args = payload(a)
-    if a.signature != ("assertEquals",) or len(args) != 2:
+    if a.signature in (("assertThat", "isEqualTo"), ("assertThat", "equalTo")):
+        words = a.text.split()
+        name = a.signature[1]
+        found = [w for w in words if w == name]
+        if len(found) != 1:
+            return None
+        inner = a.text.split(f" {name} ( ", 1)[1]
+        if not inner.endswith(" )" if name == "isEqualTo" else " ) )"):
+            return None
+        literal = inner[: -2 if name == "isEqualTo" else -4]
+        actual = args[0]
+        args = (literal, actual)
+    elif a.signature != ("assertEquals",) or len(args) != 2:
         return None
     for literal, actual in (args, args[::-1]):
         tokens = tokenize(literal)
@@ -1331,6 +1371,20 @@ def _order_free_elements(new: Assertion) -> tuple[str, list[str], bool] | None:
         if (depth == 1 and texts[i] == ",") or depth == 0:
             break
     subject = " ".join(texts[2:i])
+    while (
+        texts[i] == ")"
+        and texts[i + 1 : i + 2] == ["."]
+        and texts[i + 2 : i + 3]
+        and texts[i + 2] in _DESCRIPTIONS
+        and texts[i + 3 : i + 4] == ["("]
+    ):
+        depth, j = 0, i + 3
+        for j in range(i + 3, len(texts)):
+            depth += texts[j] == "("
+            depth -= texts[j] == ")"
+            if depth == 0:
+                break
+        i = j  # a description call changes no check
     if texts[i] == ")":
         rest, closing = texts[i + 1 : i + 4], 1
         name = rest[1] if rest[:1] == ["."] and len(rest) > 2 and rest[2] == "(" else None
