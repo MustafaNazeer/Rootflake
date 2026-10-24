@@ -156,7 +156,9 @@ def _chain_root(unit: CompilationUnit, name_at: int) -> str | None:
                 j -= 1
             n = j - 1
         elif tokens[before].kind == "ident":
-            return tokens[before].text
+            # Only the Awaitility type itself may be a bare receiver root; a variable or field
+            # named like await is not a condition factory.
+            return tokens[before].text if tokens[before].text == "Awaitility" else None
         else:
             return None
     return tokens[n].text if n != name_at else None
@@ -828,6 +830,7 @@ def _soft_assertions(program: Program, path: str, method: Method) -> tuple[dict,
         if words[i] in soft_types and words[i + 2] == "=" and words[i + 3] == "new"
     }
     all_calls = calls_in(unit, method.body)
+    exits = [at for at, _ in _exits(unit, method.body)]
     unchecked, checked = {}, []
     for call in all_calls:
         if call.receiver not in receivers or not call.name.startswith("assert"):
@@ -846,6 +849,7 @@ def _soft_assertions(program: Program, path: str, method: Method) -> tuple[dict,
             and other.receiver == call.receiver
             and other.start > call.start
             and not _guard(unit, method.body, other.start)
+            and not any(call.start < at < other.start for at in exits)
             for other in all_calls
         )
         if (managed and call.receiver not in constructed) or closes:
@@ -926,9 +930,11 @@ def _equals_findings(ctx: Context, assertions_changed: bool) -> Iterator[Finding
                 )
                 if old_text == _text(change.after, method.start, method.end):
                     continue
+                # Any other changed equals is flagged, assertion text changed or not: a
+                # weakened equals weakens every comparison that relies on it.
                 if _state_free_equals(change.after, method, decl.name):
                     yield Finding("weaken_assertion/tautological_equals", change.path, method.line)
-                elif assertions_changed:
+                else:
                     yield Finding("flag/equals_changed", change.path, method.line)
 
 

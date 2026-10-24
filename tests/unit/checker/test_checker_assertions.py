@@ -543,11 +543,42 @@ class TestThirdReview:
 
 class TestSubjectFlagPrecision:
     def test_a_local_defined_only_by_literals_has_no_subject_to_replace(self, tmp_path):
-        before = body_of("boolean found = false; for (Row r : rows) { found = true; } assertTrue(found);")
-        after = body_of("int idx = -1; for (Row r : rows) { idx = r.index(); } assertTrue(idx >= 0);")
+        before = body_of(
+            "boolean found = false; for (Row r : rows) { found = true; } assertTrue(found);"
+        )
+        after = body_of(
+            "int idx = -1; for (Row r : rows) { idx = r.index(); } assertTrue(idx >= 0);"
+        )
         assert "flag/assertion_subject_replaced" not in codes(before, after, tmp_path)
 
     def test_a_subject_followed_through_a_local_definition_is_kept(self, tmp_path):
-        before = body_of("Long[] ns = map.keySet().toArray(new Long[0]); assertEquals(1, parse(ns[0]));")
+        before = body_of(
+            "Long[] ns = map.keySet().toArray(new Long[0]); assertEquals(1, parse(ns[0]));"
+        )
         after = body_of("assertEquals(0, other.get(4L)); assertEquals(1, parse(4));")
         assert "flag/assertion_subject_replaced" not in codes(before, after, tmp_path)
+
+
+class TestFourthReview:
+    def test_an_assert_all_after_an_exit_does_not_check(self, tmp_path):
+        before = "assertThat(results).hasSize(3);"
+        after = (
+            "SoftAssertions softly = new SoftAssertions(); "
+            "softly.assertThat(results).hasSize(3); if (ci()) { return; } softly.assertAll();"
+        )
+        assert "weaken_assertion/soft_assertions_unchecked" in codes_7b(before, after, tmp_path)
+
+    def test_a_changed_equals_is_flagged_even_with_unchanged_assertions(self, tmp_path):
+        helper = (
+            "  static class P { int v; public boolean equals(Object o) { return ((P) o).v == v; } }"
+        )
+        before = body_of("assertEquals(a(), b());", helper)
+        after = body_of(
+            "assertEquals(a(), b());", helper.replace("((P) o).v == v", "((P) o).v >= v")
+        )
+        assert "flag/equals_changed" in codes(before, after, tmp_path)
+
+    def test_a_variable_named_like_await_is_not_a_wait_root(self, tmp_path):
+        before = body_7b("assertEquals(1, f());")
+        after = body_7b("Waiter await = waiter(); await.until(() -> assertEquals(1, f()));")
+        assert REMOVED in codes(before, after, tmp_path)
