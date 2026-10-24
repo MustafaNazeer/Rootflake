@@ -94,6 +94,7 @@ class Program:
         self.owner: dict[int, str] = {}
         self.types_by_fqn: dict[str, tuple[str, TypeDecl]] = {}
         self.methods_by_name: dict[str, list[tuple[str, Method]]] = {}
+        self.method_owner: dict[int, str] = {}
         for path, unit in units.items():
             prefix = f"{unit.package}." if unit.package else ""
             pending = [(decl, prefix + decl.name) for decl in unit.types]
@@ -102,6 +103,8 @@ class Program:
                 self.fqn[id(decl)] = fqn
                 self.owner[id(decl)] = path
                 self.types_by_fqn.setdefault(fqn, (path, decl))
+                for method in decl.methods:
+                    self.method_owner[id(method)] = fqn
                 pending.extend((member, f"{fqn}.{member.name}") for member in decl.types)
             for node in walk(unit):
                 if isinstance(node, TypeDecl) and id(node) not in self.fqn:

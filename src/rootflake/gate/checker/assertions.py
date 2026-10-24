@@ -62,6 +62,7 @@ class Assertion:
     line: int
     start: int
     scanned_only: bool = False
+    origin: tuple = ()
 
 
 def _text(unit: CompilationUnit, start: int, end: int) -> str:
@@ -171,10 +172,10 @@ def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str]]:
                 unit, body, node.start
             ):
                 continue
-            # An exit is new when its statement is new or it was unguarded and is now guarded;
-            # a changed condition around an existing guarded exit is judged elsewhere.
-            guarded = "guarded" if _guard(unit, body, node.start) else "unguarded"
-            out.append((node.start, f"{_text(unit, node.start, node.end)} @ {guarded}"))
+            # Mustafa 2026-10-23: an exit is its statement plus its full guard text, so an
+            # existing exit under a changed condition counts as newly guarded.
+            guard = " / ".join(_guard(unit, body, node.start))
+            out.append((node.start, f"{_text(unit, node.start, node.end)} @ {guard}"))
     return out
 
 
@@ -234,11 +235,37 @@ class _Span:
     end: int
 
 
+def _origin(program: Program, path: str, method: Method) -> tuple:
+    owner = program.method_owner.get(id(method), "<local>")
+    return (path, owner, method.name, tuple(p.type for p in method.params))
+
+
+def _context(program: Program, reached, cache: dict) -> tuple[tuple[str, ...], frozenset[str]]:
+    """The guard and the exits that sit between the root method and a reached helper, joined
+    along the chain of call sites that reached it."""
+    key = id(reached)
+    if key in cache:
+        return cache[key]
+    if reached.parent is None or reached.call is None:
+        result: tuple[tuple[str, ...], frozenset[str]] = ((), frozenset())
+    else:
+        parent_guard, parent_exits = _context(program, reached.parent, cache)
+        unit = program.units[reached.parent.path]
+        body = reached.parent.method.body
+        site = reached.call.start
+        guard = parent_guard + _guard(unit, body, site)
+        exits = parent_exits | {text for at, text in _exits(unit, body) if at < site}
+        result = (guard, exits)
+    cache[key] = result
+    return result
+
+
 def _with_helpers(
     program: Program, path: str, method: Method, scan: bool, budget: ExpansionBudget
 ) -> list[Assertion]:
     out = []
     collected: list[tuple[str, int, int]] = []
+    cache: dict = {}
     for reached in reach(program, [(path, method)], scan=scan, budget=budget):
         body = reached.method.body
         if body is None:
@@ -246,30 +273,39 @@ def _with_helpers(
         if any(p == reached.path and s <= body.start < e for p, s, e in collected):
             continue  # declared inside a body already collected, such as an anonymous class
         collected.append((reached.path, body.start, body.end))
-        found = collect(program, reached.path, reached.method.body)
-        if reached.depth:
-            found = [_as_helper(a) for a in found]
-        out.extend(found)
+        guard, exits = _context(program, reached, cache)
+        origin = _origin(program, reached.path, reached.method)
+        for found in collect(program, reached.path, body):
+            out.append(
+                Assertion(
+                    found.text, found.signature, found.arguments, guard + found.guard,
+                    exits | found.exits_before, found.credited, found.line, found.start,
+                    False, origin,
+                )
+            )  # fmt: skip
     return out
 
 
-def _as_helper(assertion: Assertion, scanned_only: bool = False) -> Assertion:
+def _as_scanned(assertion: Assertion) -> Assertion:
     return Assertion(
         assertion.text, assertion.signature, assertion.arguments, assertion.guard,
-        frozenset(), assertion.credited and not scanned_only, assertion.line, assertion.start,
-        scanned_only,
+        assertion.exits_before, False, assertion.line, assertion.start, True, assertion.origin,
     )  # fmt: skip
 
 
-def _after_set(program: Program, path: str, method: Method, budget: ExpansionBudget):
-    """The after side: helpers followed as credit is, plus, for matching unchanged assertions
-    only, helpers reached the way a rejection scan reaches them."""
+def _both_ways(program: Program, path: str, method: Method, budget: ExpansionBudget):
+    """Helpers followed as credit is, plus those only a rejection scan reaches, marked so.
+
+    Before the patch the union is exactly the scan reach Decision 5 asks for. After it, an
+    assertion reached only by name may stand in for one that was also reached only by name, in
+    the same helper; where the before side reached a helper through a resolved call, the after
+    side must too."""
     credited = _with_helpers(program, path, method, False, budget)
-    seen = {(a.text, a.start) for a in credited}
+    seen = {(a.text, a.origin) for a in credited}
     extra = [
-        _as_helper(a, scanned_only=True)
+        _as_scanned(a)
         for a in _with_helpers(program, path, method, True, budget)
-        if (a.text, a.start) not in seen
+        if (a.text, a.origin) not in seen
     ]
     return credited + extra
 
@@ -279,22 +315,51 @@ def _is_subsequence(small: tuple[str, ...], big: tuple[str, ...]) -> bool:
     return all(item in it for item in small)
 
 
+_CONSTANT_WORDS = frozenset(["true", "false", "null"])
+
+
+def _strip_parens(arg: str) -> str:
+    while arg.startswith("( ") and arg.endswith(" )") and _balanced(arg[2:-2]):
+        arg = arg[2:-2]
+    return arg
+
+
+def _balanced(text: str) -> bool:
+    depth = 0
+    for word in text.split():
+        depth += word == "("
+        depth -= word == ")"
+        if depth < 0:
+            return False
+    return depth == 0
+
+
+def _constant(arg: str) -> bool:
+    """No identifier anywhere: a literal or an expression over literals."""
+    return not any(
+        (w[:1].isalpha() or w[:1] in "_$") and w not in _CONSTANT_WORDS for w in arg.split()
+    )
+
+
+def _same_on_both_sides(arg: str) -> bool:
+    for operator in (" == ", " != "):
+        if operator in arg:
+            left, _, right = arg.partition(operator)
+            if _strip_parens(left) == _strip_parens(right):
+                return True
+    return False
+
+
 def _trivially_true(assertion: Assertion) -> bool:
-    name, args = assertion.signature[0], assertion.arguments
-    literal = {"true", "false", "null"}
-
-    def is_literal(arg: str) -> bool:
-        return arg in literal or arg[:1].isdigit() or arg[:1] in "\"'-"
-
+    name = assertion.signature[0]
+    args = tuple(_strip_parens(a) for a in assertion.arguments)
     if name in ("assertEquals", "assertSame") and len(args) >= 2:
         actual, expected = args[-1], args[-2]
-        return actual == expected or (is_literal(actual) and is_literal(expected))
-    if name == "assertTrue" and args and args[-1] == "true":
-        return True
-    if name == "assertFalse" and args and args[-1] == "false":
-        return True
+        return actual == expected or (_constant(actual) and _constant(expected))
+    if name in ("assertTrue", "assertFalse") and args:
+        return _constant(args[-1]) or _same_on_both_sides(args[-1])
     if name == "assertNotNull" and args:
-        return is_literal(args[-1]) or args[-1].startswith("new ")
+        return _constant(args[-1]) or args[-1].startswith("new ")
     return False
 
 
@@ -308,6 +373,7 @@ def _match(before: list[Assertion], after: list[Assertion]) -> list[Assertion]:
                 new
                 for new in pool
                 if new.text == old.text
+                and (not new.scanned_only or (old.scanned_only and new.origin == old.origin))
                 and _is_subsequence(new.guard, old.guard)
                 and new.exits_before <= old.exits_before
             ),
@@ -354,10 +420,10 @@ def _file(change: FileChange, ctx: Context) -> Iterator[Finding]:
         new = after.get(key)
         if new is None:
             continue  # a vanished method is Decision 6's disable/test_removed, reported once
-        old_set = _with_helpers(ctx.before, change.path, old, True, ctx.budget)
+        old_set = _both_ways(ctx.before, change.path, old, ctx.budget)
         if not old_set:
             continue
-        new_set = _after_set(ctx.after, change.path, new, ctx.budget) if new else []
+        new_set = _both_ways(ctx.after, change.path, new, ctx.budget) if new else []
         for missing in _match(old_set, new_set):
             line = new.line if new is not None else missing.line
             yield Finding("weaken_assertion/assertion_removed", change.path, line)

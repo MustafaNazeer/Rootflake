@@ -203,10 +203,11 @@ class TestScanReachedAssertions:
 
 
 class TestExitIdentity:
-    def test_an_existing_exit_under_a_changed_condition_is_not_new(self, tmp_path):
-        before = body_of("for (int i = 0; i < 10; i++) { if (done()) break; } assertTrue(ok());")
-        after = body_of("for (int i = 0; i < 50; i++) { if (done()) break; } assertTrue(ok());")
-        assert REMOVED not in codes(before, after, tmp_path)
+    def test_an_existing_exit_under_a_changed_condition_counts_as_newly_guarded(self, tmp_path):
+        # Mustafa 2026-10-23: an exit is identified by its statement and its full guard text.
+        before = body_of("if (x()) { return; } assertTrue(ok());")
+        after = body_of("if (true) { return; } assertTrue(ok());")
+        assert REMOVED in codes(before, after, tmp_path)
 
     def test_an_exit_that_becomes_unconditional_is_new(self, tmp_path):
         before = body_of("if (done()) { return; } assertTrue(ok());")
@@ -217,3 +218,42 @@ class TestExitIdentity:
         before = body_of("assertTrue(ok()); return;")
         after = body_of("if (slow()) { return; } assertTrue(ok());")
         assert REMOVED in codes(before, after, tmp_path)
+
+
+class TestReviewFindings:
+    HELPER = "  private void check(int v) { assertEquals(1, v); }"
+
+    def test_a_helper_call_newly_placed_under_a_guard(self, tmp_path):
+        before = body_of("check(f());", self.HELPER)
+        after = body_of("if (ci()) { check(f()); }", self.HELPER)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_new_exit_before_a_helper_call(self, tmp_path):
+        before = body_of("check(f());", self.HELPER)
+        after = body_of("if (slow()) { return; } check(f());", self.HELPER)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_an_assertion_reached_by_name_from_another_helper_does_not_stand_in(self, tmp_path):
+        helpers = (
+            "  private void check(int v) { assertEquals(1, v); }\n"
+            "  static class Other { void check(int v) { assertEquals(1, v); } }"
+        )
+        before = body_of("check(f());", helpers)
+        after = body_of("other.check(f());", helpers)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertTrue(ok(v));", "assertTrue(1 == 1);"),
+         ("assertTrue(ok(v));", "assertTrue((true));"),
+         ("assertTrue(ok(v));", "assertTrue(v == v);"),
+         ("assertEquals(1, v);", "assertEquals((v), v);"),
+         ("assertEquals(1, v);", "assertEquals(1 + 0, 1);")],
+    )  # fmt: skip
+    def test_more_trivially_true_forms(self, tmp_path, before, after):
+        old = body_of(f"int v = f(); {before}")
+        assert REMOVED in codes(old, body_of(f"int v = f(); {after}"), tmp_path)
+
+    def test_a_real_kind_one_change_is_still_a_match(self, tmp_path):
+        old = body_of("int v = f(); assertEquals(1, v);")
+        assert REMOVED not in codes(old, body_of("int v = f(); assertEquals(2, v);"), tmp_path)

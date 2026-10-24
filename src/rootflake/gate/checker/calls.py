@@ -36,6 +36,8 @@ class Reached:
     path: str
     method: Method
     depth: int
+    parent: Reached | None = None
+    call: Call | None = None
 
 
 class ExpansionBudget:
@@ -168,20 +170,22 @@ def follow_for_scan(program: Program, path: str, call: Call) -> list[tuple[str, 
     binding = program.resolve_type(path, call.receiver, call.receiver_at)
     if binding.kind == "declared" and isinstance(binding.decl, TypeDecl):
         return _named(program, _owners(program, binding.path, binding.decl), call.name)
-    if binding.kind in ("library", "imported", "java_lang", "type_param"):
+    if binding.kind in ("library", "imported", "java_lang"):
         return []
-    if call.receiver[:1].isupper():
+    if call.receiver[:1].isupper() and binding.kind != "type_param":
         same_name = [
             decl
             for decl_path in program.units
             for decl in program.all_types(decl_path)
             if decl.name == call.receiver
         ]
-        return [
-            found
+        found = [
+            hit
             for decl in same_name
-            for found in _named(program, _owners(program, program.owner[id(decl)], decl), call.name)
+            for hit in _named(program, _owners(program, program.owner[id(decl)], decl), call.name)
         ]
+        if same_name:
+            return found
     return every
 
 
@@ -247,7 +251,7 @@ def reach(
                     continue
                 budget.spend(unit.tokens[call.start].line)
                 seen.add(id(method))
-                reached = Reached(path, method, current.depth + 1)
+                reached = Reached(path, method, current.depth + 1, current, call)
                 out.append(reached)
                 pending.append(reached)
     return out

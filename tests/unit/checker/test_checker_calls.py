@@ -197,3 +197,12 @@ class TestScanReceivers:
         )
         reached = reach(p, [(PATH, method(p, "t"))], scan=True, budget=ExpansionBudget())
         assert [r.path for r in reached] == [PATH, "src/test/java/a/Waits.java"]
+
+
+def test_an_uppercase_receiver_that_is_not_a_type_is_followed_everywhere():
+    p = program(
+        "class T { void t() { HELPER.sleepy(); } }",
+        src__test__java__a__U="class U { void sleepy() {} }",
+    )
+    reached = reach(p, [(PATH, method(p, "t"))], scan=True, budget=ExpansionBudget())
+    assert names(reached) == ["sleepy", "t"]
