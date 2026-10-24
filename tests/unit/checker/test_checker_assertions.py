@@ -156,7 +156,7 @@ class TestCredit:
     def test_an_added_assertion_with_a_shadowing_declaration_gets_no_credit(self, tmp_path):
         before = body_of("assertEquals(1, f());")
         after = body_of("assertEquals(2, f());", "  static void assertEquals(int a, int b) {}")
-        assert REMOVED in codes(before, after, tmp_path)
+        assert "weaken_assertion/assertion_rebound" in codes(before, after, tmp_path)
 
     def test_an_unimported_assertion_gets_no_credit(self, tmp_path):
         before = body_of("assertEquals(1, f());")
@@ -413,3 +413,141 @@ class TestNamedWeakenings:
                  "softly.assertThat(results).hasSize(3);"
                  " softly.assertAll();")  # fmt: skip
         assert codes_7b(before, after, tmp_path) == set()
+
+
+REBOUND = "weaken_assertion/assertion_rebound"
+
+
+class TestRebinding:
+    def test_a_local_method_shadowing_a_used_assertion(self, tmp_path):
+        before = body_of("assertEquals(1, f());")
+        after = body_of("assertEquals(1, f());", "  static void assertEquals(int a, int b) {}")
+        assert REBOUND in codes(before, after, tmp_path)
+
+    def test_a_changed_import_of_a_used_assertion(self, tmp_path):
+        before = body_of("assertEquals(1, f());")
+        after = before.replace(
+            "import static org.junit.Assert.*;", "import static org.example.Lenient.assertEquals;"
+        )
+        assert REBOUND in codes(before, after, tmp_path)
+
+    def test_a_new_same_package_type_named_like_a_used_library_class(self, tmp_path):
+        source = body_of("Assert.assertEquals(1, f());").replace(
+            "import org.junit.Test;", "import org.junit.Test;\nimport org.junit.*;"
+        )
+        created = {
+            "src/test/java/a/Assert.java":
+                "package a; class Assert { static void assertEquals(int a, int b) {} }"
+        }  # fmt: skip
+        assert REBOUND in _codes_with_new_file(source, created, tmp_path)
+
+    def test_an_added_import_unused_by_existing_assertions_is_fine(self, tmp_path):
+        before = body_of("assertEquals(1, f());")
+        after = before.replace(
+            "import org.junit.Test;", "import org.junit.Test;\nimport java.util.List;"
+        )
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_changed_package_declaration(self, tmp_path):
+        before = body_of("assertEquals(1, f());")
+        after = before.replace("package a;", "package b;")
+        assert REBOUND in codes(before, after, tmp_path)
+
+    def test_a_class_with_assertions_changing_its_supertype(self, tmp_path):
+        helper = "  static class Checker extends Base { void check() { assertTrue(ok()); } }"
+        before = body_of("new Checker().check();", helper)
+        after = body_of("new Checker().check();", helper.replace("extends Base", "extends Other"))
+        assert REBOUND in codes(before, after, tmp_path)
+
+
+def _codes_with_new_file(source: str, created: dict[str, str], root: Path) -> set[str]:
+    pristine, workspace = root / "p", root / "w"
+    for side in (pristine, workspace):
+        (side / PATH).parent.mkdir(parents=True, exist_ok=True)
+        (side / PATH).write_text(source)
+    for rel, text in created.items():
+        (workspace / rel).parent.mkdir(parents=True, exist_ok=True)
+        (workspace / rel).write_text(text)
+    result = check(sorted([PATH, *created]), pristine, workspace, TARGET)
+    return {f.code for f in result.findings}
+
+
+def test_a_created_file_whose_package_does_not_match_its_directory(tmp_path):
+    created = {"src/test/java/a/support/Waits.java": "package a.other; class Waits {}"}
+    assert REBOUND in _codes_with_new_file(body_of("assertEquals(1, f());"), created, tmp_path)
+
+
+class TestAssertionFlags:
+    EQUALS = (
+        "  static class Plan { int v; public boolean equals(Object o) { "
+        "return o instanceof Plan && ((Plan) o).v == v; } }"
+    )
+
+    def test_an_added_equals_beside_a_changed_assertion_is_flagged(self, tmp_path):
+        before = body_of('assertEquals("{v:1}", json());', "  static class Plan { int v; }")
+        after = body_of("assertEquals(expectedPlan, actualPlan);", self.EQUALS)
+        assert "flag/equals_changed" in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        "body", ["return true;", "return o instanceof Plan;", "return getClass() == o.getClass();"]
+    )
+    def test_an_equals_that_reads_no_state_is_rejected(self, tmp_path, body):
+        before = body_of('assertEquals("{v:1}", json());', "  static class Plan { int v; }")
+        tautology = f"  static class Plan {{ int v; public boolean equals(Object o) {{ {body} }} }}"
+        after = body_of("assertEquals(expectedPlan, actualPlan);", tautology)
+        assert "weaken_assertion/tautological_equals" in codes(before, after, tmp_path)
+
+    def test_a_replaced_subject_is_flagged(self, tmp_path):
+        before = body_of("assertEquals(1, counter.records());")
+        after = body_of("assertEquals(1, other.size());")
+        assert "flag/assertion_subject_replaced" in codes(before, after, tmp_path)
+
+    def test_a_corrected_literal_is_not_a_replaced_subject(self, tmp_path):
+        before = body_of("assertEquals(1, counter.records());")
+        after = body_of("assertEquals(2, counter.records());")
+        assert codes(before, after, tmp_path) == set()
+
+
+class TestThirdReview:
+    @pytest.mark.parametrize(
+        "condition",
+        ["() -> a == b | ok()", "() -> !a == b", "() -> a == b == c"],
+        ids=["bitwise_or", "negation", "chained"],
+    )
+    def test_a_compound_until_condition_is_not_an_equality(self, tmp_path, condition):
+        before = "assertEquals(a, b);"
+        after = f"await().atMost(5, SECONDS).until({condition});"
+        assert REMOVED in codes_7b(before, after, tmp_path)
+
+    def test_a_locally_declared_until_is_not_a_wait(self, tmp_path):
+        before = body_7b("assertEquals(1, f());")
+        after = body_7b("until(() -> assertEquals(1, f()));").replace(
+            "  }\n}\n", "  }\n  static void until(Runnable r) {}\n}\n"
+        )
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_an_assert_all_before_the_soft_assertion_does_not_check_it(self, tmp_path):
+        before = "assertThat(results).hasSize(3);"
+        after = ("SoftAssertions softly = new SoftAssertions(); softly.assertAll(); "
+                 "softly.assertThat(results).hasSize(3);")  # fmt: skip
+        assert codes_7b(before, after, tmp_path) == {"weaken_assertion/soft_assertions_unchecked"}
+
+    def test_a_guarded_assert_all_does_not_check(self, tmp_path):
+        before = "assertThat(results).hasSize(3);"
+        after = (
+            "SoftAssertions softly = new SoftAssertions(); "
+            "softly.assertThat(results).hasSize(3); if (ci()) { softly.assertAll(); }"
+        )
+        assert codes_7b(before, after, tmp_path) == {"weaken_assertion/soft_assertions_unchecked"}
+
+
+class TestSubjectFlagPrecision:
+    def test_a_local_defined_only_by_literals_has_no_subject_to_replace(self, tmp_path):
+        before = body_of("boolean found = false; for (Row r : rows) { found = true; } assertTrue(found);")
+        after = body_of("int idx = -1; for (Row r : rows) { idx = r.index(); } assertTrue(idx >= 0);")
+        assert "flag/assertion_subject_replaced" not in codes(before, after, tmp_path)
+
+    def test_a_subject_followed_through_a_local_definition_is_kept(self, tmp_path):
+        before = body_of("Long[] ns = map.keySet().toArray(new Long[0]); assertEquals(1, parse(ns[0]));")
+        after = body_of("assertEquals(0, other.get(4L)); assertEquals(1, parse(4));")
+        assert "flag/assertion_subject_replaced" not in codes(before, after, tmp_path)

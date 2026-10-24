@@ -63,6 +63,7 @@ class Assertion:
     start: int
     scanned_only: bool = False
     origin: tuple = ()
+    subject: frozenset = frozenset()
 
 
 def _text(unit: CompilationUnit, start: int, end: int) -> str:
@@ -98,7 +99,9 @@ def _split_arguments(unit: CompilationUnit, open_paren: int, close: int) -> tupl
     return tuple(pieces)
 
 
-def _guard(unit: CompilationUnit, body: Block, index: int) -> tuple[str, ...]:
+def _guard(
+    unit: CompilationUnit, body: Block, index: int, declared: frozenset[str] = frozenset()
+) -> tuple[str, ...]:
     """The conditions between the method body and the token at index, outermost first."""
     guard = []
     path = path_to(unit, index)
@@ -124,7 +127,7 @@ def _guard(unit: CompilationUnit, body: Block, index: int) -> tuple[str, ...]:
         elif isinstance(node, Catch):
             guard.append("catch")
         elif isinstance(node, Lambda):
-            guard.append("wait" if _wait_lambda(unit, node) else "lambda")
+            guard.append("wait" if _wait_lambda(unit, node, declared) else "lambda")
         elif isinstance(node, TypeDecl):
             guard.append("class")
     return tuple(guard)
@@ -133,8 +136,38 @@ def _guard(unit: CompilationUnit, body: Block, index: int) -> tuple[str, ...]:
 WAIT_CONDITIONS = frozenset(["until", "untilAsserted", "untilAtomic", "untilAccumulated"])
 
 
-def _wait_lambda(unit: CompilationUnit, lam: Lambda) -> bool:
-    """Whether the lambda is an argument of an Awaitility condition call."""
+AWAIT_ROOTS = frozenset(["await", "waitAtMost", "given", "with", "Awaitility"])
+
+
+def _chain_root(unit: CompilationUnit, name_at: int) -> str | None:
+    """The root of the fluent chain that ends in the call named at name_at."""
+    tokens, n = unit.tokens, name_at
+    while n >= 2 and tokens[n - 1].text == ".":
+        before = n - 2
+        if tokens[before].text == ")" and tokens[before].kind == "op":
+            depth, j = 0, before
+            while j > 0:
+                if tokens[j].text == ")" and tokens[j].kind == "op":
+                    depth += 1
+                elif tokens[j].text == "(" and tokens[j].kind == "op":
+                    depth -= 1
+                    if depth == 0:
+                        break
+                j -= 1
+            n = j - 1
+        elif tokens[before].kind == "ident":
+            return tokens[before].text
+        else:
+            return None
+    return tokens[n].text if n != name_at else None
+
+
+def _wait_lambda(
+    unit: CompilationUnit, lam: Lambda, declared: frozenset[str] = frozenset()
+) -> bool:
+    """Whether the lambda is an argument of an Awaitility condition call: a call named like one,
+    at the end of a chain rooted in await, waitAtMost, given or Awaitility, none of which a
+    file the checker reads declares."""
     depth, i = 0, lam.start - 1
     while i > 0:
         text = unit.tokens[i].text if unit.tokens[i].kind == "op" else ""
@@ -142,7 +175,11 @@ def _wait_lambda(unit: CompilationUnit, lam: Lambda) -> bool:
             depth += 1
         elif text in ("(", "[", "{"):
             if depth == 0:
-                return text == "(" and unit.tokens[i - 1].text in WAIT_CONDITIONS
+                name = unit.tokens[i - 1].text
+                if text != "(" or name not in WAIT_CONDITIONS or name in declared:
+                    return False
+                root = _chain_root(unit, i - 1)
+                return root in AWAIT_ROOTS and root not in declared
             depth -= 1
         elif text == ";" and depth == 0:
             return False
@@ -199,20 +236,32 @@ def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str]]:
     return out
 
 
-def _equality_operands(unit: CompilationUnit, start: int, end: int) -> tuple[str, str] | None:
-    """`a == b` or `a.equals(b)` at the top level of an expression, as its two operands."""
-    depth = 0
+def _top_operators(unit: CompilationUnit, start: int, end: int) -> list[tuple[int, str]]:
+    """Operators at the top level of an expression, other than member access and brackets."""
+    out, depth = [], 0
     for i in range(start, end):
         token = unit.tokens[i]
         if token.kind == "op" and token.text in "([{":
             depth += 1
         elif token.kind == "op" and token.text in ")]}":
             depth -= 1
-        elif depth == 0 and token.kind == "op" and token.text in ("&&", "||", "?"):
-            return None
-    for i in range(start, end):
-        if unit.tokens[i].text == "==" and unit.tokens[i].kind == "op":
-            return _text(unit, start, i), _text(unit, i + 1, end)
+        elif depth == 0 and (
+            (token.kind == "op" and token.text not in (".", "::")) or token.text == "instanceof"
+        ):
+            out.append((i, token.text))
+    return out
+
+
+def _equality_operands(unit: CompilationUnit, start: int, end: int) -> tuple[str, str] | None:
+    """`a == b` or `a.equals(b)` as the whole expression, with no other top level operator."""
+    operators = _top_operators(unit, start, end)
+    if [text for _, text in operators] == ["=="]:
+        at = operators[0][0]
+        if start < at < end - 1:
+            return _text(unit, start, at), _text(unit, at + 1, end)
+        return None
+    if operators:
+        return None
     tokens = unit.tokens
     if end - start >= 5 and tokens[end - 1].text == ")":
         for i in range(start, end - 3):
@@ -226,8 +275,46 @@ def _equality_operands(unit: CompilationUnit, start: int, end: int) -> tuple[str
     return None
 
 
+def _local_definitions(unit: CompilationUnit, body: Block) -> dict[str, set[str]]:
+    """Each local's identifiers on the right of its declarations and assignments."""
+    out: dict[str, set[str]] = {}
+    for node in walk(body):
+        if not isinstance(node, Statement) or node.kind not in ("local_var", "expression"):
+            continue
+        tokens = unit.tokens[node.start : node.end]
+        for i, token in enumerate(tokens[:-1]):
+            if token.kind == "ident" and tokens[i + 1].text == "=" and tokens[i + 1].kind == "op":
+                rhs = " ".join(t.text for t in tokens[i + 2 :])
+                out.setdefault(token.text, set()).update(_identifiers((rhs,)))
+    return out
+
+
+def _followed(ids: set[str], definitions: dict[str, set[str]]) -> frozenset[str]:
+    """Identifiers with locals replaced by what defines them, so a local set only from
+    literals stands for no identifier at all."""
+    out, pending, seen = set(), list(ids), set()
+    while pending:
+        name = pending.pop()
+        if name in seen:
+            continue
+        seen.add(name)
+        if name in definitions:
+            pending.extend(definitions[name])
+        else:
+            out.add(name)
+    return frozenset(out)
+
+
+def declared_waits(program: Program) -> frozenset[str]:
+    return frozenset(
+        name for name in program.methods_by_name if name in WAIT_CONDITIONS | AWAIT_ROOTS
+    )
+
+
 def collect(program: Program, path: str, body: Block) -> list[Assertion]:
     unit = program.units[path]
+    declared = declared_waits(program)
+    definitions = _local_definitions(unit, body)
     exits = _exits(unit, body)
     out: list[Assertion] = []
     consumed: set[int] = set()
@@ -263,15 +350,25 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                 text=_text(unit, start, end),
                 signature=(*names, *matchers),
                 arguments=_split_arguments(unit, call.start + 1, _close(unit, call.start + 1)),
-                guard=_guard(unit, body, call.start),
+                guard=_guard(unit, body, call.start, declared),
                 exits_before=frozenset(text for at, text in exits if at < call.start),
                 credited=credited,
                 line=unit.tokens[call.start].line,
                 start=call.start,
+                subject=_followed(
+                    _identifiers(
+                        _split_arguments(unit, call.start + 1, _close(unit, call.start + 1))
+                    ),
+                    definitions,
+                ),
             )
         )
     for node in walk(body):
-        if isinstance(node, Lambda) and node.expression is not None and _wait_lambda(unit, node):
+        if (
+            isinstance(node, Lambda)
+            and node.expression is not None
+            and _wait_lambda(unit, node, declared)
+        ):
             if unit.tokens[node.start - 2].text != "until":
                 continue
             operands = _equality_operands(unit, node.expression.start, node.expression.end)
@@ -279,7 +376,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                 out.append(
                     Assertion(
                         f"assertEquals ( {operands[0]} , {operands[1]} )", ("assertEquals",),
-                        operands, _guard(unit, body, node.expression.start),
+                        operands, _guard(unit, body, node.expression.start, declared),
                         frozenset(t for at, t in exits if at < node.start), True,
                         unit.tokens[node.expression.start].line, node.expression.start,
                     )
@@ -318,7 +415,7 @@ def _context(program: Program, reached, cache: dict) -> tuple[tuple[str, ...], f
         unit = program.units[reached.parent.path]
         body = reached.parent.method.body
         site = reached.call.start
-        guard = parent_guard + _guard(unit, body, site)
+        guard = parent_guard + _guard(unit, body, site, declared_waits(program))
         exits = parent_exits | {text for at, text in _exits(unit, body) if at < site}
         result = (guard, exits)
     cache[key] = result
@@ -345,7 +442,7 @@ def _with_helpers(
                 Assertion(
                     found.text, found.signature, found.arguments, guard + found.guard,
                     exits | found.exits_before, found.credited, found.line, found.start,
-                    False, origin,
+                    False, origin, found.subject,
                 )
             )  # fmt: skip
     return out
@@ -355,6 +452,7 @@ def _as_scanned(assertion: Assertion) -> Assertion:
     return Assertion(
         assertion.text, assertion.signature, assertion.arguments, assertion.guard,
         assertion.exits_before, False, assertion.line, assertion.start, True, assertion.origin,
+        assertion.subject,
     )  # fmt: skip
 
 
@@ -618,28 +716,50 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
     return None
 
 
+def _identifiers(arguments: tuple[str, ...]) -> set[str]:
+    return {
+        w
+        for arg in arguments
+        for w in _without_literals(arg).split()
+        if (w[:1].isalpha() or w[:1] in "_$") and w not in _CONSTANT_WORDS
+    }
+
+
+def _names(a: Assertion) -> set[str]:
+    return set(a.signature) | {w for w in a.text.split() if w[:1].isupper()}
+
+
 def _guard_ok(old: Assertion, new: Assertion) -> bool:
     guard = tuple(g for g in new.guard if g != "wait")
     return _is_subsequence(guard, old.guard) and new.exits_before <= old.exits_before
 
 
 def _match(
-    before: list[Assertion], after: list[Assertion], soft: dict[str, Assertion] | None = None
+    before: list[Assertion],
+    after: list[Assertion],
+    soft: dict[str, Assertion] | None = None,
+    rebound: frozenset[str] = frozenset(),
 ) -> list[tuple[Assertion, str, Assertion | None]]:
-    """Each before assertion left without a match, with the code it earns."""
+    """Each before assertion left without a match, with the code it earns, plus the flags a
+    match raises."""
     pool = list(after)
     soft = soft or {}
     results = []
     for old in before:
-        same = next(
-            (
-                new
-                for new in pool
-                if new.text == old.text
-                and (not new.scanned_only or (old.scanned_only and new.origin == old.origin))
-                and _guard_ok(old, new)
-            ),
-            None,
+        uses_rebound = "*" in rebound or bool(_names(old) & rebound)
+        same = (
+            None
+            if uses_rebound
+            else next(
+                (
+                    new
+                    for new in pool
+                    if new.text == old.text
+                    and (not new.scanned_only or (old.scanned_only and new.origin == old.origin))
+                    and _guard_ok(old, new)
+                ),
+                None,
+            )
         )
         if same is not None:
             pool.remove(same)
@@ -650,17 +770,19 @@ def _match(
             pool.remove(weakened[0])
             results.append((old, weakened[1], weakened[0]))
             continue
-        matched = next(
-            (
-                n
-                for n in usable
-                if (n.signature == old.signature or _kind_two(old, n)) and not _trivially_true(n)
-            ),
-            None,
-        )
+        candidates = [
+            n
+            for n in usable
+            if (n.signature == old.signature or _kind_two(old, n)) and not _trivially_true(n)
+        ]
+        # Pair with the candidate that shares the most of the old subject.
+        matched = max(candidates, key=lambda n: len(old.subject & n.subject), default=None)
         if matched is not None:
             pool.remove(matched)
+            if matched.text != old.text and old.subject and not old.subject & matched.subject:
+                results.append((old, "flag/assertion_subject_replaced", matched))
             continue
+
         if old.text in soft:
             results.append((old, "weaken_assertion/soft_assertions_unchecked", soft[old.text]))
             continue
@@ -669,7 +791,12 @@ def _match(
             pool.remove(relaxed)
             results.append((old, "weaken_assertion/equality_relaxed", relaxed))
             continue
-        results.append((old, "weaken_assertion/assertion_removed", None))
+        code = (
+            "weaken_assertion/assertion_rebound"
+            if uses_rebound
+            else "weaken_assertion/assertion_removed"
+        )
+        results.append((old, code, None))
     return results
 
 
@@ -693,10 +820,19 @@ def _soft_assertions(program: Program, path: str, method: Method) -> tuple[dict,
         for i, word in enumerate(words[:-1])
         if word in soft_types and unit.tokens[start + i + 1].kind == "ident"
     }
-    joined = " ".join(words)
+    constructed = {
+        words[i] for i in range(len(words) - 2) if words[i + 1] == "=" and words[i + 2] == "new"
+    } | {
+        words[i + 1]
+        for i in range(len(words) - 3)
+        if words[i] in soft_types and words[i + 2] == "=" and words[i + 3] == "new"
+    }
+    all_calls = calls_in(unit, method.body)
     unchecked, checked = {}, []
-    for call in calls_in(unit, method.body):
+    for call in all_calls:
         if call.receiver not in receivers or not call.name.startswith("assert"):
+            continue
+        if call.name == "assertAll":
             continue
         names, end = _chain(unit, call)
         stripped = _text(unit, call.start, end)
@@ -705,11 +841,95 @@ def _soft_assertions(program: Program, path: str, method: Method) -> tuple[dict,
             stripped, tuple(names), arguments, _guard(unit, method.body, call.start),
             frozenset(), True, unit.tokens[call.start].line, call.start,
         )  # fmt: skip
-        if managed or f"{call.receiver} . assertAll ( )" in joined:
+        closes = any(
+            other.name == "assertAll"
+            and other.receiver == call.receiver
+            and other.start > call.start
+            and not _guard(unit, method.body, other.start)
+            for other in all_calls
+        )
+        if (managed and call.receiver not in constructed) or closes:
             checked.append(assertion)
         else:
             unchecked[stripped] = assertion
     return unchecked, checked
+
+
+def _import_keys(unit: CompilationUnit) -> set[tuple[str, bool, bool]]:
+    return {(i.name, i.static, i.wildcard) for i in unit.imports}
+
+
+def _rebound_names(change: FileChange, ctx: Context) -> frozenset[str]:
+    """Names whose binding the patch may have changed for this file (ADR 0007 Decision 5).
+
+    A newly declared method or type anywhere in the files read, and a changed import or
+    package declaration in this file, rebind the names they could supply; `*` stands for every
+    name."""
+    if change.before is None:
+        return frozenset()
+    names: set[str] = set()
+    if change.before.package != change.after.package:
+        names.add("*")
+    for name, _, wildcard in _import_keys(change.before) ^ _import_keys(change.after):
+        names.add("*" if wildcard else name.rsplit(".", 1)[-1])
+    old_methods = {(p, m.name) for m_list in ctx.before.methods_by_name.values() for p, m in m_list}
+    for name, found in ctx.after.methods_by_name.items():
+        if any((p, name) not in old_methods for p, _ in found):
+            names.add(name)
+    old_types = set(ctx.before.types_by_fqn)
+    for fqn in ctx.after.types_by_fqn:
+        if fqn not in old_types:
+            names.add(fqn.rsplit(".", 1)[-1])
+    return frozenset(names)
+
+
+def _supertypes_changed(ctx: Context, change: FileChange, method: Method) -> bool:
+    owner = ctx.after.method_owner.get(id(method))
+    after = ctx.after.types_by_fqn.get(owner) if owner else None
+    before = ctx.before.types_by_fqn.get(owner) if owner else None
+    if after is None or before is None:
+        return False
+    return (before[1].extends, before[1].implements) != (after[1].extends, after[1].implements)
+
+
+def _expected_package(path: str) -> str | None:
+    for root in ("src/test/java/", "src/main/java/"):
+        if root in path:
+            folder = path.split(root, 1)[1].rsplit("/", 1)
+            return folder[0].replace("/", ".") if len(folder) == 2 else ""
+    return None
+
+
+def _state_free_equals(unit: CompilationUnit, method: Method, owner_name: str) -> bool:
+    """An equals that reads no state of either object: a constant, instanceof or getClass."""
+    if method.body is None:
+        return False
+    param = method.params[0].name if method.params else ""
+    allowed = {param, owner_name, "getClass", "Object", "this", "o", "obj", "other"}
+    words = [t.text for t in unit.tokens[method.body.start : method.body.end] if t.kind == "ident"]
+    return all(w in allowed for w in words)
+
+
+def _equals_findings(ctx: Context, assertions_changed: bool) -> Iterator[Finding]:
+    for change in ctx.changes:
+        for decl in ctx.after.all_types(change.path):
+            for method in decl.methods:
+                if method.name != "equals" or len(method.params) != 1:
+                    continue
+                fqn = ctx.after.method_owner.get(id(method))
+                old = ctx.before.types_by_fqn.get(fqn) if fqn else None
+                old_equals = [m for m in (old[1].methods if old else []) if m.name == "equals"]
+                old_text = (
+                    _text(change.before, old_equals[0].start, old_equals[0].end)
+                    if old_equals and change.before is not None
+                    else None
+                )
+                if old_text == _text(change.after, method.start, method.end):
+                    continue
+                if _state_free_equals(change.after, method, decl.name):
+                    yield Finding("weaken_assertion/tautological_equals", change.path, method.line)
+                elif assertions_changed:
+                    yield Finding("flag/equals_changed", change.path, method.line)
 
 
 def _methods(program: Program, path: str) -> dict[tuple, Method]:
@@ -735,14 +955,45 @@ def _file(change: FileChange, ctx: Context) -> Iterator[Finding]:
             continue
         new_set = _both_ways(ctx.after, change.path, new, ctx.budget)
         unchecked, checked = _soft_assertions(ctx.after, change.path, new)
+        rebound = _rebound_names(change, ctx)
+        if _supertypes_changed(ctx, change, new):
+            rebound = rebound | {"*"}
         reported = set()
-        for _, code, culprit in _match(old_set, new_set + checked, unchecked):
+        for _, code, culprit in _match(old_set, new_set + checked, unchecked, rebound):
             if code not in reported:
                 reported.add(code)
                 yield Finding(code, change.path, culprit.line if culprit else new.line)
 
 
 def findings(ctx: Context) -> Iterator[Finding]:
+    out = []
     for change in ctx.changes:
         if change.before is not None and change.path in ctx.test_paths:
-            yield from _file(change, ctx)
+            out.extend(_file(change, ctx))
+            if change.before.package != change.after.package:
+                out.append(Finding("weaken_assertion/assertion_rebound", change.path, 1))
+        elif change.before is None and change.path in ctx.test_paths:
+            expected = _expected_package(change.path)
+            if expected is not None and expected != (change.after.package or ""):
+                out.append(Finding("weaken_assertion/assertion_rebound", change.path, 1))
+    changed = any(not f.code.startswith("flag/") or f.code == "flag/assertion_subject_replaced"
+                  for f in out) or _any_assertion_text_changed(ctx)  # fmt: skip
+    out.extend(_equals_findings(ctx, changed))
+    yield from out
+
+
+def _any_assertion_text_changed(ctx: Context) -> bool:
+    for change in ctx.changes:
+        if change.before is None or change.path not in ctx.test_paths:
+            continue
+        before = {
+            a.text for b in _bodies(change.before) for a in collect(ctx.before, change.path, b)
+        }
+        after = {a.text for b in _bodies(change.after) for a in collect(ctx.after, change.path, b)}
+        if before != after:
+            return True
+    return False
+
+
+def _bodies(unit: CompilationUnit) -> list[Block]:
+    return [n.body for n in walk(unit) if isinstance(n, Method) and n.body is not None]
