@@ -28,7 +28,8 @@ def children(node: Node) -> list[Node]:
         bodies = [c for c in node.enum_constants]
         return [*bodies, *node.fields, *node.methods, *node.initializers, *node.types]
     if isinstance(node, EnumConstant):
-        return [node.body] if node.body else []
+        out = [node.body] if node.body else []
+        return [*out, *node.lambdas, *node.classes, *node.switches]
     if isinstance(node, Field):
         return [*node.lambdas, *node.classes, *node.switches]
     if isinstance(node, Method):

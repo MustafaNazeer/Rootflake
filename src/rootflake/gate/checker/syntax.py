@@ -10,6 +10,7 @@ including unbraced statements such as `if (a) if (b) x();`, is capped at the sam
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 
 from rootflake.gate.checker.lexer import Token, Unparsable
@@ -154,6 +155,9 @@ class EnumConstant:
     line: int
     start: int
     end: int
+    lambdas: list[Lambda] = field(default_factory=list)
+    classes: list[TypeDecl] = field(default_factory=list)
+    switches: list[Statement] = field(default_factory=list)
 
 
 @dataclass
@@ -466,16 +470,17 @@ class _Parser:
             name, line = self.text(i), self.line(i)
             i += 1
             arguments = None
+            constant = EnumConstant(name, annotations, None, None, line, start, i)
             if self.is_op(i, "("):
                 arguments = Span(i + 1, self.partner[i])
+                self.scan(arguments.start, arguments.end, constant.lambdas, constant.classes,
+                          constant.switches)  # fmt: skip
                 i = self.after(i)
-            body = None
             if self.is_op(i, "{"):
-                body = self.anonymous(name, i)
+                constant.body = self.anonymous(name, i)
                 i = self.after(i)
-            decl.enum_constants.append(
-                EnumConstant(name, annotations, arguments, body, line, start, i)
-            )
+            constant.arguments, constant.end = arguments, i
+            decl.enum_constants.append(constant)
         return i + 1 if i < end else i
 
     def anonymous(self, base: str, open_brace: int) -> TypeDecl:
@@ -515,12 +520,43 @@ class _Parser:
                        self.line(i), start, self.after(i + 1))
             )  # fmt: skip
             return self.after(i + 1)
-        stop = self.find_top(i, end, ("(", "=", ";"))
+        stop = self.member_stop(i, end)
         if stop >= end:
             raise self.fail("expected a member", i)
         if self.is_op(stop, "("):
             return self.method(decl, start, annotations, modifiers, type_params, i, stop, end)
         return self.field_decl(decl, start, annotations, modifiers, i, end)
+
+    def skip_annotations(self, i: int) -> int:
+        while self.is_op(i, "@") and self.text(i + 1) != "interface":
+            _, i = self.annotation(i)
+        return i
+
+    def member_stop(self, i: int, end: int) -> int:
+        """The first `(`, `=` or `;` of a member that is not inside a type annotation."""
+        while i < end:
+            if self.is_op(i, "@"):
+                i = self.skip_annotations(i)
+                continue
+            token = self.tokens[i]
+            if token.kind == "op" and token.text in ("(", "=", ";"):
+                return i
+            if token.kind == "op" and token.text in _OPEN:
+                i = self.partner[i]
+            i += 1
+        return end
+
+    def plain_type(self, start: int, end: int) -> str:
+        """Type text without its type annotations."""
+        out, i = [], start
+        while i < end:
+            if self.is_op(i, "@"):
+                i = self.skip_annotations(i)
+                continue
+            if self.text(i) != "final":
+                out.append(self.text(i))
+            i += 1
+        return "".join(out)
 
     def method(
         self, decl: TypeDecl, start: int, annotations: list[Annotation], modifiers: list[str],
@@ -529,7 +565,7 @@ class _Parser:
         name_at = paren - 1
         if not self.is_ident(name_at):
             raise self.fail("expected a method name", name_at)
-        return_type = _type_text(self.tokens, i, name_at) or None
+        return_type = self.plain_type(i, name_at) or None
         params = self.params(paren)
         j = self.after(paren)
         while self.is_op(j, "[") and self.is_op(j + 1, "]"):
@@ -584,6 +620,7 @@ class _Parser:
 
     def type_end(self, i: int, end: int) -> int | None:
         """Index after a type starting at i, or None if no type starts there."""
+        i = self.skip_annotations(i)
         if self.text(i) in _PRIMITIVES and self.tokens[i].kind == "keyword":
             i += 1
         elif self.is_ident(i):
@@ -596,14 +633,16 @@ class _Parser:
                         raise
                     except Unparsable:
                         return None
-                elif self.is_op(i, ".") and self.is_ident(i + 1):
-                    i += 2
+                elif self.is_op(i, ".") and self.is_ident(self.skip_annotations(i + 1)):
+                    i = self.skip_annotations(i + 1) + 1
                 else:
                     break
         else:
             return None
-        while self.is_op(i, "[") and self.is_op(i + 1, "]"):
-            i += 2
+        while self.is_op(self.skip_annotations(i), "[") and self.is_op(
+            self.skip_annotations(i) + 1, "]"
+        ):
+            i = self.skip_annotations(i) + 2
         if self.is_op(i, "..."):
             i += 1
         return i
@@ -620,7 +659,7 @@ class _Parser:
             raise self.fail("expected ;", type_end)
         names, initializers, lambdas, classes, switches = self.declarators(type_end, stop)
         decl.fields.append(
-            Field(names, _type_text(self.tokens, i, type_end), annotations, modifiers,
+            Field(names, self.plain_type(i, type_end), annotations, modifiers,
                   initializers, lambdas, classes, switches, self.line(type_end), start, stop + 1)
         )  # fmt: skip
         return stop + 1
@@ -736,7 +775,7 @@ class _Parser:
             if self.tokens[i].kind == "keyword":
                 return self.simple(word, i, end)
         if word == "yield" and self.is_ident(i) and self.text(i + 1) not in (
-            "=", ".", "[", "++", "--", "->", ";", ",", ")",
+            "=", ".", "[", "->", ";", ",", ")",
         ):  # fmt: skip
             return self.simple("yield", i, end)
         annotations, modifiers, j = self.modifiers(i, end)
@@ -756,15 +795,43 @@ class _Parser:
         return self.is_ident(type_end) and self.text(type_end + 1) in ("=", ";", ",", "[", ":")
 
     def conditional(self, kind: str, i: int, end: int) -> tuple[Statement, int]:
+        if kind != "if":
+            return self.one_branch(kind, i, end)
+        # An `else if` chain is read in a loop, so a long chain costs no nesting depth.
+        branches: list[tuple[int, Span, Block]] = []
+        j, final = i, None
+        while True:
+            if not self.is_op(j + 1, "("):
+                raise self.fail("expected ( after if", j)
+            header = Span(j + 1, self.after(j + 1))
+            body, j_after = self.wrap(header.end, end)
+            branches.append((j, header, body))
+            j = j_after
+            if self.text(j) != "else":
+                break
+            if self.text(j + 1) == "if" and self.tokens[j + 1].kind == "keyword":
+                j += 1
+                continue
+            final, j = self.wrap(j + 1, end)
+            break
+        statement = None
+        for start, header, body in reversed(branches):
+            blocks = [body]
+            if statement is not None:
+                blocks.append(Block([statement], statement.start, statement.end))
+            elif final is not None:
+                blocks.append(final)
+            statement = Statement("if", self.line(start), start, j, header, blocks)
+            self.scan(header.start, header.end, statement.lambdas, statement.classes,
+                      statement.switches)  # fmt: skip
+        return statement, j
+
+    def one_branch(self, kind: str, i: int, end: int) -> tuple[Statement, int]:
         if not self.is_op(i + 1, "("):
             raise self.fail(f"expected ( after {kind}", i)
         header = Span(i + 1, self.after(i + 1))
         body, j = self.wrap(header.end, end)
-        blocks = [body]
-        if kind == "if" and self.text(j) == "else":
-            other, j = self.wrap(j + 1, end)
-            blocks.append(other)
-        statement = Statement(kind, self.line(i), i, j, header, blocks)
+        statement = Statement(kind, self.line(i), i, j, header, [body])
         self.scan(header.start, header.end, statement.lambdas, statement.classes,
                   statement.switches)  # fmt: skip
         return statement, j
@@ -872,6 +939,8 @@ class _Parser:
         j = i + 1
         while j < end and self.tokens[j].kind == "op" and self.text(j) == "@":
             _, j = self.annotation(j)
+        if self.is_op(j, "<"):
+            j = self.skip_angles(j, end)
         name_start = j
         type_end = self.type_end(j, end)
         if type_end is None:
@@ -907,11 +976,20 @@ class _Parser:
             lam = Lambda(params, body, None, lambdas, classes, switches, self.line(arrow),
                          start, self.after(arrow + 1))  # fmt: skip
         else:
-            j = arrow + 1
+            j, pending_conditionals = arrow + 1, 0
             while j < end:
                 token = self.tokens[j]
                 if token.kind == "op" and token.text in (",", ")", "]", "}", ";"):
                     break
+                if token.kind == "op" and token.text == "?":
+                    pending_conditionals += 1
+                elif token.kind == "op" and token.text == ":":
+                    if pending_conditionals == 0:
+                        break
+                    pending_conditionals -= 1
+                elif token.kind == "op" and token.text == "<" and self.is_op(j - 1, "."):
+                    j = self.skip_angles(j, end)
+                    continue
                 if token.kind == "op" and token.text in _OPEN:
                     j = self.partner[j]
                 j += 1
@@ -923,9 +1001,18 @@ class _Parser:
         return lam
 
 
+# The depth guard allows MAX_DEPTH levels at a few Python frames each; this headroom makes the
+# guard, not the interpreter, decide where the cutoff falls, wherever the caller's stack stands.
+_RECURSION_HEADROOM = 8000
+
+
 def parse(tokens: list[Token]) -> CompilationUnit:
+    previous = sys.getrecursionlimit()
+    sys.setrecursionlimit(max(previous, _RECURSION_HEADROOM))
     try:
         return _Parser(tokens).unit()
     except RecursionError:
         line = tokens[0].line if tokens else 1
-        raise Unparsable("nested too deep", line) from None
+        raise Unparsable("python recursion limit", line) from None
+    finally:
+        sys.setrecursionlimit(previous)

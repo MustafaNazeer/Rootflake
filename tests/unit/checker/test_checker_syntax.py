@@ -424,3 +424,78 @@ def test_repeated_unclosed_generics_stay_linear():
     except Unparsable:
         pass
     assert time.perf_counter() - start < 3
+
+
+class TestReviewFixes:
+    def test_enum_constant_arguments_are_scanned(self):
+        u = unit("enum E { A(new Runnable() { public void run() {} }), B(x -> x + 1); }")
+        a, b = u.types[0].enum_constants
+        assert [m.name for m in a.classes[0].methods] == ["run"]
+        assert b.lambdas[0].params == ["x"]
+
+    @pytest.mark.parametrize(
+        ("member", "name"),
+        [
+            ("List<@TU(max = 3) String> names;", "names"),
+            ("String @TU(1) [] arr;", "arr"),
+            ("java.util.@TU(2) List<String> l;", "l"),
+            ("String @TU [] f2;", "f2"),
+            ("java.util.@TU List<String> f3;", "f3"),
+        ],
+    )
+    def test_type_annotations_inside_a_field_type(self, member, name):
+        [t] = unit("class A { " + member + " }").types
+        assert t.fields[0].names == [name]
+
+    def test_a_type_annotation_inside_a_return_type(self):
+        [t] = unit("class A { List<@TU(max = 3) String> names() { return null; } }").types
+        assert [m.name for m in t.methods] == ["names"]
+
+    def test_a_long_else_if_chain_parses(self):
+        chain = " else ".join(f"if (x == {n}) a();" for n in range(1000))
+        u, block = body(chain)
+        assert block.statements[0].kind == "if"
+
+    def test_a_lambda_body_with_explicit_type_arguments(self):
+        u, block = body("f(x -> Collections.<Integer, Integer>emptyMap());")
+        [lam] = block.statements[0].lambdas
+        assert text(u, lam.expression) == "Collections . < Integer , Integer > emptyMap ( )"
+
+    def test_lambdas_on_both_sides_of_a_conditional(self):
+        u, block = body("Runnable r = c ? () -> a() : () -> b();")
+        first, second = block.statements[0].lambdas
+        assert text(u, first.expression) == "a ( )"
+        assert text(u, second.expression) == "b ( )"
+
+    def test_a_generic_anonymous_class(self):
+        u, block = body('Object o = new <String>G<String>("x") { void m() {} };')
+        assert [m.name for m in block.statements[0].classes[0].methods] == ["m"]
+
+    def test_a_conditional_inside_a_case_label(self):
+        u, block = body("switch (k) { case F ? 1 : 2: x(); }")
+        [sw] = block.statements
+        assert [st.kind for b in sw.blocks for st in b.statements] == ["expression"]
+
+    def test_yield_with_a_prefix_increment(self):
+        u, block = body("int v = switch (k) { default: yield ++x; };")
+        assert block.statements[0].switches[0].blocks[0].statements[0].kind == "yield"
+
+
+def nested_blocks(n: int) -> str:
+    return "class A { void f() { " + "{ " * n + "x(); " + "} " * n + "} }"
+
+
+def test_the_depth_guard_fires_before_python_recursion_does():
+    deepest = max(n for n in range(1, 200) if _parses(nested_blocks(n)))
+    with pytest.raises(Unparsable) as error:
+        unit(nested_blocks(deepest + 1))
+    assert error.value.reason == "nested too deep"
+    assert deepest >= 120
+
+
+def _parses(source: str) -> bool:
+    try:
+        unit(source)
+        return True
+    except Unparsable:
+        return False
