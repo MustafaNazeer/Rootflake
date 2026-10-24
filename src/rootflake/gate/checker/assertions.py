@@ -487,14 +487,15 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             last = statements[-1] if statements else None
             if last is None or last.kind != "expression" or not _ends_in_fail(unit, last):
                 continue
+            credited = _fail_resolves(program, path, unit, last)
             for catch in node.catches:
                 for caught in catch.types:
                     text = f"{' . '.join(caught.split('.'))} . class"
                     out.append(Assertion(
                         f"assertThrows ( {text} )", ("assertThrows",), (text,),
                         _guard(unit, body, node.start, declared),
-                        frozenset(t for at, t in exits if at < node.start), True, catch.line,
-                        catch.start, facts=facts,
+                        frozenset(t for at, t in exits if at < node.start), credited,
+                        catch.line, catch.start, facts=facts,
                     ))  # fmt: skip
     for node in walk(body):
         if isinstance(node, Statement) and node.kind == "assert":
@@ -524,6 +525,17 @@ def _equal_to_argument(program: Program, path: str, unit: CompilationUnit, i: in
     if tokens[close + 1].text != ")" or not _library_call(program, path, "equalTo", i):
         return None
     return _text(unit, i + 2, close)
+
+
+def _fail_resolves(program: Program, path: str, unit: CompilationUnit, last: Statement) -> bool:
+    """Whether the `fail` ending a try block is a test library's, as credit needs."""
+    if program.methods_by_name.get("fail"):
+        return False
+    tokens = unit.tokens
+    if tokens[last.start].text == "fail":
+        return _library_call(program, path, "fail", last.start)
+    receiver = tokens[last.start].text
+    return program.resolve_type(path, receiver, last.start).kind == "library"
 
 
 def _ends_in_fail(unit: CompilationUnit, statement: Statement) -> bool:
@@ -565,47 +577,87 @@ def _number(text: str) -> float | None:
         return None
 
 
-def _field_facts(program: Program, path: str) -> tuple[dict[str, list], set[str]]:
+def _assignment_counts(tokens, start: int, end: int) -> dict[str, int]:
+    """How often each name is the target of an assignment, `++` or `--` in a token range."""
+    out: dict[str, int] = {}
+    for i in range(start, end):
+        token = tokens[i]
+        if token.kind != "ident" or (i and tokens[i - 1].text == "."):
+            continue
+        after = tokens[i + 1].text if i + 1 < end else ""
+        before = tokens[i - 1].text if i else ""
+        if after in _ASSIGNMENTS or after in ("++", "--") or before in ("++", "--"):
+            out[token.text] = out.get(token.text, 0) + 1
+    return out
+
+
+def _field_facts(program: Program, path: str) -> tuple[dict[str, list], dict[str, list]]:
+    """Each field name's literal values and whether each declaration has a Set type. A field
+    keeps a value only when it is declared once and nothing in the file assigns it again."""
     key = ("field_facts", path)
     if key not in program.memo:
         unit = program.units[path]
+        assigned = _assignment_counts(unit.tokens, 0, len(unit.tokens))
         values: dict[str, list] = {}
-        sets = set()
+        sets: dict[str, list] = {}
         for decl in (n for n in walk(unit) if isinstance(n, TypeDecl)):
             for field in decl.fields:
                 for name in field.names:
                     span = field.initializers.get(name)
                     text = _text(unit, span.start, span.end) if span else ""
-                    values.setdefault(name, []).append(_number(text))
-                    if _set_type(field.type):
-                        sets.add(name)
+                    reassigned = assigned.get(name, 0) > (1 if span else 0)
+                    values.setdefault(name, []).append(None if reassigned else _number(text))
+                    sets.setdefault(name, []).append(_set_type(field.type))
         program.memo[key] = (values, sets)
     return program.memo[key]
 
 
 def _facts(program: Program, path: str, body: Block) -> frozenset:
-    """Names bound only to a numeric literal, and names declared with a Set type, in the file's
-    fields and the method's locals. A name declared or assigned more than once has no value."""
+    """Names bound only to a numeric literal, and names every declaration of which in scope has
+    a Set type, from the file's fields and the method's parameters and locals. A name declared
+    more than once, or assigned, incremented or decremented after its declaration, has no
+    value."""
     unit = program.units[path]
     field_values, field_sets = _field_facts(program, path)
     values = {name: list(found) for name, found in field_values.items()}
-    sets = set(field_sets)
+    sets = {name: list(found) for name, found in field_sets.items()}
+    assigned = _assignment_counts(unit.tokens, body.start, body.end)
+    method = next((n for n in reversed(path_to(unit, body.start)) if isinstance(n, Method)), None)
+    if method is not None and method.body is body:
+        for param in method.params:
+            values.setdefault(param.name, []).append(None)
+            sets.setdefault(param.name, []).append(_set_type(param.type))
     for node in walk(body):
-        if isinstance(node, Statement) and node.kind in ("local_var", "expression"):
+        if isinstance(node, Catch):
+            sets.setdefault(node.name, []).append(False)
+        elif isinstance(node, Lambda):
+            for name in node.params:
+                values.setdefault(name, []).append(None)
+                sets.setdefault(name, []).append(False)
+        elif isinstance(node, Statement) and node.kind == "local_var":
             tokens = unit.tokens[node.start : node.end]
             for i, token in enumerate(tokens[:-1]):
-                if token.kind != "ident" or tokens[i + 1].text not in _ASSIGNMENTS:
+                follows = tokens[i + 1].text
+                if token.kind != "ident" or follows not in ("=", ";", ","):
                     continue
+                before = tokens[i - 1] if i else None
+                if before is None or not (
+                    before.kind in ("ident", "keyword") or before.text in (">", "]", ",")
+                ):
+                    continue  # not a declared name, such as a name read in an initializer
                 end = i + 2
                 while end < len(tokens) and tokens[end].text not in (",", ";"):
                     end += 1
+                initialized = follows == "="
                 value = _number(" ".join(t.text for t in tokens[i + 2 : end]))
+                reassigned = assigned.get(token.text, 0) > (1 if initialized else 0)
                 values.setdefault(token.text, []).append(
-                    value if tokens[i + 1].text == "=" else None
+                    value if initialized and not reassigned else None
                 )
-                if node.kind == "local_var" and _set_type(" ".join(t.text for t in tokens[:i])):
-                    sets.add(token.text)
-    out = {("set", name) for name in sets}
+                sets.setdefault(token.text, []).append(
+                    _set_type(" ".join(t.text for t in tokens[:i]))
+                )
+    out = {("set", name) for name, found in sets.items() if found and all(found)}
     for name, found in values.items():
         if len(found) == 1 and found[0] is not None:
             out.add(("value", name, found[0]))
@@ -1458,20 +1510,22 @@ def _methods(program: Program, path: str) -> dict[tuple, Method]:
 _EXPECTED_ATTRIBUTES = ("expected", "expectedExceptions")
 
 
-def _annotation_expectations(unit: CompilationUnit, method: Method) -> list[Assertion]:
+def _annotation_expectations(program: Program, path: str, method: Method) -> list[Assertion]:
     """JUnit 4 `@Test(expected = X)` and TestNG `expectedExceptions`, as the assertThrows each
-    stands for (Decision 5 kind 1)."""
+    stands for (Decision 5 kind 1). Credit needs the annotation to resolve to a test library."""
+    unit = program.units[path]
     out = []
     for annotation in method.annotations:
         if annotation.name.rsplit(".", 1)[-1] != "Test":
             continue
+        credited = program.resolve_type(path, annotation.name, annotation.start).kind == "library"
         for name, value in attributes(unit, annotation).items():
             if name not in _EXPECTED_ATTRIBUTES:
                 continue
             for text in _split_array(value):
                 out.append(Assertion(
                     f"assertThrows ( {text} )", ("assertThrows",), (text,), (), frozenset(),
-                    True, annotation.line, annotation.start,
+                    credited, annotation.line, annotation.start,
                 ))  # fmt: skip
     return out
 
@@ -1496,11 +1550,11 @@ def _file(change: FileChange, ctx: Context) -> Iterator[Finding]:
         if new is None:
             continue  # a vanished method is Decision 6's disable/test_removed, reported once
         old_set = _both_ways(ctx.before, change.path, old, ctx.budget)
-        old_set += _annotation_expectations(change.before, old)
+        old_set += _annotation_expectations(ctx.before, change.path, old)
         if not old_set:
             continue
         new_set = _both_ways(ctx.after, change.path, new, ctx.budget)
-        new_set += _annotation_expectations(change.after, new)
+        new_set += _annotation_expectations(ctx.after, change.path, new)
         unchecked, checked = _soft_assertions(ctx.after, change.path, new)
         rebound = _rebound_names(change, ctx)
         if _supertypes_changed(ctx, change, new):

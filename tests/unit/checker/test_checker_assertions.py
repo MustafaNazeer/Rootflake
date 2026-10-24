@@ -899,3 +899,39 @@ def test_a_delta_that_starts_with_a_string_literal_is_not_a_message(tmp_path, de
     before = body_of("assertEquals(1.0, d());")
     after = body_of(f"assertEquals(1.0, d(), {delta});")
     assert TOLERANCE in codes(before, after, tmp_path)
+
+
+class TestSynthesizedFactsFailClosed:
+    def test_a_try_ending_in_a_project_fail_earns_no_credit(self, tmp_path):
+        helper = "  static void fail(String m) {}"
+        before = body_of("assertThrows(java.io.IOException.class, () -> f());", helper)
+        after = body_of('try { f(); fail("x"); } catch (java.io.IOException e) { }', helper)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_an_unresolved_test_annotation_expectation_earns_no_credit(self, tmp_path):
+        before = body_of("assertThrows(E.class, () -> f());")
+        after = (
+            body_of("f();")
+            .replace("import org.junit.Test;\n", "import x.Test;\n")
+            .replace("@Test public", "@Test(expected = E.class) public")
+        )
+        assert REMOVED in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        "helper",
+        ["  static double EPS = 0.01;\n  static void grow() { EPS = 0.5; }",
+         "  static double EPS = 0.01;\n  static void grow() { EPS++; }"],
+        ids=["reassigned_elsewhere", "incremented_elsewhere"],
+    )  # fmt: skip
+    def test_a_tolerance_constant_changed_elsewhere_has_no_value(self, tmp_path, helper):
+        before = body_of("assertEquals(1.0, d(), 0.01);", helper)
+        after = body_of("assertEquals(1.0, d(), EPS);", helper)
+        assert TOLERANCE in codes(before, after, tmp_path)
+
+    def test_a_local_list_shadowing_a_set_field_is_not_a_set(self, tmp_path):
+        helper = "  static Set<String> a = null;\n  static Set<String> b = null;"
+        before = body_of("List<String> a = e(); assertEquals(a, b);", helper)
+        after = body_of(
+            "List<String> a = e(); assertEquals(new HashSet<>(a), new HashSet<>(b));", helper
+        )
+        assert RELAXED in codes(before, after, tmp_path)
