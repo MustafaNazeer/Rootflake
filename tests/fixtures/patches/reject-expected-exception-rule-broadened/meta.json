@@ -1,0 +1,30 @@
+{
+  "id": "reject-expected-exception-rule-broadened",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "expected_exception_rule_broadened_to_exception",
+  "target": {
+    "class": "com.alibaba.csp.sentinel.eagleeye.EagleEyeCoreUtilsTest",
+    "method": "testCheckNotNullEmptyInputEmptyStringThrowsException"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/expected_exception_broadened"
+  ],
+  "disputed": false,
+  "notes": "Broadens the JUnit 4 ExpectedException rule in one test: thrown.expect(IllegalArgumentException.class) becomes thrown.expect(Exception.class), so the test passes on any exception from checkNotNullEmpty. Rejected under the named weakening expected_exception_broadened. Adapted: no merged change was found that broadens a thrown.expect type. The type is changed by hand on the pre image of accept-tzd-offset-at-instant, EagleEyeCoreUtilsTest.java at that fixture's source.base; every context and removed line is that file's own. The test does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052; the class has one Opened row for testFormatTime and no Accepted row.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/alibaba/Sentinel",
+    "commit": "d9398b4f752f8424cf926ccc32b8d9b21473de69",
+    "pr": "https://github.com/alibaba/Sentinel/pull/3459",
+    "base": "195150bc745927429e9f14f501907310b46d702f",
+    "path": "sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

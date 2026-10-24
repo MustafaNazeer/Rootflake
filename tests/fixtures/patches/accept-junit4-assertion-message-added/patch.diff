@@ -1,0 +1,13 @@
+diff --git a/common/src/test/java/org/apache/rocketmq/common/UtilAllTest.java b/common/src/test/java/org/apache/rocketmq/common/UtilAllTest.java
+index f568a65..6ee14d0 100644
+--- a/common/src/test/java/org/apache/rocketmq/common/UtilAllTest.java
++++ b/common/src/test/java/org/apache/rocketmq/common/UtilAllTest.java
+@@ -248,7 +248,7 @@ public void testCalculateFileSizeInPath() throws Exception {
+         assertTrue(file0.createNewFile());
+         writeFixedBytesToFile(file0, 1313);
+ 
+-        assertEquals(1313, UtilAll.calculateFileSizeInPath(baseFile));
++        assertEquals("size of the single file under baseFile", 1313, UtilAll.calculateFileSizeInPath(baseFile));
+ 
+         // build a file tree like above
+         File dir1 = new File(baseFile, "dir_1");

@@ -1,0 +1,15 @@
+diff --git a/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java b/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java
+index c6a2076..0005627 100644
+--- a/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java
++++ b/pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java
+@@ -572,7 +572,9 @@ private void assertSubscriptionDeliversAfterReconnect(String schedule, StuckStat
+     private void stageInFlightReadCompletion() throws Exception {
+         // Arm the tail-wait read: addConsumer -> scheduleReadOnActiveConsumer -> readMoreEntries.
+         connect(consumer);
+-        Assert.assertTrue(cursor.hasPendingReadRequest(), "the tail-wait read op should be armed after addConsumer");
++        Awaitility.await("the tail-wait read op should be armed after addConsumer")
++                .atMost(Duration.ofSeconds(BOARD_WAIT_SECONDS))
++                .until(() -> cursor.hasPendingReadRequest());
+         Assert.assertEquals(ledger.getWaitingCursorsCount(), 1, "the cursor should be registered in waitingCursors");
+         Assert.assertTrue(dispatcher.havePendingRead, "havePendingRead should be true while the tail read is armed");
+ 

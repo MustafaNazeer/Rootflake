@@ -1,0 +1,25 @@
+{
+  "id": "accept-junit5-assertion-message-added",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "junit5_trailing_message_added",
+  "target": {
+    "class": "org.apache.commons.lang3.reflect.FieldUtilsTest",
+    "method": "testGetAllFieldsList"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Adds a trailing failure message to a JUnit 5 assertEquals: assertEquals(0, size) becomes assertEquals(0, size, \"Object declares no fields\"). In org.junit.jupiter.api.Assertions the last String argument is the message, not a delta, so this is kind 1 of the strict assertion principle and must be accepted with no code. Adapted: no merged change was found that only adds a message to an existing JUnit 5 assertion. The message is hand written on the pre image of accept-id-sort-both-sides-full-equality, FieldUtilsTest.java at that fixture's source.base; every context and removed line is that file's own. testGetAllFieldsList does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052; the class has one DeveloperFixed row for testGetFieldsWithAnnotation.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/commons-lang",
+    "commit": "08d1f6623678e8cd0b37a9d2d721b95545bcc151",
+    "base": "3bda8be03638b5248df2252832388775601692ff",
+    "path": "src/test/java/org/apache/commons/lang3/reflect/FieldUtilsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

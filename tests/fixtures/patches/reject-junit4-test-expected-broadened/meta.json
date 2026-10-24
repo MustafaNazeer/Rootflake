@@ -1,0 +1,30 @@
+{
+  "id": "reject-junit4-test-expected-broadened",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "junit4_test_expected_broadened_to_exception",
+  "target": {
+    "class": "org.apache.rocketmq.common.UtilAllTest",
+    "method": "testMethod"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/expected_exception_broadened"
+  ],
+  "disputed": false,
+  "notes": "Broadens @Test(expected = NoSuchMethodException.class) on testMethod to @Test(expected = Exception.class), so the test passes on any exception. Rejected under the named weakening expected_exception_broadened. Adapted: no merged change was found that broadens the expected attribute of a JUnit 4 @Test. The type is changed by hand on the pre image of accept-try-finally-cleanup, UtilAllTest.java at that fixture's source.base; every context and removed line is that file's own. testMethod does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052; the class has one DeveloperFixed row for testCalculateFileSizeInPath.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/rocketmq",
+    "commit": "5d492c338258d07613103e6ae16df4c6fa5b3838",
+    "pr": "https://github.com/apache/rocketmq/pull/7445",
+    "base": "dc3f22ffe9eb83ace991b68921076093c7c0da5f",
+    "path": "common/src/test/java/org/apache/rocketmq/common/UtilAllTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

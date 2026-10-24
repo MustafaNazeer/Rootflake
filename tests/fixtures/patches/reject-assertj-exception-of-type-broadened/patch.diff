@@ -1,0 +1,13 @@
+diff --git a/src/test/java/examples/simple/PersonMapperTest.java b/src/test/java/examples/simple/PersonMapperTest.java
+index ca1e907..25d821b 100644
+--- a/src/test/java/examples/simple/PersonMapperTest.java
++++ b/src/test/java/examples/simple/PersonMapperTest.java
+@@ -410,7 +410,7 @@ void testUpdateByPrimaryKeyNullKeyShouldThrowException() {
+             PersonMapper mapper = session.getMapper(PersonMapper.class);
+             PersonRecord row = new PersonRecord(null, "Joe", new LastName("Jones"), new Date(), true, "Developer", 1);
+ 
+-            assertThatExceptionOfType(NonRenderingWhereClauseException.class).isThrownBy(() -> mapper.updateByPrimaryKey(row));
++            assertThatExceptionOfType(Exception.class).isThrownBy(() -> mapper.updateByPrimaryKey(row));
+         }
+     }
+ 

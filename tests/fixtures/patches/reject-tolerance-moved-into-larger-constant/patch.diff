@@ -1,0 +1,28 @@
+diff --git a/src/test/java/org/tailormap/api/geotools/featuresources/FeatureSourceStatisticsTest.java b/src/test/java/org/tailormap/api/geotools/featuresources/FeatureSourceStatisticsTest.java
+index 23efbdf..9267fa9 100644
+--- a/src/test/java/org/tailormap/api/geotools/featuresources/FeatureSourceStatisticsTest.java
++++ b/src/test/java/org/tailormap/api/geotools/featuresources/FeatureSourceStatisticsTest.java
+@@ -40,6 +40,7 @@ class FeatureSourceStatisticsTest {
+   private long minEpochMillis;
+   private long maxEpochMillis;
+   private static final int DAYS_IN_WEEK = 7;
++  private static final double STATISTICS_TOLERANCE = 250;
+   private static final int MILLISECONDS_IN_WEEK = DAYS_IN_WEEK * 24 * 60 * 60 * 1000;
+ 
+   @BeforeEach
+@@ -68,12 +69,12 @@ void get_number_statistics() {
+ 
+     assertFalse(statistics.getFilterApplied());
+     assertNotNull(statistics.getMin());
+-    assertThat(Double.valueOf(statistics.getMin().toString()), is(closeTo(0, 100)));
++    assertThat(Double.valueOf(statistics.getMin().toString()), is(closeTo(0, STATISTICS_TOLERANCE)));
+     assertNotNull(statistics.getMax());
+-    assertThat(Double.valueOf(statistics.getMax().toString()), is(closeTo(randomFeatureCount - 1, 100)));
++    assertThat(Double.valueOf(statistics.getMax().toString()), is(closeTo(randomFeatureCount - 1, STATISTICS_TOLERANCE)));
+     assertNotNull(statistics.getSum());
+     assertNotNull(statistics.getAvg());
+-    assertThat(statistics.getAvg(), is(closeTo((randomFeatureCount - 1) / 2.0, 100)));
++    assertThat(statistics.getAvg(), is(closeTo((randomFeatureCount - 1) / 2.0, STATISTICS_TOLERANCE)));
+     assertEquals(randomFeatureCount, statistics.getCount());
+     assertThat(randomFeatureCount, is(greaterThanOrEqualTo(progressCount.get())));
+   }

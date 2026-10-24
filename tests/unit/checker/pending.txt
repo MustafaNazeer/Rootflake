@@ -14,7 +14,6 @@ reject-catch-exception-return-early
 reject-catch-throwable-and-print
 reject-composed-annotation-retrying-test
 reject-elapsed-time-bound-raised
-reject-equality-to-not-null
 reject-existing-retry-rule-reused
 reject-existing-sleep-helper-newly-called
 reject-fixed-sleep-added-in-after-each
@@ -32,7 +31,6 @@ reject-junit5-exception-handler-aborts-failures
 reject-junit5-timeout-raised
 reject-junit5-timeout-removed
 reject-lock-support-park-nanos
-reject-mockito-verify-at-least-once
 reject-nod-sleep-replaced-by-await
 reject-poll-condition-reads-only-clock-field
 reject-poll-condition-reads-only-clock

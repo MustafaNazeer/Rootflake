@@ -1,0 +1,26 @@
+{
+  "id": "accept-mockito-verify-timeout-times-once",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "mockito_verify_timeout_times_once",
+  "target": {
+    "class": "org.apache.beam.sdk.io.kinesis.ShardReadersPoolTest",
+    "method": "shouldStopReadersPoolWhenLastShardReaderStopped"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Replaces a fixed Thread.sleep(200) before verify(firstIterator, times(1)) with verify(firstIterator, timeout(TIMEOUT_IN_MILLIS).times(1)), which polls until the call has happened and then checks it happened exactly once. The verification mode is unchanged, so this is kind 1 of the strict assertion principle, and a fixed sleep replaced by a condition wait is the allowed timing fix. Adapted from the source commit, which makes the same change in five tests of ShardReadersPoolTest: kept are the TIMEOUT_IN_MILLIS constant hunk and the shouldStopReadersPoolWhenLastShardReaderStopped hunk, both verbatim apart from line numbers. Dropped are the production change to ShardReadersPool.java, three removed @Ignore lines, two stopwatch bounds raised from one second to TIMEOUT_IN_MILLIS (a widened timing bound this set rejects elsewhere) and the other tests' hunks. The import hunk is edited: the source replaces the imports of atLeast and times with one of timeout, and here timeout is added and the other two are kept, because the tests left unchanged still call them. Not from IDoFT: neither the pull request nor ShardReadersPoolTest appears in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/beam",
+    "commit": "510fb1623cc2bd20471b3989997b69acb23a1267",
+    "pr": "https://github.com/apache/beam/pull/4668",
+    "base": "fd5c891f1c7310b481153ab7f9f4316e8e63c1c8",
+    "path": "sdks/java/io/kinesis/src/test/java/org/apache/beam/sdk/io/kinesis/ShardReadersPoolTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-24"
+  }
+}

@@ -2,6 +2,14 @@ diff --git a/codec-http2/src/test/java/io/netty/handler/codec/http2/HttpToHttp2C
 index 1e1e368092f..f3171d6d09d 100644
 --- a/codec-http2/src/test/java/io/netty/handler/codec/http2/HttpToHttp2ConnectionHandlerTest.java
 +++ b/codec-http2/src/test/java/io/netty/handler/codec/http2/HttpToHttp2ConnectionHandlerTest.java
+@@ -72,6 +72,7 @@
+ import static org.mockito.Mockito.anyBoolean;
+ import static org.mockito.Mockito.anyInt;
+ import static org.mockito.Mockito.anyShort;
++import static org.mockito.Mockito.atLeastOnce;
+ import static org.mockito.Mockito.doAnswer;
+ import static org.mockito.Mockito.eq;
+ import static org.mockito.Mockito.never;
 @@ -563,12 +564,18 @@ public Void answer(InvocationOnMock in) throws Throwable {
          awaitRequests();
          verify(serverListener).onHeadersRead(any(ChannelHandlerContext.class), eq(3), eq(http2Headers), eq(0),

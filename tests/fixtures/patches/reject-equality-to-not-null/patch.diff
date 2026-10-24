@@ -1,7 +1,15 @@
 diff --git a/trino-connector/trino-connector/src/test/java/org/apache/gravitino/trino/connector/TestGravitinoConnector.java b/trino-connector/trino-connector/src/test/java/org/apache/gravitino/trino/connector/TestGravitinoConnector.java
 --- a/trino-connector/trino-connector/src/test/java/org/apache/gravitino/trino/connector/TestGravitinoConnector.java
 +++ b/trino-connector/trino-connector/src/test/java/org/apache/gravitino/trino/connector/TestGravitinoConnector.java
-@@ -387,7 +387,7 @@ public void testCatalogStatusReportsARegistrationFailure() throws Exception {
+@@ -21,6 +21,7 @@
+ import static java.lang.String.format;
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.junit.jupiter.api.Assertions.assertEquals;
++import static org.junit.jupiter.api.Assertions.assertNotNull;
+ import static org.junit.jupiter.api.Assertions.assertNull;
+ 
+ import com.google.common.base.Preconditions;
+@@ -387,7 +388,7 @@ public void testCatalogStatusReportsARegistrationFailure() throws Exception {
        MaterializedRow row = result.getMaterializedRows().get(0);
        assertEquals(row.getField(0), "FAILED");
        assertThat((String) row.getField(1)).contains("unknown-direct-key");

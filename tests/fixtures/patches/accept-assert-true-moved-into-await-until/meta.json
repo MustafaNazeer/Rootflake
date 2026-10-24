@@ -1,0 +1,26 @@
+{
+  "id": "accept-assert-true-moved-into-await-until",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "assert_true_moved_into_until_lambda",
+  "target": {
+    "class": "org.apache.pulsar.broker.service.persistent.PersistentDispatcherSingleActiveConsumerStuckReadTest",
+    "method": "testFailoverConsumerStuckWhenRedeliverRacesInFlightReadCompletion"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Moves Assert.assertTrue(cursor.hasPendingReadRequest(), message) into an Awaitility wait, Awaitility.await(message).atMost(Duration.ofSeconds(BOARD_WAIT_SECONDS)).until(() -> cursor.hasPendingReadRequest()), in the stageInFlightReadCompletion helper that both tests of the class call. The wait throws ConditionTimeoutException when the condition never holds, and a lambda whose only return value is the asserted condition matches assertTrue of it, so this is kind 3 of the strict assertion principle; the bound reuses the file's own BOARD_WAIT_SECONDS and the same chain shape as its awaitBoardHasAtLeast helper. Target: the first of the two tests that call the helper. Adapted: no merged change was found that moves an assertTrue into until(() -> condition) on its own. The wait is hand written on the pre image of accept-existing-poll-helper-newly-called, the file as its source pull request created it; every context and removed line is that file's own. Not from IDoFT: the class does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/pulsar",
+    "commit": "0679b0d897de064bd6edfd47694f35a9ff44e80f",
+    "pr": "https://github.com/apache/pulsar/pull/26174",
+    "base": "0679b0d897de064bd6edfd47694f35a9ff44e80f",
+    "path": "pulsar-broker/src/test/java/org/apache/pulsar/broker/service/persistent/PersistentDispatcherSingleActiveConsumerStuckReadTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-23"
+  }
+}

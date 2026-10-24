@@ -1,0 +1,13 @@
+diff --git a/src/test/java/examples/simple/PersonMapperTest.java b/src/test/java/examples/simple/PersonMapperTest.java
+index ca1e907..642044d 100644
+--- a/src/test/java/examples/simple/PersonMapperTest.java
++++ b/src/test/java/examples/simple/PersonMapperTest.java
+@@ -623,7 +623,7 @@ void testJoinAllRows() {
+             assertThat(records.get(0).getId()).isEqualTo(1);
+             assertThat(records.get(0).getEmployed()).isTrue();
+             assertThat(records.get(0).getFirstName()).isEqualTo("Fred");
+-            assertThat(records.get(0).getLastName()).isEqualTo(new LastName("Flintstone"));
++            assertThat(records.get(0).getLastName()).as("last name of the first row").isEqualTo(new LastName("Flintstone"));
+             assertThat(records.get(0).getOccupation()).isEqualTo("Brontosaurus Operator");
+             assertThat(records.get(0).getBirthDate()).isNotNull();
+             assertThat(records.get(0).getAddress().getId()).isEqualTo(1);

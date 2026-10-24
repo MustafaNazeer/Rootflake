@@ -1,0 +1,29 @@
+{
+  "id": "reject-json-assert-strict-to-lenient",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "json_assert_strict_true_to_false",
+  "target": {
+    "class": "org.apache.camel.component.jackson.transform.JsonDataTypeTransformerTest",
+    "method": "shouldHandlePojo"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Changes JSONAssert.assertEquals(expected, actual, true) to the same call with false in a test that serialises a POJO, the usual shortcut when the field order of the output varies. With strict false JSONAssert uses LENIENT, which also accepts fields the expected document does not name, while the only allowlisted relaxation of a strict comparison is NON_EXTENSIBLE, which drops array order alone. A move to LENIENT is not a named weakening and never a match, so the changed assertion is a removal. Adapted: no merged change with a permissive license was found that turns strict true into false. The flag is changed by hand on JsonDataTypeTransformerTest.java as of the last commit that changed it, eb9f3f3b3fb13e0efcee4bf4395e00fe833ac2a7 on the default branch; every context and removed line is that file's own. Not from IDoFT: the class does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/camel",
+    "commit": "eb9f3f3b3fb13e0efcee4bf4395e00fe833ac2a7",
+    "base": "eb9f3f3b3fb13e0efcee4bf4395e00fe833ac2a7",
+    "path": "components/camel-jackson/src/test/java/org/apache/camel/component/jackson/transform/JsonDataTypeTransformerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-24"
+  }
+}

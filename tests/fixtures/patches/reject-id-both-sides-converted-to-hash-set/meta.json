@@ -1,0 +1,30 @@
+{
+  "id": "reject-id-both-sides-converted-to-hash-set",
+  "expected": "reject",
+  "reject_kind": "policy",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "assert_equals_both_list_sides_to_hash_set",
+  "target": {
+    "class": "org.apache.commons.lang3.reflect.FieldUtilsTest",
+    "method": "testGetAllFieldsList"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/equality_relaxed"
+  ],
+  "disputed": false,
+  "notes": "The maintainers' fix for an order dependent test: assertEquals(allFieldsInteger, FieldUtils.getAllFieldsList(Integer.class)), two List<Field> values, becomes assertEquals(new HashSet(allFieldsInteger), new HashSet(FieldUtils.getAllFieldsList(Integer.class))), because getDeclaredFields() returns fields in no particular order. Converting both sides to a set drops the order and also the count of duplicates, and neither side is declared as a Set, so the named weakening equality_relaxed applies. Policy reject: a class cannot declare a field twice, so for this test the set comparison loses nothing, but no diff rule can know that; sorting both sides with full equality, as the later fix in accept-id-sort-both-sides-full-equality does, is the form the rules accept. The whole commit is kept: it changes only this file. The commit message names LANG-1514. Not from IDoFT: testGetAllFieldsList and pull request 485 do not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052; the class has one DeveloperFixed row for testGetFieldsWithAnnotation.",
+  "derivation": "verbatim",
+  "source": {
+    "repo": "https://github.com/apache/commons-lang",
+    "commit": "4b11c764e5bfa1fd2e3b85247c0384c66b515489",
+    "pr": "https://github.com/apache/commons-lang/pull/485",
+    "base": "a606a0328ba4b3061c5bc810a31418fa4251ea16",
+    "path": "src/test/java/org/apache/commons/lang3/reflect/FieldUtilsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-24"
+  }
+}

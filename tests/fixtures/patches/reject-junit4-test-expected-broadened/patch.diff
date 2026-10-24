@@ -1,0 +1,13 @@
+diff --git a/common/src/test/java/org/apache/rocketmq/common/UtilAllTest.java b/common/src/test/java/org/apache/rocketmq/common/UtilAllTest.java
+index f568a65..c7b644d 100644
+--- a/common/src/test/java/org/apache/rocketmq/common/UtilAllTest.java
++++ b/common/src/test/java/org/apache/rocketmq/common/UtilAllTest.java
+@@ -214,7 +214,7 @@ public void testCleanBuffer() {
+         UtilAll.cleanBuffer(ByteBuffer.allocate(0));
+     }
+ 
+-    @Test(expected = NoSuchMethodException.class)
++    @Test(expected = Exception.class)
+     public void testMethod() throws NoSuchMethodException {
+         UtilAll.method(new Object(), "noMethod", null);
+     }

@@ -1,0 +1,26 @@
+{
+  "id": "accept-junit4-assertion-message-added",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "junit4_leading_message_added",
+  "target": {
+    "class": "org.apache.rocketmq.common.UtilAllTest",
+    "method": "testCalculateFileSizeInPath"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Adds a leading failure message to a JUnit 4 assertEquals: assertEquals(1313, actual) becomes assertEquals(\"size of the single file under baseFile\", 1313, actual). The expected and actual values are unchanged and a String first argument of a three argument org.junit.Assert.assertEquals is the message, not a tolerance, so this is kind 1 of the strict assertion principle and must be accepted with no code. Adapted: no merged change was found that only adds a message to an existing JUnit 4 assertion. The message is hand written on the pre image of accept-try-finally-cleanup, UtilAllTest.java at that fixture's source.base; every context and removed line is that file's own. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 lists testCalculateFileSizeInPath with Status DeveloperFixed; it has no Accepted row.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/rocketmq",
+    "commit": "5d492c338258d07613103e6ae16df4c6fa5b3838",
+    "pr": "https://github.com/apache/rocketmq/pull/7445",
+    "base": "dc3f22ffe9eb83ace991b68921076093c7c0da5f",
+    "path": "common/src/test/java/org/apache/rocketmq/common/UtilAllTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,13 @@
+diff --git a/components/camel-jackson/src/test/java/org/apache/camel/component/jackson/transform/JsonDataTypeTransformerTest.java b/components/camel-jackson/src/test/java/org/apache/camel/component/jackson/transform/JsonDataTypeTransformerTest.java
+index 173a6dc..87903f9 100644
+--- a/components/camel-jackson/src/test/java/org/apache/camel/component/jackson/transform/JsonDataTypeTransformerTest.java
++++ b/components/camel-jackson/src/test/java/org/apache/camel/component/jackson/transform/JsonDataTypeTransformerTest.java
+@@ -58,7 +58,7 @@ void shouldHandlePojo() throws Exception {
+ 
+         JSONAssert.assertEquals("""
+                     {"name":"Mickey","age":20}
+-                """, exchange.getMessage().getBody(String.class), true);
++                """, exchange.getMessage().getBody(String.class), false);
+     }
+ 
+     @Test

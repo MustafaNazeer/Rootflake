@@ -1,0 +1,13 @@
+diff --git a/src/test/java/org/apache/commons/lang3/reflect/FieldUtilsTest.java b/src/test/java/org/apache/commons/lang3/reflect/FieldUtilsTest.java
+index f52de06..2098057 100644
+--- a/src/test/java/org/apache/commons/lang3/reflect/FieldUtilsTest.java
++++ b/src/test/java/org/apache/commons/lang3/reflect/FieldUtilsTest.java
+@@ -182,7 +182,7 @@ public void testGetAllFields() {
+ 
+     @Test
+     public void testGetAllFieldsList() {
+-        assertEquals(0, FieldUtils.getAllFieldsList(Object.class).size());
++        assertEquals(0, FieldUtils.getAllFieldsList(Object.class).size(), "Object declares no fields");
+         final List<Field> fieldsNumber = Arrays.asList(Number.class.getDeclaredFields());
+         assertEquals(fieldsNumber, FieldUtils.getAllFieldsList(Number.class));
+         final List<Field> fieldsInteger = Arrays.asList(Integer.class.getDeclaredFields());

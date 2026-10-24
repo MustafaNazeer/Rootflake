@@ -1,0 +1,13 @@
+diff --git a/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java b/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java
+index f7e4f93..ea36102 100644
+--- a/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java
++++ b/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java
+@@ -44,7 +44,7 @@ public void testCheckNotNullEmpty() {
+ 
+     @Test
+     public void testCheckNotNullEmptyInputEmptyStringThrowsException() {
+-        thrown.expect(IllegalArgumentException.class);
++        thrown.expect(Exception.class);
+         EagleEyeCoreUtils.checkNotNullEmpty("", "bar");
+         // Method is not expected to return due to exception thrown
+     }

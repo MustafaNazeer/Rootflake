@@ -17,7 +17,7 @@
     "weaken_assertion/verification_mode_relaxed"
   ],
   "disputed": false,
-  "notes": "Changes an exact Mockito verify (one call) to verify(..., atLeastOnce()) and replaces two buffer assertions with a check on the concatenated text. Only the test hunk is kept. Policy reject: the maintainers note the frames may or may not be coalesced, so one or two calls are both correct, but times(1) to atLeastOnce() is a change of matcher that the strict assertion principle does not allow and no diff rule can separate from a real weakening.",
+  "notes": "Changes an exact Mockito verify (one call) to verify(..., atLeastOnce()) and replaces two buffer assertions with a check on the concatenated text. Policy reject: the maintainers note the frames may or may not be coalesced, so one or two calls are both correct, but times(1) to atLeastOnce() is a change of matcher that the strict assertion principle does not allow and no diff rule can separate from a real weakening. Fixed 2026-10-24: the import hunk at line 72 that adds import static org.mockito.Mockito.atLeastOnce had been dropped, so the patched file called atLeastOnce without importing it; it is restored from the source commit, whose diff is now kept whole (it changes only this file).",
   "derivation": "verbatim",
   "source": {
     "repo": "https://github.com/netty/netty",

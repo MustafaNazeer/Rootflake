@@ -16,7 +16,7 @@
     "weaken_assertion/equality_relaxed"
   ],
   "disputed": false,
-  "notes": "Same assertion as reject-equality-to-lower-bound, replaced by a null check that holds for any value. Change from the original: the added comment and isGreaterThanOrEqualTo line are replaced by assertNotNull(row.getField(2)). In the source, a commit message carries a co-author trailer naming an AI model; it is used here as a real merged change and recorded as such.",
+  "notes": "Same assertion as reject-equality-to-lower-bound, replaced by a null check that holds for any value. Change from the original: the added comment and isGreaterThanOrEqualTo line are replaced by assertNotNull(row.getField(2)). In the source, a commit message carries a co-author trailer naming an AI model; it is used here as a real merged change and recorded as such. Fixed 2026-10-24: the patched file called assertNotNull without importing it. Neither the file's supertype AbstractGravitinoConnectorTest at source.base nor its own supertype, Trino's AbstractTestQueryFramework at Trino 440 (the minSupportedTrinoVersion in gravitino's gradle.properties at source.base) and at 435 (the trino entry in gradle/libs.versions.toml), declares assertNotNull, so a hand made hunk now adds import static org.junit.jupiter.api.Assertions.assertNotNull between the file's existing assertEquals and assertNull imports, in the order the file already uses. The second hunk's new start line moves from 387 to 388 to match.",
   "derivation": "adapted",
   "source": {
     "repo": "https://github.com/apache/gravitino",

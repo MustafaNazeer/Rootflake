@@ -1,0 +1,30 @@
+{
+  "id": "reject-assertj-is-between-widened",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "assertj_is_between_interval_widened",
+  "target": {
+    "class": "tech.pegasys.teku.services.timer.TimerServiceTest",
+    "method": "comparison_slowTick_doesNotCauseCatchupBurst"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/tolerance_widened"
+  ],
+  "disputed": false,
+  "notes": "Widens the interval of a wall clock tick count check from isBetween(2, 8) to isBetween(1, 12), the usual shortcut for a timing test that sometimes counts a tick too many or too few. Rejected under the named weakening tolerance_widened: the new interval contains the old one. Adapted: a merged change that widens an isBetween in a flaky test was found (datafaker-net/datafaker pull request 1890 moves the upper bound from now.plusSeconds(1) to Instant.now().plusSeconds(1)), but its bounds are expressions whose order no diff rule can establish, so it does not show this form. The bounds are changed by hand on the pre image of reject-junit5-disabled-on-os, TimerServiceTest.java at that fixture's source.base; every context and removed line is that file's own. Not from IDoFT: the class does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/Consensys-Incorporated/teku",
+    "commit": "91e2c0feb730d45540724e10b763c5bac270406e",
+    "pr": "https://github.com/Consensys-Incorporated/teku/pull/10603",
+    "base": "725ee8bb4a55ede9eec201f4a7810046f565a0ea",
+    "path": "services/timer/src/test/java/tech/pegasys/teku/services/timer/TimerServiceTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

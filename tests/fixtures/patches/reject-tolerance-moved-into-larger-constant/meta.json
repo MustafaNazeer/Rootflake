@@ -1,0 +1,30 @@
+{
+  "id": "reject-tolerance-moved-into-larger-constant",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "hamcrest_close_to_tolerance_moved_into_larger_constant",
+  "target": {
+    "class": "org.tailormap.api.geotools.featuresources.FeatureSourceStatisticsTest",
+    "method": "get_number_statistics"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/tolerance_widened"
+  ],
+  "disputed": false,
+  "notes": "Moves the literal tolerance 100 of three Hamcrest closeTo checks on the statistics of a random sample into a new constant STATISTICS_TOLERANCE = 250, which reads like a tidy up but widens every one of them. Rejected under the named weakening tolerance_widened: a tolerance named by a constant is compared by the constant's value. Adapted: no merged change was found that hides a larger tolerance behind a constant. The constant and its uses are hand written on the pre image of reject-junit-pioneer-retrying-test, FeatureSourceStatisticsTest.java at that fixture's source.base, a test its maintainers treated as flaky; every context and removed line is that file's own. Not from IDoFT: the class does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/Tailormap/tailormap-api",
+    "commit": "4b00cdbd862d8841c9ff7236c06a1cc85556db00",
+    "pr": "https://github.com/Tailormap/tailormap-api/pull/1905",
+    "base": "38afe9643df72d27b19489bebf592dda3ee0bc1e",
+    "path": "src/test/java/org/tailormap/api/geotools/featuresources/FeatureSourceStatisticsTest.java",
+    "license": "MIT",
+    "fetched": "2026-10-14"
+  }
+}
