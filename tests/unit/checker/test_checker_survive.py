@@ -427,3 +427,26 @@ def test_a_default_method_source_is_not_the_test_itself(tmp_path):
     before = template.replace("BODY", "assertEquals(n, f(n));")
     after = template.replace("BODY", "assertEquals(n, f(n, UTC));")
     assert "disable/parameter_cases_dropped" not in codes(before, after, tmp_path)
+
+
+class TestSecondReview:
+    def test_a_changed_boolean_supplier_in_an_assumption_is_a_new_assumption(self, tmp_path):
+        before = cls("@Test public void testFoo() { assumeTrue(() -> isLinux()); f(); }")
+        after = before.replace("isLinux()", "true")
+        assert "disable/assumption_added" in codes(before, after, tmp_path)
+
+    def test_a_comma_inside_a_string_is_not_a_case_separator(self, tmp_path):
+        template = cls(
+            "@ParameterizedTest @CsvSource(ROWS) public void testFoo(String s) { f(s); }"
+        )
+        before = template.replace("ROWS", '{"a , 1", "b , 2"}')
+        after = template.replace("ROWS", '{"a , 1 , b , 2"}')
+        assert codes(before, after, tmp_path) == {"disable/parameter_cases_dropped"}
+
+    def test_a_value_return_in_a_new_test_is_an_early_return(self, tmp_path):
+        added = "@Test public int testNew() { if (done()) { return 1; } fail(); return 0; }"
+        assert "disable/early_return" in codes(cls(TEST), cls(TEST + added), tmp_path)
+
+    def test_a_test_whose_return_type_leaves_void_is_removed(self, tmp_path):
+        after = cls("@Test public int testFoo() { assertEquals(1, f()); return 0; }")
+        assert "disable/test_removed" in codes(cls(TEST), after, tmp_path)

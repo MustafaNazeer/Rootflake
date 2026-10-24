@@ -136,12 +136,11 @@ def _outside_nested(body) -> Iterator:
 
 
 def _returns(method: Method) -> int:
-    """Void returns only: a @TestFactory must return its tests, and a value return is not a
-    way out of a void test method."""
+    """Returns outside nested lambdas and classes; a @TestFactory must return its tests."""
+    if any(simple(a) == "TestFactory" for a in method.annotations):
+        return 0
     return sum(
-        1
-        for n in _outside_nested(method.body)
-        if isinstance(n, Statement) and n.kind == "return" and n.end - n.start == 2
+        1 for n in _outside_nested(method.body) if isinstance(n, Statement) and n.kind == "return"
     )
 
 
@@ -185,6 +184,9 @@ def _removals(change: FileChange, ctx: Context) -> Iterator[Finding]:
             if not retried:
                 yield Finding("disable/test_removed", change.path, new.line)
             continue
+        factory = "TestFactory" in annotation_names(new.annotations, ctx.after)
+        if method.return_type == "void" and new.return_type != "void" and not factory:
+            yield Finding("disable/test_removed", change.path, new.line)
         is_target = target is not None and key[0] == target.dotted and key[1] == target.method
         old_names = annotation_names(method.annotations, ctx.before) & TEST_ANNOTATIONS
         new_names = annotation_names(new.annotations, ctx.after) & TEST_ANNOTATIONS
@@ -350,12 +352,10 @@ def _top_level_arguments(unit: CompilationUnit, open_paren: int) -> list[tuple[i
 def _call_site(unit: CompilationUnit, call) -> str:
     """An assumption call without its executable arguments, so a change inside the code that
     assumingThat runs is not read as a changed assumption."""
-    kept = []
-    for start, end in _top_level_arguments(unit, call.start + 1):
-        words = [t.text for t in unit.tokens[start:end]]
-        if "->" in words or "::" in words:
-            continue
-        kept.append(" ".join(words))
+    arguments = _top_level_arguments(unit, call.start + 1)
+    if call.name == "assumingThat" and len(arguments) > 1:
+        arguments = arguments[:-1]  # the trailing Executable runs under the assumption
+    kept = [" ".join(t.text for t in unit.tokens[start:end]) for start, end in arguments]
     receiver = f"{call.receiver}." if call.receiver not in (None, "<expr>") else ""
     return f"{receiver}{call.name}({', '.join(kept)})"
 
@@ -415,9 +415,28 @@ _SOURCES = frozenset(
 _COLLECTIONS = frozenset(["Stream.of", "List.of", "Arrays.asList", "Set.of"])
 
 
+def _blank_literals(value: str) -> str:
+    out, quote, i = [], None, 0
+    while i < len(value):
+        char = value[i]
+        if quote:
+            if char == "\\":
+                i += 2
+                continue
+            if char == quote:
+                quote = None
+                out.append("0")
+        elif char in "\"'":
+            quote = char
+        else:
+            out.append(char)
+        i += 1
+    return "".join(out)
+
+
 def _count_elements(value: str) -> int | None:
     """Elements of an annotation array value such as `{1, 2, 3}` or a single value."""
-    value = value.strip()
+    value = _blank_literals(value).strip()
     if not value.startswith("{"):
         return 1 if value else None
     inner = value[1:-1].strip() if value.endswith("}") else None
