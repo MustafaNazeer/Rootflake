@@ -753,3 +753,149 @@ class TestLegitimateChangesKeepTheirMatch:
         before = body_of("g();", helper)
         after = body_of("g();", helper.replace("assertEquals(1, f())", "assertEquals(2, f())"))
         assert codes(before, after, tmp_path) == set()
+
+
+BROADENED = "weaken_assertion/expected_exception_broadened"
+TOLERANCE = "weaken_assertion/tolerance_widened"
+RELAXED = "weaken_assertion/equality_relaxed"
+HAMCREST_IMPORTS = (
+    "import static org.hamcrest.Matchers.*;\nimport static org.hamcrest.MatcherAssert.assertThat;\n"
+)
+
+
+class TestWeakeningsTheTableNames:
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertThatExceptionOfType(java.io.IOException.class).isThrownBy(() -> f());",
+          "assertThatExceptionOfType(Exception.class).isThrownBy(() -> f());"),
+         ("assertThrows(java.io.IOException.class, () -> f());",
+          "assertThrows(java.lang.Exception.class, () -> f());"),
+         ("assertThatThrownBy(() -> f()).isInstanceOf(java.io.IOException.class);",
+          "assertThatThrownBy(() -> f()).isInstanceOf(java.lang.RuntimeException.class);")],
+        ids=["exception_of_type", "qualified_assert_throws", "qualified_is_instance_of"],
+    )  # fmt: skip
+    def test_a_broadened_exception_type(self, tmp_path, before, after):
+        assert BROADENED in codes(body_of(before), body_of(after), tmp_path)
+
+    def test_a_broadened_hamcrest_instance_of(self, tmp_path):
+        before = body_of("assertThat(error(), instanceOf(java.io.IOException.class));")
+        after = body_of("assertThat(error(), instanceOf(Throwable.class));")
+        before, after = (
+            s.replace("import static org.assertj.core.api.Assertions.assertThat;\n", "")
+            for s in (before, after)
+        )
+        before, after = (with_imports(s, HAMCREST_IMPORTS) for s in (before, after))
+        assert BROADENED in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("old", "new"),
+        [("@Test(expected = java.io.IOException.class)", "@Test(expected = Exception.class)"),
+         ("@Test(expectedExceptions = java.io.IOException.class)",
+          "@Test(expectedExceptions = Throwable.class)")],
+        ids=["junit4_expected", "testng_expected_exceptions"],
+    )  # fmt: skip
+    def test_a_broadened_annotation_expectation(self, tmp_path, old, new):
+        before = body_of("f();").replace("@Test public", f"{old} public")
+        after = body_of("f();").replace("@Test public", f"{new} public")
+        assert BROADENED in codes(before, after, tmp_path)
+
+    def test_a_removed_annotation_expectation_is_removed(self, tmp_path):
+        before = body_of("f();").replace("@Test public", "@Test(expected = E.class) public")
+        assert REMOVED in codes(before, body_of("f();"), tmp_path)
+
+    def test_an_annotation_expectation_moved_into_assert_throws_is_kept(self, tmp_path):
+        before = body_of("f();").replace("@Test public", "@Test(expected = E.class) public")
+        after = body_of("assertThrows(E.class, () -> f());")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_broadened_expected_exception_rule(self, tmp_path):
+        rule = "  @org.junit.Rule public ExpectedException thrown = ExpectedException.none();"
+        imports = "import org.junit.rules.ExpectedException;\n"
+        before = with_imports(
+            body_of("thrown.expect(java.io.IOException.class); f();", rule), imports
+        )
+        after = with_imports(body_of("thrown.expect(Exception.class); f();", rule), imports)
+        assert BROADENED in codes(before, after, tmp_path)
+
+    def test_a_broadened_caught_type_before_fail(self, tmp_path):
+        before = body_of('try { f(); fail("x"); } catch (java.io.IOException e) { }')
+        after = body_of('try { f(); fail("x"); } catch (Exception e) { }')
+        assert BROADENED in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertThat(a()).isBetween(5, 10);", "assertThat(a()).isBetween(0, 10);"),
+         ("assertTrue(a() > 5 && a() < 10);", "assertTrue(a() > 0 && a() < 100);"),
+         ("assertThat(a()).isGreaterThan(5).isLessThan(10);",
+          "assertThat(a()).isGreaterThan(0).isLessThan(100);"),
+         ('assertEquals("m", 1.0, d(), 0.01);', 'assertEquals("m", 1.0, d(), 0.5);'),
+         ('assertEquals("m", 1.0, d());', 'assertEquals("m", 1.0, d(), 0.5);'),
+         ("assertEquals(1.0, d(), 0.01);", "assertEquals(1.0, d(), EPS);"),
+         ("assertThat(d()).isCloseTo(1.0, within(0.01));",
+          "double tol = 0.5; assertThat(d()).isCloseTo(1.0, within(tol));")],
+        ids=["interval", "two_sided_condition", "two_sided_chain", "message_delta",
+             "message_added_delta", "constant", "local"],
+    )  # fmt: skip
+    def test_a_widened_tolerance(self, tmp_path, before, after):
+        helper = "  static final double EPS = 0.5;"
+        assert TOLERANCE in codes(body_of(before, helper), body_of(after, helper), tmp_path)
+
+    def test_a_tolerance_named_by_an_equal_constant_is_kept(self, tmp_path):
+        helper = "  static final double EPS = 0.01;"
+        before = body_of("assertEquals(1.0, d(), 0.01);", helper)
+        after = body_of("assertEquals(1.0, d(), EPS);", helper)
+        assert codes(before, after, tmp_path) == set()
+
+    def test_both_sides_converted_to_a_set(self, tmp_path):
+        before = body_of("List<String> a = e(); List<String> b = f(); assertEquals(a, b);")
+        after = body_of(
+            "List<String> a = e(); List<String> b = f(); "
+            "assertEquals(new HashSet<>(a), new HashSet<>(b));"
+        )
+        assert RELAXED in codes(before, after, tmp_path)
+
+    def test_a_set_conversion_of_declared_sets_is_kept(self, tmp_path):
+        before = body_of("Set<String> a = e(); Set<String> b = f(); assertEquals(a, b);")
+        after = body_of(
+            "Set<String> a = e(); Set<String> b = f(); "
+            "assertEquals(new HashSet<>(a), new HashSet<>(b));"
+        )
+        assert codes(before, after, tmp_path) == set()
+
+    def test_json_assert_strict_true_to_false(self, tmp_path):
+        imports = "import org.skyscreamer.jsonassert.JSONAssert;\n"
+        before = with_imports(body_of("JSONAssert.assertEquals(e(), a(), true);"), imports)
+        after = with_imports(body_of("JSONAssert.assertEquals(e(), a(), false);"), imports)
+        assert codes(before, after, tmp_path) & {REMOVED, RELAXED}
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertThat(v()).isEqualTo(3);", "assertThat(v()).isEqualTo(v());"),
+         ("assertThat(ok()).isTrue();", "assertThat(true).isTrue();"),
+         ('assertEquals(a(), b(), "m");', 'assertEquals(a(), a(), "m");'),
+         ("assertTrue(x().equals(y()));", "assertTrue(x().equals(y()) | true);")],
+        ids=["assertj_self", "assertj_literal", "junit5_message_self", "single_bar_true"],
+    )  # fmt: skip
+    def test_a_trivially_true_replacement_is_refused(self, tmp_path, before, after):
+        assert REMOVED in codes(body_of(before), body_of(after), tmp_path)
+
+    def test_a_trivially_true_hamcrest_replacement_is_refused(self, tmp_path):
+        before, after = (
+            with_imports(
+                body_of(s).replace(
+                    "import static org.assertj.core.api.Assertions.assertThat;\n", ""
+                ),
+                HAMCREST_IMPORTS,
+            )
+            for s in ("assertThat(v(), is(3));", "assertThat(v(), is(v()));")
+        )
+        assert REMOVED in codes(before, after, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "delta", ['"0.5".length()', '"abc".length() + 1'], ids=["member", "member_then_plus"]
+)
+def test_a_delta_that_starts_with_a_string_literal_is_not_a_message(tmp_path, delta):
+    before = body_of("assertEquals(1.0, d());")
+    after = body_of(f"assertEquals(1.0, d(), {delta});")
+    assert TOLERANCE in codes(before, after, tmp_path)

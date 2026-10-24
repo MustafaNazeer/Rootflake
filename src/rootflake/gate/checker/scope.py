@@ -96,6 +96,7 @@ class Program:
         self.methods_by_name: dict[str, list[tuple[str, Method]]] = {}
         self.method_owner: dict[int, str] = {}
         self._resolving: set[int] = set()
+        self.memo: dict[tuple, object] = {}  # per file results a rule computes once
         for path, unit in units.items():
             prefix = f"{unit.package}." if unit.package else ""
             pending = [(decl, prefix + decl.name) for decl in unit.types]

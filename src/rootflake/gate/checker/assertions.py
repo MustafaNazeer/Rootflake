@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from rootflake.gate.checker.calls import Call, ExpansionBudget, calls_in, reach
 from rootflake.gate.checker.model import Context, FileChange, Finding
 from rootflake.gate.checker.scope import Program
-from rootflake.gate.checker.survive import SKIP_EXCEPTIONS
+from rootflake.gate.checker.survive import SKIP_EXCEPTIONS, attributes
 from rootflake.gate.checker.syntax import (
     Block,
     Catch,
@@ -64,6 +64,9 @@ class Assertion:
     scanned_only: bool = False
     origin: tuple = ()
     subject: frozenset = frozenset()
+    # ("value", name, number) for a name bound only to a numeric literal, ("set", name) for a
+    # name declared with a Set type, from the file and method the assertion sits in.
+    facts: frozenset = frozenset()
 
 
 def _text(unit: CompilationUnit, start: int, end: int) -> str:
@@ -378,9 +381,20 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
     declared = declared_waits(program)
     definitions = _local_definitions(unit, body)
     exits = _exits(unit, body)
+    facts = _facts(program, path, body)
+    rules = _expected_exception_fields(program, path)
     out: list[Assertion] = []
     consumed: set[int] = set()
     for call in calls_in(unit, body):
+        if call.name == "expect" and call.receiver in rules and call.arity == 1:
+            arguments = _split_arguments(unit, call.start + 1, _close(unit, call.start + 1))
+            out.append(Assertion(
+                f"expect ( {arguments[0]} )", ("expect",), arguments,
+                _guard(unit, body, call.start, declared),
+                frozenset(t for at, t in exits if at < call.start), rules[call.receiver],
+                unit.tokens[call.start].line, call.start, facts=facts,
+            ))  # fmt: skip
+            continue
         if call.start in consumed or call.reference or not is_assertion_name(call.name):
             continue
         if program.methods_by_name.get(call.name):
@@ -425,6 +439,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                     ),
                     definitions,
                 ),
+                facts=facts,
             )
         )
     for node in walk(body):
@@ -467,6 +482,21 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             out.append(_wait_assertion(unit, body, declared, exits, at, "assertTrue",
                                        (f"{receiver} . {call.name} ( )",), at))  # fmt: skip
     for node in walk(body):
+        if isinstance(node, Statement) and node.kind == "try" and node.blocks:
+            statements = node.blocks[0].statements
+            last = statements[-1] if statements else None
+            if last is None or last.kind != "expression" or not _ends_in_fail(unit, last):
+                continue
+            for catch in node.catches:
+                for caught in catch.types:
+                    text = f"{' . '.join(caught.split('.'))} . class"
+                    out.append(Assertion(
+                        f"assertThrows ( {text} )", ("assertThrows",), (text,),
+                        _guard(unit, body, node.start, declared),
+                        frozenset(t for at, t in exits if at < node.start), True, catch.line,
+                        catch.start, facts=facts,
+                    ))  # fmt: skip
+    for node in walk(body):
         if isinstance(node, Statement) and node.kind == "assert":
             out.append(
                 Assertion(_text(unit, node.start, node.end), ("assert",), (), _guard(unit, body,
@@ -494,6 +524,107 @@ def _equal_to_argument(program: Program, path: str, unit: CompilationUnit, i: in
     if tokens[close + 1].text != ")" or not _library_call(program, path, "equalTo", i):
         return None
     return _text(unit, i + 2, close)
+
+
+def _ends_in_fail(unit: CompilationUnit, statement: Statement) -> bool:
+    words = [t.text for t in unit.tokens[statement.start : statement.end]]
+    return (words[:2] == ["fail", "("]) or (words[1:4] == [".", "fail", "("])
+
+
+def _expected_exception_fields(program: Program, path: str) -> dict[str, bool]:
+    """Fields of the ExpectedException rule type, with whether that type resolves to JUnit."""
+    key = ("expected_exception_fields", path)
+    if key not in program.memo:
+        program.memo[key] = _find_expected_exception_fields(program, path)
+    return program.memo[key]
+
+
+def _find_expected_exception_fields(program: Program, path: str) -> dict[str, bool]:
+    out = {}
+    for decl in program.all_types(path):
+        for field in decl.fields:
+            if field.type.rsplit(".", 1)[-1] != "ExpectedException":
+                continue
+            credited = field.type.startswith("org.junit.") or (
+                program.resolve_type(path, "ExpectedException", field.start).kind == "library"
+            )
+            for name in field.names:
+                out[name] = credited
+    return out
+
+
+def _number(text: str) -> float | None:
+    words = text.split()
+    sign = -1.0 if words[:1] == ["-"] else 1.0
+    words = words[1:] if words[:1] in (["-"], ["+"]) else words
+    if len(words) != 1:
+        return None
+    try:
+        return sign * float(words[0].rstrip("dDfFlL").replace("_", ""))
+    except ValueError:
+        return None
+
+
+def _field_facts(program: Program, path: str) -> tuple[dict[str, list], set[str]]:
+    key = ("field_facts", path)
+    if key not in program.memo:
+        unit = program.units[path]
+        values: dict[str, list] = {}
+        sets = set()
+        for decl in (n for n in walk(unit) if isinstance(n, TypeDecl)):
+            for field in decl.fields:
+                for name in field.names:
+                    span = field.initializers.get(name)
+                    text = _text(unit, span.start, span.end) if span else ""
+                    values.setdefault(name, []).append(_number(text))
+                    if _set_type(field.type):
+                        sets.add(name)
+        program.memo[key] = (values, sets)
+    return program.memo[key]
+
+
+def _facts(program: Program, path: str, body: Block) -> frozenset:
+    """Names bound only to a numeric literal, and names declared with a Set type, in the file's
+    fields and the method's locals. A name declared or assigned more than once has no value."""
+    unit = program.units[path]
+    field_values, field_sets = _field_facts(program, path)
+    values = {name: list(found) for name, found in field_values.items()}
+    sets = set(field_sets)
+    for node in walk(body):
+        if isinstance(node, Statement) and node.kind in ("local_var", "expression"):
+            tokens = unit.tokens[node.start : node.end]
+            for i, token in enumerate(tokens[:-1]):
+                if token.kind != "ident" or tokens[i + 1].text not in _ASSIGNMENTS:
+                    continue
+                end = i + 2
+                while end < len(tokens) and tokens[end].text not in (",", ";"):
+                    end += 1
+                value = _number(" ".join(t.text for t in tokens[i + 2 : end]))
+                values.setdefault(token.text, []).append(
+                    value if tokens[i + 1].text == "=" else None
+                )
+                if node.kind == "local_var" and _set_type(" ".join(t.text for t in tokens[:i])):
+                    sets.add(token.text)
+    out = {("set", name) for name in sets}
+    for name, found in values.items():
+        if len(found) == 1 and found[0] is not None:
+            out.add(("value", name, found[0]))
+    return frozenset(out)
+
+
+def _set_type(type_text: str) -> bool:
+    words = [w for w in type_text.replace("<", " < ").split() if w not in ("final",)]
+    base = next((w for w in words if not w.startswith("@")), "")
+    return base.rsplit(".", 1)[-1].endswith("Set")
+
+
+def _value(a: Assertion, text: str) -> float | None:
+    number = _number(text)
+    if number is not None:
+        return number
+    name = text.strip()
+    found = [f[2] for f in a.facts if f[0] == "value" and f[1] == name]
+    return found[0] if found else None
 
 
 # AssertJ calls that only describe a failure; they change no check.
@@ -576,7 +707,7 @@ def _with_helpers(
                 Assertion(
                     found.text, found.signature, found.arguments, guard + found.guard,
                     exits | found.exits_before, found.credited, found.line, found.start,
-                    False, origin, found.subject,
+                    False, origin, found.subject, found.facts,
                 )
             )  # fmt: skip
     return out
@@ -586,7 +717,7 @@ def _as_scanned(assertion: Assertion) -> Assertion:
     return Assertion(
         assertion.text, assertion.signature, assertion.arguments, assertion.guard,
         assertion.exits_before, False, assertion.line, assertion.start, True, assertion.origin,
-        assertion.subject,
+        assertion.subject, assertion.facts,
     )  # fmt: skip
 
 
@@ -659,6 +790,18 @@ def _constant(arg: str) -> bool:
     )
 
 
+def _or_true(arg: str) -> bool:
+    """A disjunction with a literal true at the top level, with `|` or `||`."""
+    words, depth = arg.split(), 0
+    for i, word in enumerate(words):
+        depth += word == "("
+        depth -= word == ")"
+        if depth == 0 and word in ("|", "||"):
+            if words[i - 1 : i] == ["true"] or words[i + 1 : i + 2] == ["true"]:
+                return True
+    return False
+
+
 def _same_on_both_sides(arg: str) -> bool:
     for operator in (" == ", " != "):
         if operator in arg:
@@ -678,7 +821,13 @@ _PAYLOAD = {
 
 
 def _is_message(arg: str) -> bool:
-    return arg.startswith('"') or arg.startswith("( ) ->")
+    """A String valued argument: a lone string literal, a concatenation that starts with one
+    (Java evaluates `+` left to right, so the result is a String), or a supplier lambda. A literal
+    followed by anything else, such as `"0.5".length()`, is not a message."""
+    if arg.startswith("( ) ->"):
+        return True
+    words = _without_literals(arg).split()
+    return arg.startswith('"') and words[:1] == ["0"] and (len(words) == 1 or words[1] == "+")
 
 
 def payload(assertion: Assertion) -> tuple[str, ...]:
@@ -687,10 +836,10 @@ def payload(assertion: Assertion) -> tuple[str, ...]:
     least = _PAYLOAD.get(assertion.signature[0])
     if least is None:
         return args
-    if len(args) > least and _is_message(args[0]):
-        args = args[1:]
     if len(args) > least and _is_message(args[-1]):
         args = args[:-1]
+    if len(args) > least and _is_message(args[0]):
+        args = args[1:]
     return args
 
 
@@ -701,9 +850,49 @@ def _trivially_true(assertion: Assertion) -> bool:
         actual, expected = args[-1], args[-2]
         return actual == expected or (_constant(actual) and _constant(expected))
     if name in ("assertTrue", "assertFalse") and args:
-        return _constant(args[-1]) or _same_on_both_sides(args[-1])
+        return (
+            _constant(args[-1])
+            or _same_on_both_sides(args[-1])
+            or _or_true(_without_literals(args[-1]))
+        )
     if name == "assertNotNull" and args:
         return _constant(args[-1]) or args[-1].startswith("new ")
+    if name == "assertThat" and args:
+        return _trivial_chain(assertion, args)
+    return False
+
+
+_SELF_CHECKS = frozenset(["isEqualTo", "isSameAs", "isEqualToComparingFieldByField"])
+
+
+def _trivial_chain(assertion: Assertion, args: tuple[str, ...]) -> bool:
+    """An AssertJ chain or a Hamcrest matcher that compares the subject with itself or a
+    literal with a literal, or asserts a literal true, false or non null."""
+    words = _without_literals(assertion.text).split()
+    calls = _first_arguments(words, _SELF_CHECKS | {"isTrue", "isFalse", "isNotNull", "is",
+                                                    "equalTo"})  # fmt: skip
+    if len(args) == 1:
+        subject = args[0]
+        for name, call_args in calls:
+            if name in ("isTrue", "isFalse", "isNotNull") and (
+                _constant(subject) or subject.startswith("new ")
+            ):
+                return True
+            if name in _SELF_CHECKS and call_args and call_args[0]:
+                other = _strip_parens(" ".join(call_args[0]))
+                if other == _strip_parens(_without_literals(subject)) or (
+                    _constant(subject) and _constant(other)
+                ):
+                    return True
+        return False
+    actual = _strip_parens(_without_literals(args[-2]))
+    for name, call_args in calls:
+        if name in ("is", "equalTo") and call_args and call_args[0]:
+            if call_args[0][0] in ("equalTo", "is"):
+                continue  # the inner call is judged on its own
+            other = _strip_parens(" ".join(call_args[0]))
+            if other == actual or (_constant(actual) and _constant(other)):
+                return True
     return False
 
 
@@ -782,17 +971,25 @@ def _numbers(text: str) -> list[float]:
     return out
 
 
-def _tolerance(a: Assertion) -> list[float]:
+def _tolerance(a: Assertion) -> list[float] | None:
     """The numbers that set an assertion's tolerance: the delta of a three argument
-    assertEquals, or the arguments of a tolerance call such as within, closeTo or isBetween."""
+    assertEquals, or the arguments of a tolerance call such as within, closeTo or isBetween.
+    A tolerance named by something other than a literal or a name bound only to one is None."""
     if a.signature[0] == "assertEquals" and len(payload(a)) == 3:
-        return _numbers(payload(a)[-1])
-    words = a.text.split()
+        return _resolved(a, payload(a)[-1])
+    words = _without_literals(a.text).split()
     for names in _TOLERANCE_ORDER:
         found = _tolerance_call(words, names)
         if found is not None:
-            return found
+            return _resolved(a, found)
     return []
+
+
+def _resolved(a: Assertion, text: str) -> list[float] | None:
+    value = _value(a, text)
+    if value is not None:
+        return [abs(value)]
+    return _numbers(text) or None
 
 
 # Innermost tolerance calls first, so isCloseTo(1.0, within(0.01)) reads 0.01, not 1.0.
@@ -803,7 +1000,7 @@ _TOLERANCE_ORDER = (
 )
 
 
-def _tolerance_call(words: list[str], names: frozenset[str]) -> list[float] | None:
+def _tolerance_call(words: list[str], names: frozenset[str]) -> str | None:
     for i, word in enumerate(words):
         if word in names and i + 1 < len(words) and words[i + 1] == "(":
             depth, j = 0, i + 1
@@ -817,8 +1014,120 @@ def _tolerance_call(words: list[str], names: frozenset[str]) -> list[float] | No
             if word == "closeTo":
                 commas = [k for k, w in enumerate(inner) if w == ","]
                 inner = inner[commas[-1] + 1 :] if commas else inner
-            return _numbers(" ".join(inner))
+            return " ".join(inner)
     return None
+
+
+_BROAD = frozenset(["Exception", "RuntimeException", "Throwable", "Error"])
+_EXCEPTION_CALLS = frozenset(
+    ["assertThrows", "expectThrows", "assertThatExceptionOfType", "isInstanceOf", "instanceOf",
+     "expect"]
+)  # fmt: skip
+_LOWER = frozenset(["isGreaterThan", "isGreaterThanOrEqualTo"])
+_UPPER = frozenset(["isLessThan", "isLessThanOrEqualTo"])
+_SET_CONVERSIONS = (
+    "new HashSet", "new TreeSet", "new LinkedHashSet", "Set . copyOf (", "Sets . newHashSet (",
+    "ImmutableSet . copyOf (", "Collectors . toSet ( )",
+)  # fmt: skip
+
+
+def _first_arguments(words: list[str], names: frozenset[str]) -> list[tuple[str, list[str]]]:
+    """Each call named in names, with its top level arguments as word lists."""
+    out = []
+    for i, word in enumerate(words[:-1]):
+        if word not in names or words[i + 1] != "(":
+            continue
+        depth, args, current = 0, [], []
+        for w in words[i + 1 :]:
+            if w == "(":
+                depth += 1
+                if depth == 1:
+                    continue
+            elif w == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            if w == "," and depth == 1:
+                args.append(current)
+                current = []
+            else:
+                current.append(w)
+        args.append(current)
+        out.append((word, args))
+    return out
+
+
+def _expected_types(a: Assertion) -> frozenset[str]:
+    """Simple names of the exception types an assertion expects, from `X.class` arguments."""
+    out = set()
+    for _, args in _first_arguments(_without_literals(a.text).split(), _EXCEPTION_CALLS):
+        first = args[0] if args else []
+        if len(first) >= 3 and first[-2:] == [".", "class"]:
+            out.add(first[-3])
+    return frozenset(out)
+
+
+def _json_lenient(a: Assertion) -> bool:
+    if "JSONAssert" not in a.text:
+        return False
+    loose = ("JSONCompareMode . LENIENT", "JSONCompareMode . STRICT_ORDER")
+    return any(m in a.text for m in loose) or (bool(a.arguments) and a.arguments[-1] == "false")
+
+
+def _intervals(a: Assertion) -> dict[str, tuple[float | None, float | None]]:
+    """Two sided bounds an assertion places on each subject: isBetween, a lower and an upper
+    chain bound, or a conjunction of comparisons in assertTrue."""
+    out: dict[str, tuple[float | None, float | None]] = {}
+    words = _without_literals(a.text).split()
+    subject = " ".join(a.arguments[:1])
+    for _, args in _first_arguments(words, frozenset(["isBetween", "isStrictlyBetween"])):
+        if len(args) == 2:
+            out[subject] = (_value(a, " ".join(args[0])), _value(a, " ".join(args[1])))
+    chain = dict(_first_arguments(words, _LOWER | _UPPER))
+    lower = next((v for k, v in chain.items() if k in _LOWER), None)
+    upper = next((v for k, v in chain.items() if k in _UPPER), None)
+    if lower and upper:
+        out[subject] = (_value(a, " ".join(lower[0])), _value(a, " ".join(upper[0])))
+    if a.signature[0] == "assertTrue" and payload(a):
+        bounds: dict[str, list] = {}
+        for conjunct in _strip_parens(payload(a)[-1]).split(" && "):
+            for op, low_if_left in ((" >= ", True), (" > ", True), (" <= ", False),
+                                    (" < ", False)):  # fmt: skip
+                if op in conjunct:
+                    left, _, right = conjunct.partition(op)
+                    left, right = _strip_parens(left), _strip_parens(right)
+                    number, other, is_low = _value(a, right), left, low_if_left
+                    if number is None:
+                        number, other, is_low = _value(a, left), right, not low_if_left
+                    if number is not None:
+                        bounds.setdefault(other, [None, None])[0 if is_low else 1] = number
+                    break
+        for name, (low, high) in bounds.items():
+            if low is not None and high is not None:
+                out[name] = (low, high)
+    return out
+
+
+def _wider(old: dict, new: dict) -> bool:
+    for subject, (low, high) in old.items():
+        if subject not in new:
+            continue
+        new_low, new_high = new[subject]
+        if None in (low, high, new_low, new_high) or new_low < low or new_high > high:
+            return True
+    return False
+
+
+def _set_converted(old: Assertion, new: Assertion) -> bool:
+    """Both sides newly converted to a set, where a converted name is not declared as a Set."""
+    added = [c for c in _SET_CONVERSIONS if c in new.text and c not in old.text]
+    if not added:
+        return False
+    sets = {f[1] for f in new.facts if f[0] == "set"}
+    names = _identifiers(payload(new)) - {"new", "HashSet", "TreeSet", "LinkedHashSet", "Set",
+                                          "Sets", "ImmutableSet", "Collectors", "copyOf",
+                                          "newHashSet", "toSet", "collect", "stream"}  # fmt: skip
+    return not names or not names <= sets
 
 
 def _shares_subject(old: Assertion, new: Assertion) -> bool:
@@ -831,27 +1140,19 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
     """The named weakening of Decision 5 that turns old into new, if any."""
     if old.text == new.text:
         return None
-    loose = ("JSONCompareMode . LENIENT", "JSONCompareMode . STRICT_ORDER")
-    if "JSONAssert" in old.text and any(m in new.text and m not in old.text for m in loose):
+    if _json_lenient(new) and not _json_lenient(old) and ("JSONAssert" in old.text
+                                                          or _is_exact(old)):  # fmt: skip
         return "weaken_assertion/assertion_removed"  # not a named weakening, and never a match
 
-    if old.signature[0] == "assertThrows" and new.signature[0] == "assertThrows":
-        if (
-            new.arguments[:1] != old.arguments[:1]
-            and new.arguments[:1]
-            and (new.arguments[0] in _BROAD_EXCEPTIONS)
-        ):
-            return "weaken_assertion/expected_exception_broadened"
+    old_types, new_types = _expected_types(old), _expected_types(new)
+    if old_types and new_types and new_types & _BROAD and not old_types & _BROAD:
+        return "weaken_assertion/expected_exception_broadened"
     if (
         "isExactlyInstanceOf" in old.signature
         and "isInstanceOf" in new.signature
         and ("isExactlyInstanceOf" not in new.signature)
     ):
         return "weaken_assertion/expected_exception_broadened"
-    if "isInstanceOf" in old.signature and "isInstanceOf" in new.signature:
-        broad = any(f"isInstanceOf ( {b} )" in new.text for b in _BROAD_EXCEPTIONS)
-        if broad and not any(f"isInstanceOf ( {b} )" in old.text for b in _BROAD_EXCEPTIONS):
-            return "weaken_assertion/expected_exception_broadened"
     if old.signature[0].startswith("assertThatThrownBy") and new.signature[0] == "assertThatCode":
         return "weaken_assertion/expected_exception_broadened"
     if old.signature[0] == "verify" and new.signature[0] == "verify":
@@ -862,10 +1163,16 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
         return "weaken_assertion/tolerance_widened"
     if old.signature == new.signature:
         old_tolerance, new_tolerance = _tolerance(old), _tolerance(new)
-        if old_tolerance and new_tolerance and max(new_tolerance) > max(old_tolerance):
+        if old_tolerance and (
+            new_tolerance is None or (new_tolerance and max(new_tolerance) > max(old_tolerance))
+        ):
+            return "weaken_assertion/tolerance_widened"
+        if _wider(_intervals(old), _intervals(new)):
             return "weaken_assertion/tolerance_widened"
     if not _shares_subject(old, new):
         return None
+    if _set_converted(old, new):
+        return "weaken_assertion/equality_relaxed"
     if _is_exact(old) and _is_relaxed(new) and not _is_exact(new):
         return "weaken_assertion/equality_relaxed"
     if _is_exact(old) and any(s in new.text and s not in old.text for s in _SUMMARIES):
@@ -1148,6 +1455,34 @@ def _methods(program: Program, path: str) -> dict[tuple, Method]:
     return out
 
 
+_EXPECTED_ATTRIBUTES = ("expected", "expectedExceptions")
+
+
+def _annotation_expectations(unit: CompilationUnit, method: Method) -> list[Assertion]:
+    """JUnit 4 `@Test(expected = X)` and TestNG `expectedExceptions`, as the assertThrows each
+    stands for (Decision 5 kind 1)."""
+    out = []
+    for annotation in method.annotations:
+        if annotation.name.rsplit(".", 1)[-1] != "Test":
+            continue
+        for name, value in attributes(unit, annotation).items():
+            if name not in _EXPECTED_ATTRIBUTES:
+                continue
+            for text in _split_array(value):
+                out.append(Assertion(
+                    f"assertThrows ( {text} )", ("assertThrows",), (text,), (), frozenset(),
+                    True, annotation.line, annotation.start,
+                ))  # fmt: skip
+    return out
+
+
+def _split_array(value: str) -> list[str]:
+    value = value.strip()
+    if value.startswith("{") and value.endswith("}"):
+        return [v.strip() for v in value[1:-1].split(",") if v.strip()]
+    return [value]
+
+
 def _file(change: FileChange, ctx: Context) -> Iterator[Finding]:
     before = _methods(ctx.before, change.path)
     after = _methods(ctx.after, change.path)
@@ -1161,9 +1496,11 @@ def _file(change: FileChange, ctx: Context) -> Iterator[Finding]:
         if new is None:
             continue  # a vanished method is Decision 6's disable/test_removed, reported once
         old_set = _both_ways(ctx.before, change.path, old, ctx.budget)
+        old_set += _annotation_expectations(change.before, old)
         if not old_set:
             continue
         new_set = _both_ways(ctx.after, change.path, new, ctx.budget)
+        new_set += _annotation_expectations(change.after, new)
         unchecked, checked = _soft_assertions(ctx.after, change.path, new)
         rebound = _rebound_names(change, ctx)
         if _supertypes_changed(ctx, change, new):
