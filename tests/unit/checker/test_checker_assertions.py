@@ -589,3 +589,20 @@ def test_a_deleted_assertion_using_a_rebound_name_is_removed_not_rebound(tmp_pat
     after = body_of("f();", "  static void assertEquals(int a, int b) {}")
     result = codes(before, after, tmp_path)
     assert REMOVED in result and REBOUND not in result
+
+
+def test_a_skip_exception_thrown_through_a_variable_is_not_an_exit(tmp_path):
+    before = body_of("assertEquals(1, f());")
+    after = body_of('if (ci()) { SkipException flaky = new SkipException("x"); throw flaky; } '
+                    "assertEquals(1, f());")  # fmt: skip
+    assert REMOVED not in codes(before, after, tmp_path)
+
+
+def test_a_swapped_type_wildcard_rebinds_when_a_supertype_comes_through_one(tmp_path):
+    source = (
+        body_of("assertEquals(1, f());")
+        .replace("public class FooTest {", "public class FooTest extends Base {")
+        .replace("import org.junit.Test;", "import org.junit.Test;\nimport x.*;")
+    )
+    after = source.replace("import x.*;", "import y.*;")
+    assert REBOUND in codes(source, after, tmp_path)

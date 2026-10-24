@@ -66,4 +66,3 @@ reject-wildcard-imported-record-annotation
 accept-assertion-moved-into-await-condition
 # Fixtures for the Decision 6 forms adopted 2026-10-23; remove each as its rule lands.
 reject-existing-return-moved-earlier
-reject-skip-exception-thrown-through-variable

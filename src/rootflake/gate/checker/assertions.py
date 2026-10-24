@@ -220,12 +220,29 @@ def _library_call(program: Program, path: str, name: str, index: int) -> bool:
     return program.resolve_method(path, name, index).kind == "library"
 
 
+def _throws_skip_local(unit: CompilationUnit, body: Block, statement: Statement) -> bool:
+    """`throw x;` where a local x of the body is declared or assigned a skip exception."""
+    tokens = unit.tokens[statement.start : statement.end]
+    if len(tokens) != 3 or tokens[1].kind != "ident":
+        return False
+    name = tokens[1].text
+    for node in walk(body):
+        if isinstance(node, Statement) and node.kind in ("local_var", "expression"):
+            words = [t.text for t in unit.tokens[node.start : node.end]]
+            if name in words and "=" in words and set(words) & SKIP_EXCEPTIONS:
+                if words.index(name) < words.index("="):
+                    return True
+    return False
+
+
 def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str]]:
     out = []
     for node in walk(body):
         if isinstance(node, Statement) and node.kind in _EXITS:
             words = {t.text for t in unit.tokens[node.start : node.end]}
-            if node.kind == "throw" and words & SKIP_EXCEPTIONS:
+            if node.kind == "throw" and (
+                words & SKIP_EXCEPTIONS or _throws_skip_local(unit, body, node)
+            ):
                 continue  # judged as an assumption under Decision 6
             if "lambda" in _guard(unit, body, node.start) or "class" in _guard(
                 unit, body, node.start
@@ -781,7 +798,9 @@ def _match(
         candidates = [
             n
             for n in usable
-            if (n.signature == old.signature or _kind_two(old, n)) and not _trivially_true(n)
+            if (n.signature == old.signature or _kind_two(old, n))
+            and not _trivially_true(n)
+            and not (uses_rebound and n.text == old.text)
         ]
         # Pair with the candidate that shares the most of the old subject.
         matched = max(candidates, key=lambda n: len(old.subject & n.subject), default=None)
@@ -889,6 +908,10 @@ def _rebound_names(change: FileChange, ctx: Context) -> frozenset[str]:
         if wildcard:
             # A type import on demand binds only type names; a static one binds members too.
             names.add("*" if static else "*types")
+            if not static and _supertype_through_wildcard(change, ctx):
+                # A swapped on demand import can rebind an unqualified supertype, and with it
+                # every inherited assertion method.
+                names.add("*")
         else:
             names.add(name.rsplit(".", 1)[-1])
     old_methods = {(p, m.name) for m_list in ctx.before.methods_by_name.values() for p, m in m_list}
@@ -900,6 +923,17 @@ def _rebound_names(change: FileChange, ctx: Context) -> frozenset[str]:
         if fqn not in old_types:
             names.add(fqn.rsplit(".", 1)[-1])
     return frozenset(names)
+
+
+def _supertype_through_wildcard(change: FileChange, ctx: Context) -> bool:
+    for decl in ctx.after.all_types(change.path):
+        for name in [*decl.extends, *decl.implements]:
+            if "." in name:
+                continue
+            binding = ctx.after.resolve_type(change.path, name, decl.start, header=True)
+            if binding.kind == "unresolved":
+                return True
+    return False
 
 
 def _supertypes_changed(ctx: Context, change: FileChange, method: Method) -> bool:

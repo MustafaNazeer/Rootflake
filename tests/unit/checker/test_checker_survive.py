@@ -504,3 +504,24 @@ class TestNewShortcutKinds:
     def test_a_jupiter_test_made_undiscoverable(self, tmp_path, modifier):
         after = cls(TEST.replace("public void", f"{modifier} void"))
         assert "disable/test_removed" in codes(cls(TEST), after, tmp_path)
+
+
+class TestFifthReview:
+    def test_a_labelled_break_out_of_a_loop_from_a_switch(self, tmp_path):
+        loop = ("@Test public void testFoo() { outer: for (int i : ns) { switch (i) { case 1: BODY "
+                "default: } assertEquals(i, f(i)); } }")  # fmt: skip
+        before = cls(loop.replace("BODY", ""))
+        after = cls(loop.replace("BODY", "break outer;"))
+        assert "disable/early_return" in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(("before", "after"), [("0x40", "0x2"), ("1_000", "nan")])
+    def test_invocation_counts_read_as_java_literals(self, tmp_path, before, after):
+        template = cls("@Test(invocationCount = N) public void testFoo() { assertEquals(1, f()); }")
+        assert "disable/parameter_cases_dropped" in codes(
+            template.replace("N", before), template.replace("N", after), tmp_path
+        )
+
+    def test_a_parameterized_test_made_private(self, tmp_path):
+        before = cls("@ParameterizedTest public void testFoo(int n) { assertEquals(n, f(n)); }")
+        after = before.replace("public void", "private void")
+        assert "disable/test_removed" in codes(before, after, tmp_path)

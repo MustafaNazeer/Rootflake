@@ -156,8 +156,8 @@ def _loop_exits(unit: CompilationUnit, method: Method) -> int:
     for node in _outside_nested(method.body):
         if not isinstance(node, Statement) or node.kind not in ("continue", "break"):
             continue
-        if node.kind == "continue":
-            count += 1
+        if node.kind == "continue" or node.end - node.start > 2:
+            count += 1  # every continue, and every labelled break, can skip cases
             continue
         around = [n for n in path_to(unit, node.start) if isinstance(n, Statement)]
         breakable = next(
@@ -252,7 +252,9 @@ def _removals(change: FileChange, ctx: Context) -> Iterator[Finding]:
                 n < o for (_, o), (_, n) in zip(old_exits, new_exits, strict=True)
             ):
                 yield Finding("disable/early_return", change.path, new.line)
-        if _undiscoverable(method, new) and "Test" in annotation_names(new.annotations, ctx.after):
+        if _undiscoverable(method, new) and (
+            annotation_names(new.annotations, ctx.after) & TEST_ANNOTATIONS
+        ):
             yield Finding("disable/test_removed", change.path, new.line)
 
 
@@ -323,10 +325,16 @@ def _number(value: str | None) -> float:
     as 0, so a change to it reads as fewer cases."""
     if value is None:
         return 1
-    try:
-        return float(value.replace("_", ""))
-    except ValueError:
-        return 0
+    literal = value.replace("_", "").rstrip("lL")
+    for prefix, base in (("0x", 16), ("0X", 16), ("0b", 2), ("0B", 2)):
+        if literal.startswith(prefix):
+            try:
+                return int(literal[2:], base)
+            except ValueError:
+                return 0
+    if literal.isdigit():
+        return int(literal, 8) if len(literal) > 1 and literal.startswith("0") else int(literal)
+    return 0
 
 
 _DISABLING_ATTRIBUTES = (
@@ -399,9 +407,8 @@ def _hidden_classes(change: FileChange, ctx: Context) -> Iterator[Finding]:
         old = before.get(fqn)
         if old is None:
             continue
-        has_tests = any(
-            is_test_method(m, d, ctx.before) for d in [old, *old.types] for m in d.methods
-        )
+        nested = [n for n in walk(old) if isinstance(n, TypeDecl)]
+        has_tests = any(is_test_method(m, d, ctx.before) for d in nested for m in d.methods)
         if not has_tests:
             continue
         if "abstract" in decl.modifiers and "abstract" not in old.modifiers:
