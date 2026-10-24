@@ -32,15 +32,10 @@ _DISABLING = frozenset(["Ignore", "Disabled", "AwaitsFix", "Nightly", "BadApple"
 _ORDER = frozenset(["FixMethodOrder", "TestMethodOrder", "TestClassOrder", "Order"])
 _PARALLEL = frozenset(["Isolated", "ResourceLock", "ResourceLocks"])
 _TAGS = frozenset(["Tag", "Tags", "Category"])
-_ASSUMPTIONS = frozenset(
-    ["assumeTrue", "assumeFalse", "assumeThat", "assumeNotNull", "assumingThat"]
-)
 _ASSUMPTION_OWNERS = frozenset(["Assume", "Assumptions", "org.junit.Assume"])
 SKIP_EXCEPTIONS = frozenset(
     ["SkipException", "TestAbortedException", "AssumptionViolatedException"]
 )
-_CASE_CALLS = frozenset(["of", "arguments"])
-_ASSERTION_PREFIXES = ("assert", "fail", "verify", "check", "expect")
 
 
 def simple(annotation: Annotation) -> str:
@@ -94,6 +89,9 @@ def annotation_names(annotations: list[Annotation], program: Program | None) -> 
         if name in seen or name not in declared:
             continue
         seen.add(name)
+        # A type the files read declare stands only for what it carries, so a local
+        # `@interface Test {}` does not keep a method a test.
+        names.discard(name)
         for carried in declared[name].annotations:
             names.add(simple(carried))
             pending.append(simple(carried))
@@ -138,8 +136,12 @@ def _outside_nested(body) -> Iterator:
 
 
 def _returns(method: Method) -> int:
+    """Void returns only: a @TestFactory must return its tests, and a value return is not a
+    way out of a void test method."""
     return sum(
-        1 for n in _outside_nested(method.body) if isinstance(n, Statement) and n.kind == "return"
+        1
+        for n in _outside_nested(method.body)
+        if isinstance(n, Statement) and n.kind == "return" and n.end - n.start == 2
     )
 
 
@@ -147,17 +149,33 @@ def _is_empty(method: Method) -> bool:
     return method.body is not None and all(s.kind == "empty" for s in method.body.statements)
 
 
+def _counterpart(key: tuple, before: dict, after: dict):
+    """The after method for a before key: the same signature, or else the same name when that
+    name is unique in its class on both sides, so a changed parameter type keeps the test."""
+    if key in after:
+        return after[key]
+
+    def same_name(side):
+        return [k for k in side if k[0] == key[0] and k[1] == key[1]]
+
+    if len(same_name(before)) == 1 and len(same_name(after)) == 1:
+        return after[same_name(after)[0]]
+    return None
+
+
 def _removals(change: FileChange, ctx: Context) -> Iterator[Finding]:
     before = _methods(ctx.before, change.path)
     after = _methods(ctx.after, change.path)
+    matched = {id(found[0]) for k in before if (found := _counterpart(k, before, after))}
     target = ctx.target
-    for key, (method, owner) in after.items():
-        if key not in before and is_test_method(method, owner, ctx.after) and _returns(method):
+    for method, owner in after.values():
+        is_new = id(method) not in matched
+        if is_new and is_test_method(method, owner, ctx.after) and _returns(method):
             yield Finding("disable/early_return", change.path, method.line)
     for key, (method, owner) in before.items():
         if not is_test_method(method, owner, ctx.before):
             continue
-        found = after.get(key)
+        found = _counterpart(key, before, after)
         if found is None:
             yield Finding("disable/test_removed", change.path, method.line)
             continue
@@ -178,32 +196,56 @@ def _removals(change: FileChange, ctx: Context) -> Iterator[Finding]:
             yield Finding("disable/early_return", change.path, new.line)
 
 
-def _assertion_like(decl: TypeDecl, unit: CompilationUnit) -> bool:
-    return any(
-        call.name.startswith(_ASSERTION_PREFIXES)
-        for method in decl.methods
-        if method.body
-        for call in calls_in(unit, method.body)
-    )
+def _simple_names(names: list[str]) -> set[str]:
+    return {name.rsplit(".", 1)[-1] for name in names}
+
+
+def _condition_fields(decl: TypeDecl) -> set[str]:
+    return {
+        name
+        for field in decl.fields
+        if field.type.split("<", 1)[0].rsplit(".", 1)[-1] == "ExecutionCondition"
+        for name in field.names
+    }
+
+
+def _supertype_tests(program: Program, path: str, decl: TypeDecl) -> tuple[bool, bool, bool]:
+    """Whether a read supertype declares test methods, whether the extended class is unread,
+    and whether an implemented interface is unread."""
+    read = program.supertypes(path, decl)
+    with_tests = any(is_test_method(m, d, program) for _, d in read for m in d.methods)
+    read_names = {d.name for _, d in read}
+    unread_base = bool(_simple_names(decl.extends) - read_names)
+    unread_interface = bool(_simple_names(decl.implements) - read_names)
+    return with_tests, unread_base, unread_interface
 
 
 def _class_shapes(change: FileChange, ctx: Context) -> Iterator[Finding]:
     before = _types(ctx.before, change.path) if change.before else {}
     after = _types(ctx.after, change.path)
     for fqn, decl in after.items():
-        implements_condition = "ExecutionCondition" in [*decl.extends, *decl.implements]
         old = before.get(fqn)
-        if implements_condition and (
-            old is None or "ExecutionCondition" not in [*old.extends, *old.implements]
+        old_supers = _simple_names([*old.extends, *old.implements]) if old else set()
+        if "ExecutionCondition" in _simple_names([*decl.extends, *decl.implements]) and (
+            "ExecutionCondition" not in old_supers
         ):
             yield Finding("disable/execution_condition", change.path, decl.line)
-        if old is None:
+        if _condition_fields(decl) - (_condition_fields(old) if old else set()):
+            yield Finding("disable/execution_condition", change.path, decl.line)
+        if old is None or (old.extends, old.implements) == (decl.extends, decl.implements):
             continue
-        if (old.extends, old.implements) == (decl.extends, decl.implements):
-            continue
-        has_tests = any(is_test_method(m, d) for d in (old, decl) for m in d.methods)
-        if has_tests or old.extends or _assertion_like(decl, change.after):
+        has_tests = any(
+            is_test_method(m, d, program)
+            for d, program in ((old, ctx.before), (decl, ctx.after))
+            for m in d.methods
+        )
+        old_tests, old_base, old_interface = _supertype_tests(ctx.before, change.path, old)
+        new_tests, new_base, new_interface = _supertype_tests(ctx.after, change.path, decl)
+        base_changed = old.extends != decl.extends
+        if has_tests or old_tests or new_tests or (base_changed and (old_base or new_base)):
             yield Finding("weaken_assertion/assertion_rebound", change.path, decl.line)
+        elif old_base or new_base or old_interface or new_interface:
+            yield Finding("flag/unknown_test_extension", change.path, decl.line)
 
 
 def _declarations(program: Program, path: str) -> dict[tuple, object]:
@@ -213,8 +255,11 @@ def _declarations(program: Program, path: str) -> dict[tuple, object]:
     return out
 
 
+_FALSE = frozenset(["false", "Boolean . FALSE", "java . lang . Boolean . FALSE"])
+
+
 def _test_attribute_findings(old: dict, new: dict, path: str, line: int) -> Iterator[Finding]:
-    if new.get("enabled") == "false" and old.get("enabled") != "false":
+    if new.get("enabled") in _FALSE and old.get("enabled") not in _FALSE:
         yield Finding("disable/test_disabled", path, line)
     for key in ("priority", "dependsOnMethods", "dependsOnGroups"):
         if new.get(key) != old.get(key) and key in new:
@@ -225,9 +270,18 @@ def _test_attribute_findings(old: dict, new: dict, path: str, line: int) -> Iter
         yield Finding("disable/parallelism_disabled", path, line)
 
 
-def _classify(annotation: Annotation, unit: CompilationUnit, path: str) -> Iterator[Finding]:
+def _classify(
+    annotation: Annotation, unit: CompilationUnit, path: str, program: Program
+) -> Iterator[Finding]:
     name = simple(annotation)
     line = annotation.line
+    if name == "Order":
+        binding = program.resolve_type(path, annotation.name, annotation.start)
+        if (
+            binding.kind in ("imported", "declared")
+            and binding.fqn != "org.junit.jupiter.api.Order"
+        ):
+            return
     if name in _DISABLING or name.startswith(("Disabled", "Enabled")):
         yield Finding("disable/test_disabled", path, line)
     elif name in _ORDER:
@@ -257,41 +311,96 @@ def _annotations(change: FileChange, ctx: Context) -> Iterator[Finding]:
             )
         for annotation in decl.annotations:
             if simple(annotation) != "Test" and text(change.after, annotation) not in old_texts:
-                yield from _classify(annotation, change.after, change.path)
+                yield from _classify(annotation, change.after, change.path, ctx.after)
         for annotation in old_anns:
             if simple(annotation) in _TAGS and text(change.before, annotation) not in new_texts:
                 yield Finding("disable/tag_changed", change.path, decl.line)
 
 
-def _assumption_sites(unit: CompilationUnit) -> list[tuple[str, bool, int]]:
+def _is_abort(program: Program, path: str, call) -> bool:
+    if call.name != "abort":
+        return False
+    if call.receiver in _ASSUMPTION_OWNERS:
+        return True
+    if call.receiver is None:
+        binding = program.resolve_method(path, "abort", call.start)
+        return bool(binding.fqn) and binding.fqn.endswith("Assumptions.abort")
+    return False
+
+
+def _top_level_arguments(unit: CompilationUnit, open_paren: int) -> list[tuple[int, int]]:
+    pieces, depth, start, i = [], 0, open_paren + 1, open_paren
+    while i < len(unit.tokens):
+        token = unit.tokens[i]
+        if token.kind == "op" and token.text in "([{":
+            depth += 1
+        elif token.kind == "op" and token.text in ")]}":
+            depth -= 1
+            if depth == 0:
+                if start < i:
+                    pieces.append((start, i))
+                return pieces
+        elif token.kind == "op" and token.text == "," and depth == 1:
+            pieces.append((start, i))
+            start = i + 1
+        i += 1
+    return pieces
+
+
+def _call_site(unit: CompilationUnit, call) -> str:
+    """An assumption call without its executable arguments, so a change inside the code that
+    assumingThat runs is not read as a changed assumption."""
+    kept = []
+    for start, end in _top_level_arguments(unit, call.start + 1):
+        words = [t.text for t in unit.tokens[start:end]]
+        if "->" in words or "::" in words:
+            continue
+        kept.append(" ".join(words))
+    receiver = f"{call.receiver}." if call.receiver not in (None, "<expr>") else ""
+    return f"{receiver}{call.name}({', '.join(kept)})"
+
+
+def _constructs_skip(unit: CompilationUnit, statement: Statement) -> bool:
+    tokens = unit.tokens[statement.start : statement.end]
+    for i, token in enumerate(tokens):
+        if token.text != "new":
+            continue
+        j = i + 1
+        while j + 2 < len(tokens) and tokens[j + 1].text == ".":
+            j += 2
+        if j < len(tokens) and tokens[j].text in SKIP_EXCEPTIONS:
+            return True
+    return False
+
+
+def _assumption_sites(
+    unit: CompilationUnit, program: Program, path: str
+) -> list[tuple[str, bool, int]]:
     sites = []
     for node in walk(unit):
         if not isinstance(node, Method) or node.body is None:
             continue
         for call in calls_in(unit, node.body):
-            named = call.name in _ASSUMPTIONS
-            aborted = call.name == "abort" and call.receiver in _ASSUMPTION_OWNERS
-            if named or aborted:
-                sites.append(_site(unit, call.start))
+            if call.name.startswith(("assume", "assuming")) or _is_abort(program, path, call):
+                sites.append(_site(unit, call.start, _call_site(unit, call)))
         for inner in walk(node.body):
-            if isinstance(inner, Statement) and inner.kind == "throw":
-                names = {t.text for t in unit.tokens[inner.start : inner.end]}
-                if names & SKIP_EXCEPTIONS:
-                    sites.append(_site(unit, inner.start))
+            simple_statement = isinstance(inner, Statement) and not inner.blocks
+            if simple_statement and inner.kind != "local_type" and _constructs_skip(unit, inner):
+                sites.append(_site(unit, inner.start, text(unit, inner)))
     return sites
 
 
-def _site(unit: CompilationUnit, index: int) -> tuple[str, bool, int]:
+def _site(unit: CompilationUnit, index: int, site_text: str) -> tuple[str, bool, int]:
     path = path_to(unit, index)
-    statement = next((n for n in reversed(path) if isinstance(n, Statement)), None)
     in_catch = any(isinstance(n, Catch) for n in path)
-    span = statement if statement is not None else path[-1]
-    return text(unit, span), in_catch, unit.tokens[index].line
+    return site_text, in_catch, unit.tokens[index].line
 
 
 def _assumptions(change: FileChange, ctx: Context) -> Iterator[Finding]:
-    old = Counter(t for t, _, _ in _assumption_sites(change.before)) if change.before else Counter()
-    for site_text, in_catch, line in _assumption_sites(change.after):
+    old = Counter()
+    if change.before is not None:
+        old = Counter(t for t, _, _ in _assumption_sites(change.before, ctx.before, change.path))
+    for site_text, in_catch, line in _assumption_sites(change.after, ctx.after, change.path):
         if old[site_text] > 0:
             old[site_text] -= 1
             continue
@@ -299,51 +408,103 @@ def _assumptions(change: FileChange, ctx: Context) -> Iterator[Finding]:
         yield Finding(code, change.path, line)
 
 
+_SOURCES = frozenset(
+    ["ValueSource", "CsvSource", "MethodSource", "EnumSource", "CsvFileSource", "ArgumentsSource",
+     "FieldSource", "NullSource", "EmptySource", "NullAndEmptySource"]
+)  # fmt: skip
+_COLLECTIONS = frozenset(["Stream.of", "List.of", "Arrays.asList", "Set.of"])
+
+
+def _count_elements(value: str) -> int | None:
+    """Elements of an annotation array value such as `{1, 2, 3}` or a single value."""
+    value = value.strip()
+    if not value.startswith("{"):
+        return 1 if value else None
+    inner = value[1:-1].strip() if value.endswith("}") else None
+    if inner is None:
+        return None
+    depth, pieces, current = 0, [], []
+    for word in inner.split():
+        if word in ("{", "(", "["):
+            depth += 1
+        elif word in ("}", ")", "]"):
+            depth -= 1
+        if word == "," and depth == 0:
+            pieces.append(current)
+            current = []
+        else:
+            current.append(word)
+    pieces.append(current)
+    return sum(1 for piece in pieces if piece)
+
+
+def _text_block_rows(value: str) -> int | None:
+    if not value.startswith('"""'):
+        return None
+    lines = value[3:-3].splitlines()
+    return sum(1 for line in lines if line.strip() and not line.strip().startswith("#"))
+
+
 def _case_count(unit: CompilationUnit, method: Method, owner: TypeDecl) -> tuple[str, int | None]:
-    """The text of the method's parameter source and its literal case count, if one is known."""
+    """The text of the method's parameter source and its literal case count, None if unknown."""
     for annotation in method.annotations:
         name = simple(annotation)
-        if name in ("ValueSource", "CsvSource"):
-            return text(unit, annotation), _array_elements(unit, annotation)
+        if name not in _SOURCES:
+            continue
+        attrs = attributes(unit, annotation)
+        if name == "ValueSource":
+            values = list(attrs.values())
+            return text(unit, annotation), _count_elements(values[0]) if len(values) == 1 else None
+        if name == "CsvSource":
+            if "textBlock" in attrs:
+                return text(unit, annotation), _text_block_rows(attrs["textBlock"])
+            return text(unit, annotation), _count_elements(attrs.get("value", ""))
         if name == "MethodSource":
-            attrs = attributes(unit, annotation)
-            provider = (attrs.get("value") or f'"{method.name}"').strip('"{} ')
+            value = attrs.get("value", f'"{method.name}"')
+            if not (value.startswith('"') and value.endswith('"')):
+                return text(unit, annotation), None
+            provider = value.strip('"')
             for candidate in owner.methods:
-                if candidate.name == provider and candidate.body is not None:
+                if (
+                    candidate.name == provider
+                    and candidate is not method
+                    and not candidate.params
+                    and candidate.body is not None
+                ):
                     return text(unit, candidate.body), _provided(unit, candidate)
             return text(unit, annotation), None
+        return text(unit, annotation), None
     return "", 0
 
 
-def _array_elements(unit: CompilationUnit, annotation: Annotation) -> int | None:
-    if annotation.arguments is None:
-        return None
-    tokens = unit.tokens[annotation.arguments.start : annotation.arguments.end]
-    opens = [i for i, t in enumerate(tokens) if t.text == "{"]
-    if not opens:
-        return 1
-    depth, count, seen = 0, 0, False
-    for token in tokens[opens[0] :]:
-        if token.text == "{":
-            depth += 1
-        elif token.text == "}":
-            depth -= 1
-            if depth == 0:
-                break
-        elif depth == 1 and token.text == ",":
-            count += 1
-        elif depth >= 1:
-            seen = True
-    return count + 1 if seen else 0
+_NARROWING = frozenset(
+    ["filter", "limit", "skip", "distinct", "takeWhile", "dropWhile", "flatMap", "mapMulti"]
+)
 
 
 def _provided(unit: CompilationUnit, provider: Method) -> int | None:
-    count = sum(
-        1
-        for call in calls_in(unit, provider.body)
-        if call.name in _CASE_CALLS and call.receiver in ("Arguments", None)
-        and (call.name == "arguments" or call.receiver == "Arguments")
-    )  # fmt: skip
+    """The provider's literal cases: its Arguments.of and arguments calls, each written out once.
+
+    The count is unknown when any case call sits inside a lambda or a loop, where one call can
+    stand for any number of cases, or when the provider narrows a stream (filter, limit, skip
+    and the like), since then the written calls overstate what runs."""
+    calls = calls_in(unit, provider.body)
+    if any(call.name in _NARROWING for call in calls):
+        return None
+    count = 0
+    for call in calls:
+        is_case = (call.name == "of" and call.receiver == "Arguments") or (
+            call.name == "arguments" and call.receiver in (None, "Arguments")
+        )
+        if not is_case:
+            continue
+        around = path_to(unit, call.start)
+        loops = ("for", "while", "do")
+        if any(
+            isinstance(n, Lambda) or (isinstance(n, Statement) and n.kind in loops) for n in around
+        ):
+            return None
+        count += 1
     return count or None
 
 

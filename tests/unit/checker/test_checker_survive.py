@@ -271,3 +271,159 @@ class TestComposedAndNew:
     def test_a_return_in_a_new_test_method_is_an_early_return(self, tmp_path):
         added = "@Test public void testNew() { if (done()) { return; } fail(); }"
         assert codes(cls(TEST), cls(TEST + added), tmp_path) == {"disable/early_return"}
+
+
+class TestDomainRulings:
+    """Mustafa's rulings of 2026-10-23 on the Domain verdict and the automated review."""
+
+    def test_a_new_test_factory_may_return_its_tests(self, tmp_path):
+        added = (
+            "@TestFactory Stream<DynamicTest> zones() "
+            '{ return Stream.of(dynamicTest("utc", () -> {})); }'
+        )
+        assert codes(cls(TEST), cls(TEST + added), tmp_path) == set()
+
+    def test_a_parameter_type_change_keeps_the_test(self, tmp_path):
+        before = cls("@ParameterizedTest public void testFoo(String z) { assertEquals(1, f(z)); }")
+        after = before.replace("String z", "ZoneId z")
+        assert "disable/test_removed" not in codes(before, after, tmp_path)
+
+    def test_a_change_inside_an_assuming_that_body_is_not_a_new_assumption(self, tmp_path):
+        before = cls("@Test public void testFoo() { assumingThat(isLinux(), () -> { f(map); }); }")
+        after = before.replace("f(map)", "f(new TreeMap<>(map))")
+        assert "disable/assumption_added" not in codes(before, after, tmp_path)
+
+    def test_a_spring_order_annotation_is_not_pinned_test_order(self, tmp_path):
+        imports = "import org.junit.Test;\nimport org.springframework.core.annotation.Order;"
+        before = cls(TEST, imports=imports)
+        after = cls(TEST + " @Order(1) @Bean Foo foo() { return new Foo(); }", imports=imports)
+        assert "disable/order_pinned" not in codes(before, after, tmp_path)
+
+    def test_an_unresolved_order_annotation_is_still_pinned_order(self, tmp_path):
+        after = cls(
+            "@Order(1) " + TEST, imports="import org.junit.Test;\nimport org.junit.jupiter.api.*;"
+        )
+        before = cls(TEST, imports="import org.junit.Test;\nimport org.junit.jupiter.api.*;")
+        assert codes(before, after, tmp_path) == {"disable/order_pinned"}
+
+    def test_a_qualified_execution_condition(self, tmp_path):
+        added = (" static class S implements org.junit.jupiter.api.extension.ExecutionCondition "
+                 "{ public ConditionEvaluationResult evaluateExecutionCondition(ExtensionContext c)"
+                 " { return null; } }")  # fmt: skip
+        assert "disable/execution_condition" in codes(cls(TEST), cls(TEST + added), tmp_path)
+
+    def test_an_execution_condition_field(self, tmp_path):
+        added = ' @RegisterExtension static ExecutionCondition off = c -> disabled("x");'
+        assert "disable/execution_condition" in codes(cls(TEST), cls(TEST + added), tmp_path)
+
+    def test_a_statically_imported_abort(self, tmp_path):
+        imports = "import org.junit.Test;\nimport static org.junit.jupiter.api.Assumptions.abort;"
+        after = cls('@Test public void testFoo() { abort("slow"); assertEquals(1, f()); }',
+                    imports=imports)  # fmt: skip
+        assert codes(cls(TEST, imports=imports), after, tmp_path) == {"disable/assumption_added"}
+
+    def test_a_skip_exception_thrown_through_a_variable(self, tmp_path):
+        after = cls('@Test public void testFoo() { RuntimeException e = new SkipException("x"); '
+                    "throw e; }")  # fmt: skip
+        assert "disable/assumption_added" in codes(cls(TEST), after, tmp_path)
+
+    @pytest.mark.parametrize(
+        "call",
+        [
+            "assumeThatCode(() -> f()).doesNotThrowAnyException();",
+            "assumeThatObject(o).isNotNull();",
+        ],
+    )
+    def test_assertj_assumptions(self, tmp_path, call):
+        after = cls(f"@Test public void testFoo() {{ {call} assertEquals(1, f()); }}")
+        assert codes(cls(TEST), after, tmp_path) == {"disable/assumption_added"}
+
+    def test_enabled_boolean_false(self, tmp_path):
+        after = cls(TEST.replace("@Test", "@Test(enabled = Boolean.FALSE)"))
+        assert codes(cls(TEST), after, tmp_path) == {"disable/test_disabled"}
+
+    def test_a_local_test_annotation_type_does_not_keep_a_test(self, tmp_path):
+        before = cls(TEST)
+        after = cls(TEST, imports="") + "@interface Test {}\n"
+        assert "disable/test_removed" in codes(before, after, tmp_path)
+
+    def test_a_provider_that_filters_its_cases_has_an_unknown_count(self, tmp_path):
+        template = cls(
+            '@ParameterizedTest @MethodSource("cases") public void testFoo(int n) { f(n); } '
+            "static Stream<Arguments> cases() { return BODY; }"
+        )
+        before = template.replace("BODY", "Stream.of(Arguments.of(1), Arguments.of(2))")
+        after = template.replace(
+            "BODY", "Stream.of(Arguments.of(1), Arguments.of(2)).filter(a -> ok(a))"
+        )
+        assert codes(before, after, tmp_path) == {"disable/parameter_cases_dropped"}
+
+    def test_cases_built_in_a_lambda_have_an_unknown_count(self, tmp_path):
+        template = cls(
+            '@ParameterizedTest @MethodSource("cases") public void testFoo(int n) { f(n); } '
+            "static Stream<Arguments> cases() "
+            "{ return IntStream.range(0, N).mapToObj(i -> Arguments.of(i)); }"
+        )
+        assert codes(template.replace("N", "50"), template.replace("N", "1"), tmp_path) == {
+            "disable/parameter_cases_dropped"
+        }
+
+    def test_a_csv_value_attribute_beside_null_values(self, tmp_path):
+        template = cls('@ParameterizedTest @CsvSource(nullValues = {"N/A"}, value = ROWS) '
+                       "public void testFoo(String s) { f(s); }")  # fmt: skip
+        before = template.replace("ROWS", '{"a,1", "b,2"}')
+        after = template.replace("ROWS", '{"a,1"}')
+        assert codes(before, after, tmp_path) == {"disable/parameter_cases_dropped"}
+
+    def test_csv_text_block_rows(self, tmp_path):
+        template = cls('@ParameterizedTest @CsvSource(textBlock = """\n ROWS\n """) '
+                       "public void testFoo(String s) { f(s); }")  # fmt: skip
+        before = template.replace("ROWS", "a, 1\n b, 2\n c, 3")
+        after = template.replace("ROWS", "a, 1")
+        assert codes(before, after, tmp_path) == {"disable/parameter_cases_dropped"}
+
+    def test_a_trailing_comma_does_not_count_a_case(self, tmp_path):
+        template = cls(
+            "@ParameterizedTest @ValueSource(ints = ROWS) public void testFoo(int n) { f(n); }"
+        )
+        before = template.replace("ROWS", "{1, 2}")
+        after = template.replace("ROWS", "{1, 2,}")
+        assert codes(before, after, tmp_path) == set()
+
+
+class TestNarrowedExtendsRule:
+    def test_a_helper_class_gaining_an_interface_is_flagged_not_rejected(self, tmp_path):
+        worker = (
+            " static class Worker implements Runnable { public void run() { checkNotNull(x); } }"
+        )
+        after = worker.replace("implements Runnable", "implements Runnable, AutoCloseable")
+        assert codes(cls(TEST + worker), cls(TEST + after), tmp_path) == {
+            "flag/unknown_test_extension"
+        }
+
+    def test_a_helper_class_with_read_test_free_supertypes_gets_nothing(self, tmp_path):
+        before = cls(TEST + " static class A {} static class B {} static class W extends A {}")
+        after = before.replace("class W extends A", "class W extends B")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_class_changing_an_unread_base_class_is_rejected(self, tmp_path):
+        # Mustafa 2026-10-23: an extends clause naming an unread class may carry inherited
+        # tests, so changing it rejects, as ADR 0007 Decision 6 says.
+        before = cls(TEST + " static class L extends AbstractListener {}")
+        after = cls(TEST + " static class L extends AbstractQuietListener {}")
+        assert codes(before, after, tmp_path) == {"weaken_assertion/assertion_rebound"}
+
+    def test_a_test_class_changing_its_supertype_is_still_rejected(self, tmp_path):
+        before = cls(TEST).replace("class FooTest", "class FooTest extends Base")
+        after = cls(TEST).replace("class FooTest", "class FooTest extends OtherBase")
+        assert codes(before, after, tmp_path) == {"weaken_assertion/assertion_rebound"}
+
+
+def test_a_default_method_source_is_not_the_test_itself(tmp_path):
+    template = cls(
+        "@ParameterizedTest @MethodSource public void testFoo(int n) { BODY } "
+        "static Stream<Arguments> testFoo() { return Stream.of(Arguments.of(1), Arguments.of(2)); }"
+    )
+    before = template.replace("BODY", "assertEquals(n, f(n));")
+    after = template.replace("BODY", "assertEquals(n, f(n, UTC));")
+    assert "disable/parameter_cases_dropped" not in codes(before, after, tmp_path)

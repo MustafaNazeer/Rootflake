@@ -108,8 +108,19 @@ class Program:
                 pending.extend((member, f"{fqn}.{member.name}") for member in decl.types)
             for node in walk(unit):
                 if isinstance(node, TypeDecl) and id(node) not in self.fqn:
-                    self.fqn[id(node)] = f"<local>{node.name}"
+                    # A local or anonymous type is named by where it sits, the same on both
+                    # sides of the patch: its enclosing type and method, then its own name or,
+                    # for an anonymous class, the type it extends.
+                    where = [
+                        self.fqn.get(id(n), n.name) if isinstance(n, TypeDecl) else n.name
+                        for n in path_to(unit, node.start)
+                        if isinstance(n, TypeDecl | Method) and n is not node
+                    ]
+                    own = node.name or f"new {','.join(node.extends)}"
+                    self.fqn[id(node)] = f"<local>{'/'.join(where[-2:])}/{own}"
                     self.owner[id(node)] = path
+                    for method in node.methods:
+                        self.method_owner[id(method)] = self.fqn[id(node)]
                 if isinstance(node, Method):
                     self.methods_by_name.setdefault(node.name, []).append((path, node))
 
@@ -145,11 +156,12 @@ class Program:
         if "." in name:
             return self._resolve_qualified(path, name, index)
         unit = self.units[path]
-        if not header:
-            for node in reversed(path_to(unit, index)):
-                found = self._in_scope(path, node, name, index)
-                if found:
-                    return found
+        for node in reversed(path_to(unit, index)):
+            if header and isinstance(node, TypeDecl) and node.start == index:
+                continue  # a supertype name never resolves to the class's own members
+            found = self._in_scope(path, node, name, index)
+            if found:
+                return found
         for decl in unit.types:
             if decl.name == name:
                 return self._declared(path, decl)

@@ -334,10 +334,31 @@ def _balanced(text: str) -> bool:
     return depth == 0
 
 
+def _without_literals(arg: str) -> str:
+    """The argument text with string and character literals blanked out."""
+    out, i, quote = [], 0, None
+    while i < len(arg):
+        char = arg[i]
+        if quote:
+            if char == "\\":
+                i += 2
+                continue
+            if char == quote:
+                quote = None
+                out.append(" 0 ")
+        elif char in "\"'":
+            quote = char
+        else:
+            out.append(char)
+        i += 1
+    return "".join(out)
+
+
 def _constant(arg: str) -> bool:
     """No identifier anywhere: a literal or an expression over literals."""
     return not any(
-        (w[:1].isalpha() or w[:1] in "_$") and w not in _CONSTANT_WORDS for w in arg.split()
+        (w[:1].isalpha() or w[:1] in "_$") and w not in _CONSTANT_WORDS
+        for w in _without_literals(arg).split()
     )
 
 

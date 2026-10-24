@@ -257,3 +257,10 @@ class TestReviewFindings:
     def test_a_real_kind_one_change_is_still_a_match(self, tmp_path):
         old = body_of("int v = f(); assertEquals(1, v);")
         assert REMOVED not in codes(old, body_of("int v = f(); assertEquals(2, v);"), tmp_path)
+
+
+@pytest.mark.parametrize("literal", ['"a b"', "'x'", '"if (x) y"'])
+def test_a_string_literal_with_spaces_is_constant_for_assert_not_null(tmp_path, literal):
+    before = body_of("int v = f(); assertNotNull(obj(v));")
+    after = body_of(f"int v = f(); assertNotNull({literal});")
+    assert REMOVED in codes(before, after, tmp_path)
