@@ -149,6 +149,48 @@ def _returns(method: Method) -> int:
     )
 
 
+def _loop_exits(unit: CompilationUnit, method: Method) -> int:
+    """`continue` statements, and `break` statements whose nearest breakable is a loop, outside
+    nested lambdas and classes; each one can skip the cases after it."""
+    count = 0
+    for node in _outside_nested(method.body):
+        if not isinstance(node, Statement) or node.kind not in ("continue", "break"):
+            continue
+        if node.kind == "continue":
+            count += 1
+            continue
+        around = [n for n in path_to(unit, node.start) if isinstance(n, Statement)]
+        breakable = next(
+            (n for n in reversed(around) if n.kind in ("for", "while", "do", "switch")), None
+        )
+        if breakable is not None and breakable.kind != "switch":
+            count += 1
+    return count
+
+
+def _exit_positions(unit: CompilationUnit, method: Method) -> list[tuple[str, int]]:
+    """Each return with the number of assertion like calls before it, so a return moved ahead
+    of an assertion shows up even when the number of returns is unchanged."""
+    if method.body is None:
+        return []
+    calls = [
+        c.start
+        for c in calls_in(unit, method.body)
+        if c.name.startswith(("assert", "fail", "verify"))
+    ]
+    out = []
+    for node in _outside_nested(method.body):
+        if isinstance(node, Statement) and node.kind == "return":
+            out.append((text(unit, node), sum(1 for at in calls if at < node.start)))
+    return sorted(out)
+
+
+def _undiscoverable(old: Method, new: Method) -> bool:
+    """Jupiter skips a private or static test method, which only warns."""
+    became = {"private", "static"} & set(new.modifiers)
+    return bool(became - set(old.modifiers))
+
+
 def _is_empty(method: Method) -> bool:
     return method.body is not None and all(s.kind == "empty" for s in method.body.statements)
 
@@ -201,6 +243,17 @@ def _removals(change: FileChange, ctx: Context) -> Iterator[Finding]:
             yield Finding("disable/test_body_emptied", change.path, new.line)
         if _returns(new) > _returns(method):
             yield Finding("disable/early_return", change.path, new.line)
+        elif _loop_exits(change.after, new) > _loop_exits(change.before, method):
+            yield Finding("disable/early_return", change.path, new.line)
+        else:
+            old_exits = _exit_positions(change.before, method)
+            new_exits = _exit_positions(change.after, new)
+            if [t for t, _ in old_exits] == [t for t, _ in new_exits] and any(
+                n < o for (_, o), (_, n) in zip(old_exits, new_exits, strict=True)
+            ):
+                yield Finding("disable/early_return", change.path, new.line)
+        if _undiscoverable(method, new) and "Test" in annotation_names(new.annotations, ctx.after):
+            yield Finding("disable/test_removed", change.path, new.line)
 
 
 def _simple_names(names: list[str]) -> set[str]:
@@ -265,9 +318,29 @@ def _declarations(program: Program, path: str) -> dict[tuple, object]:
 _FALSE = frozenset(["false", "Boolean . FALSE", "java . lang . Boolean . FALSE"])
 
 
+def _number(value: str | None) -> float:
+    """An attribute's integer value; an absent one is 1, and one that is not a literal counts
+    as 0, so a change to it reads as fewer cases."""
+    if value is None:
+        return 1
+    try:
+        return float(value.replace("_", ""))
+    except ValueError:
+        return 0
+
+
+_DISABLING_ATTRIBUTES = (
+    ("ParameterizedTest", "allowZeroInvocations", "true"),
+    ("Testcontainers", "disabledWithoutDocker", "true"),
+)
+
+
 def _test_attribute_findings(old: dict, new: dict, path: str, line: int) -> Iterator[Finding]:
-    if new.get("enabled") in _FALSE and old.get("enabled") not in _FALSE:
+    # Any enabled value other than true, a constant included, may turn the test off.
+    if new.get("enabled", "true") != "true" and new.get("enabled") != old.get("enabled"):
         yield Finding("disable/test_disabled", path, line)
+    if _number(new.get("invocationCount")) < _number(old.get("invocationCount")):
+        yield Finding("disable/parameter_cases_dropped", path, line)
     for key in ("priority", "dependsOnMethods", "dependsOnGroups"):
         if new.get(key) != old.get(key) and key in new:
             yield Finding("disable/order_pinned", path, line)
@@ -289,7 +362,7 @@ def _classify(
             and binding.fqn != "org.junit.jupiter.api.Order"
         ):
             return
-    if name in _DISABLING or name.startswith(("Disabled", "Enabled")):
+    if name in _DISABLING or name.startswith(("Disabled", "Enabled", "DisableIf")):
         yield Finding("disable/test_disabled", path, line)
     elif name in _ORDER:
         yield Finding("disable/order_pinned", path, line)
@@ -297,6 +370,54 @@ def _classify(
         yield Finding("disable/parallelism_disabled", path, line)
     elif name in _TAGS:
         yield Finding("disable/tag_changed", path, line)
+
+
+def _attribute_switches(change: FileChange, old_anns, new_anns) -> Iterator[Finding]:
+    for name, key, value in _DISABLING_ATTRIBUTES:
+        new = next((a for a in new_anns if simple(a) == name), None)
+        if new is None or attributes(change.after, new).get(key) != value:
+            continue
+        old = next((a for a in old_anns if simple(a) == name), None)
+        if old is None or attributes(change.before, old).get(key) != value:
+            yield Finding("disable/test_disabled", change.path, new.line)
+    new_repeat = next((a for a in new_anns if simple(a) == "RepeatedTest"), None)
+    old_repeat = next((a for a in old_anns if simple(a) == "RepeatedTest"), None)
+    if new_repeat is not None and old_repeat is not None:
+        old_count = _number(attributes(change.before, old_repeat).get("value"))
+        new_count = _number(attributes(change.after, new_repeat).get("value"))
+        if new_count < old_count:
+            yield Finding("disable/parameter_cases_dropped", change.path, new_repeat.line)
+
+
+def _hidden_classes(change: FileChange, ctx: Context) -> Iterator[Finding]:
+    """Tests a class change stops Jupiter or JUnit 4 from running: a class made abstract, an
+    inner class losing @Nested, an outer class losing @RunWith(Enclosed.class)."""
+    if change.before is None:
+        return
+    before = _types(ctx.before, change.path)
+    for fqn, decl in _types(ctx.after, change.path).items():
+        old = before.get(fqn)
+        if old is None:
+            continue
+        has_tests = any(
+            is_test_method(m, d, ctx.before) for d in [old, *old.types] for m in d.methods
+        )
+        if not has_tests:
+            continue
+        if "abstract" in decl.modifiers and "abstract" not in old.modifiers:
+            yield Finding("disable/test_removed", change.path, decl.line)
+        old_names = {simple(a) for a in old.annotations}
+        new_names = {simple(a) for a in decl.annotations}
+        if "Nested" in old_names and "Nested" not in new_names:
+            yield Finding("disable/test_removed", change.path, decl.line)
+        old_enclosed = any(
+            simple(a) == "RunWith" and "Enclosed" in text(change.before, a) for a in old.annotations
+        )
+        new_enclosed = any(
+            simple(a) == "RunWith" and "Enclosed" in text(change.after, a) for a in decl.annotations
+        )
+        if old_enclosed and not new_enclosed:
+            yield Finding("disable/test_removed", change.path, decl.line)
 
 
 def _annotations(change: FileChange, ctx: Context) -> Iterator[Finding]:
@@ -316,6 +437,7 @@ def _annotations(change: FileChange, ctx: Context) -> Iterator[Finding]:
                 change.path,
                 new_test.line,
             )
+        yield from _attribute_switches(change, old_anns, decl.annotations)
         for annotation in decl.annotations:
             if simple(annotation) != "Test" and text(change.after, annotation) not in old_texts:
                 yield from _classify(annotation, change.after, change.path, ctx.after)
@@ -532,6 +654,64 @@ def _provided(unit: CompilationUnit, provider: Method) -> int | None:
     return count or None
 
 
+_ROW_PROVIDERS = frozenset(["Parameters", "DataProvider", "TestFactory"])
+
+
+def _rows(unit: CompilationUnit, provider: Method) -> int | None:
+    """Rows written out by a JUnit 4 @Parameters, TestNG @DataProvider or @TestFactory method:
+    the inner groups of a two dimensional array initializer, `new Object[] {...}` rows, or
+    dynamicTest calls. Unknown when any of them sits inside a lambda or loop."""
+    if provider.body is None:
+        return None
+    tokens = unit.tokens[provider.body.start : provider.body.end]
+    words = [t.text for t in tokens]
+    loops = any(
+        isinstance(n, Statement) and n.kind in ("for", "while", "do") for n in walk(provider.body)
+    )
+    if loops:
+        return None
+    count = 0
+    for i in range(len(words) - 5):
+        if words[i : i + 6] == ["[", "]", "[", "]", "{", words[i + 5]]:
+            depth = 0
+            for word in words[i + 4 :]:
+                if word == "{":
+                    depth += 1
+                    if depth == 2:
+                        count += 1
+                elif word == "}":
+                    depth -= 1
+                    if depth == 0:
+                        break
+    for i in range(len(words) - 3):
+        if words[i : i + 4] == ["new", "Object", "[", "]"] and words[i + 4 : i + 5] == ["{"]:
+            count += 1
+    for call in calls_in(unit, provider.body):
+        if call.name in ("dynamicTest", "dynamicContainer"):
+            if any(isinstance(n, Lambda) for n in path_to(unit, call.start)):
+                return None  # one call in a lambda can stand for any number of tests
+            count += 1
+    return count or None
+
+
+def _class_rows(change: FileChange, ctx: Context) -> Iterator[Finding]:
+    if change.before is None:
+        return
+    before = _methods(ctx.before, change.path)
+    for key, (method, _) in _methods(ctx.after, change.path).items():
+        if not {simple(a) for a in method.annotations} & _ROW_PROVIDERS:
+            continue
+        old = before.get(key)
+        if old is None:
+            continue
+        old_text, new_text = text(change.before, old[0]), text(change.after, method)
+        if old_text == new_text:
+            continue
+        old_rows, new_rows = _rows(change.before, old[0]), _rows(change.after, method)
+        if old_rows is None or new_rows is None or new_rows < old_rows:
+            yield Finding("disable/parameter_cases_dropped", change.path, method.line)
+
+
 def _parameters(change: FileChange, ctx: Context) -> Iterator[Finding]:
     if change.before is None:
         return
@@ -558,3 +738,5 @@ def findings(ctx: Context) -> Iterator[Finding]:
         yield from _annotations(change, ctx)
         yield from _assumptions(change, ctx)
         yield from _parameters(change, ctx)
+        yield from _class_rows(change, ctx)
+        yield from _hidden_classes(change, ctx)

@@ -460,3 +460,47 @@ def test_a_test_turned_into_a_factory_is_removed(tmp_path):
 def test_a_void_return_in_a_new_method_counts_whatever_its_annotations(tmp_path):
     added = "@Test @TestFactory public void testNew() { if (done()) { return; } fail(); }"
     assert "disable/early_return" in codes(cls(TEST), cls(TEST + added), tmp_path)
+
+
+class TestNewShortcutKinds:
+    LOOP = "@Test public void testFoo() { for (int i : ns) { BODY assertEquals(i, f(i)); } }"
+
+    def test_an_added_continue_in_a_test_loop(self, tmp_path):
+        before = cls(self.LOOP.replace("BODY", ""))
+        after = cls(self.LOOP.replace("BODY", "if (i == 1) continue;"))
+        assert "disable/early_return" in codes(before, after, tmp_path)
+
+    def test_a_break_inside_a_switch_is_not_an_early_exit(self, tmp_path):
+        before = cls(self.LOOP.replace("BODY", ""))
+        after = cls(self.LOOP.replace("BODY", "switch (i) { case 1: g(); break; default: h(); }"))
+        assert "disable/early_return" not in codes(before, after, tmp_path)
+
+    def test_a_return_moved_before_an_assertion(self, tmp_path):
+        before = cls(
+            "@Test public void testFoo() { assertEquals(1, f()); if (ci()) { return; } g(); }"
+        )
+        after = cls(
+            "@Test public void testFoo() { if (ci()) { return; } assertEquals(1, f()); g(); }"
+        )
+        assert "disable/early_return" in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("@RepeatedTest(100)", "@RepeatedTest(2)"),
+         ("@Test(invocationCount = 50)", "@Test(invocationCount = 1)")],
+    )  # fmt: skip
+    def test_fewer_repetitions(self, tmp_path, before, after):
+        template = cls("ANN public void testFoo() { assertEquals(1, f()); }")
+        assert "disable/parameter_cases_dropped" in codes(
+            template.replace("ANN", before), template.replace("ANN", after), tmp_path
+        )
+
+    def test_more_repetitions_are_fine(self, tmp_path):
+        template = cls("ANN public void testFoo() { assertEquals(1, f()); }")
+        assert codes(template.replace("ANN", "@RepeatedTest(2)"),
+                     template.replace("ANN", "@RepeatedTest(20)"), tmp_path) == set()  # fmt: skip
+
+    @pytest.mark.parametrize("modifier", ["private", "static"])
+    def test_a_jupiter_test_made_undiscoverable(self, tmp_path, modifier):
+        after = cls(TEST.replace("public void", f"{modifier} void"))
+        assert "disable/test_removed" in codes(cls(TEST), after, tmp_path)

@@ -65,19 +65,5 @@ reject-wildcard-imported-record-annotation
 # Accept fixtures waiting on Task 7b (kind 2 and kind 3 matches); remove when 7b lands.
 accept-assertion-moved-into-await-condition
 # Fixtures for the Decision 6 forms adopted 2026-10-23; remove each as its rule lands.
-reject-continue-added-before-loop-assertions
-reject-dynamic-test-dropped-from-test-factory
 reject-existing-return-moved-earlier
-reject-junit4-enclosed-runner-removed
-reject-junit4-parameters-rows-dropped
-reject-jupiter-test-method-made-private
-reject-nested-annotation-removed
-reject-parameterized-allow-zero-invocations
-reject-pioneer-disable-if-test-fails
-reject-repeated-test-repetitions-cut
 reject-skip-exception-thrown-through-variable
-reject-test-class-made-abstract
-reject-testcontainers-disabled-without-docker
-reject-testng-data-provider-rows-dropped
-reject-testng-enabled-false-through-constant
-reject-testng-invocation-count-cut
