@@ -643,3 +643,33 @@ def test_a_skip_local_with_more_after_the_constructor_is_still_an_exit(tmp_path)
         f"RuntimeException e = {initializer}; if (ci()) {{ throw e; }} assertEquals(1, f());"
     )
     assert REMOVED in codes(before, after, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "middle",
+    ["try { g(); } catch (IllegalStateException e) { if (ci()) { throw e; } }",
+     "for (RuntimeException e : errors()) { if (ci()) { throw e; } }",
+     "if (thing() instanceof IllegalStateException e && ci()) { throw e; }",
+     "run((a, e) -> g()); if (ci()) { throw e; }",
+     "Runnable r = () -> { Object e = g(); }; if (ci()) { throw e; }"],
+    ids=["catch", "for_each", "instanceof", "lambda", "lambda_local"],
+)  # fmt: skip
+def test_a_skip_local_name_bound_again_is_still_an_exit(tmp_path, middle):
+    before = body_of("assertEquals(1, f());")
+    after = body_of(f'if (ok()) {{ RuntimeException e = new SkipException("x"); g(e); }} {middle} '
+                    "assertEquals(1, f());")  # fmt: skip
+    assert REMOVED in codes(before, after, tmp_path)
+
+
+def test_a_skip_local_out_of_scope_at_the_throw_is_still_an_exit(tmp_path):
+    before = body_of("assertEquals(1, f());")
+    after = body_of('if (ok()) { RuntimeException e = new SkipException("x"); } '
+                    "if (ci()) { throw e; } assertEquals(1, f());")  # fmt: skip
+    assert REMOVED in codes(before, after, tmp_path)
+
+
+def test_a_skip_local_thrown_before_its_declaration_is_still_an_exit(tmp_path):
+    before = body_of("assertEquals(1, f());")
+    after = body_of('if (ci()) { throw e; } RuntimeException e = new SkipException("x"); '
+                    "assertEquals(1, f());")  # fmt: skip
+    assert REMOVED in codes(before, after, tmp_path)

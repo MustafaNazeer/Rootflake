@@ -258,7 +258,24 @@ def _throws_skip_local(unit: CompilationUnit, body: Block, statement: Statement)
     if all_tokens[m].text not in SKIP_EXCEPTIONS or all_tokens[m + 1].text != "(":
         return False
     close = _close(unit, m + 1)
-    return all_tokens[close + 1].text in (";", ",")
+    if all_tokens[close + 1].text not in (";", ","):
+        return False
+    # Any other mention may be a second binding (a catch, for each, lambda or pattern
+    # variable), so the throw must be the only one, later in the declaring block.
+    mentions = [
+        i
+        for i in range(body.start, body.end)
+        if all_tokens[i].text == name
+        and all_tokens[i].kind == "ident"
+        and all_tokens[i - 1].text != "."
+    ]
+    if mentions != [at, statement.start + 1]:
+        return False
+    blocks = [b for b in walk(body) if isinstance(b, Block) and b.start < at < b.end]
+    home = min(blocks, key=lambda b: b.end - b.start)
+    return home.start < statement.start < home.end and any(
+        s.kind == "local_var" and s.start <= at < s.end for s in home.statements
+    )
 
 
 def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str]]:
