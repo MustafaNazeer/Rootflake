@@ -93,11 +93,18 @@ def _split_arguments(unit: CompilationUnit, open_paren: int, close: int) -> tupl
     for i in range(open_paren + 1, close):
         token = unit.tokens[i]
         if token.kind == "keyword" and token.text == "new":
-            creating = True
+            # `Foo::new` is a reference, not a creation with type arguments to follow.
+            creating = unit.tokens[i - 1].text != "::"
         elif creating and token.kind == "op" and token.text == "<":
             angles += 1
         elif creating and token.kind == "op" and token.text == ">":
-            angles -= 1
+            angles = max(angles - 1, 0)
+        elif creating and not (
+            token.kind == "ident"
+            or token.text in (".", ",", "?", "&", "extends", "super")
+            or token.text in _PRIMITIVES
+        ):
+            creating, angles = False, 0  # only a type can sit between `new` and its bracket
         if token.kind == "op" and token.text in "([{":
             depth += 1
             creating, angles = False, 0
@@ -516,7 +523,8 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             Assertion(
                 text=_text(unit, start, end),
                 signature=_with_default_mode(
-                    (*(n for n in names if n not in _DESCRIPTIONS), *matchers)
+                    (*(n for n in names if n not in _DESCRIPTIONS), *matchers),
+                    _mode_argument(unit, call, names),
                 ),
                 arguments=_split_arguments(unit, call.start + 1, _close(unit, call.start + 1)),
                 guard=_guard(unit, body, call.start, declared),
@@ -815,13 +823,44 @@ _MODES = frozenset(
 )
 
 
-def _with_default_mode(signature: tuple[str, ...]) -> tuple[str, ...]:
+def _with_default_mode(signature: tuple[str, ...], mode: str | None) -> tuple[str, ...]:
     """A Mockito verification with no mode verifies `times(1)`, and so does one under a bare
-    `timeout(n)` or `after(n)` (Mockito 5.24.0), so the implicit mode joins the signature."""
+    `timeout(n)` or `after(n)` (Mockito 5.24.0), so the implicit mode joins the signature. Any
+    other mode argument, such as a project's own VerificationMode, gets no implicit mode."""
     verifies = signature[0] == "verify" or (signature[0] == "then" and "should" in signature)
-    if verifies and not _MODES & set(signature):
+    if verifies and not _MODES & set(signature) and (mode is None or _bare_timed(mode)):
         return (*signature, "times")
     return signature
+
+
+def _bare_timed(mode: str) -> bool:
+    """`timeout(n)` or `after(n)`, optionally qualified by `Mockito.`, with nothing chained."""
+    words = mode.split()
+    if words[:2] == ["Mockito", "."]:
+        words = words[2:]
+    if len(words) < 3 or words[0] not in _TIMED or words[1] != "(" or words[-1] != ")":
+        return False
+    depth = 0
+    for i, word in enumerate(words[1:], start=1):
+        depth += word == "("
+        depth -= word == ")"
+        if depth == 0:
+            return i == len(words) - 1
+    return False
+
+
+def _mode_argument(unit: CompilationUnit, call: Call, names: list[str]) -> str | None:
+    """The verification mode argument: verify's second argument, or what should is given."""
+    if call.name == "verify":
+        arguments = _split_arguments(unit, call.start + 1, _close(unit, call.start + 1))
+        return arguments[1] if len(arguments) > 1 else None
+    if call.name == "then" and "should" in names:
+        names_end = _chain(unit, call)[1]
+        for i in range(call.start, names_end):
+            if unit.tokens[i].text == "should" and unit.tokens[i + 1].text == "(":
+                close = _close(unit, i + 1)
+                return _text(unit, i + 2, close) or None
+    return None
 
 
 # AssertJ calls that only describe a failure; they change no check.

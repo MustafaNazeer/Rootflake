@@ -1313,3 +1313,15 @@ def test_an_assertion_pairs_with_the_one_sharing_its_root():
     new_b = made("assertEquals ( 2 , b . first ( ) )", {"b"}, 3)
     results = _match([old_a, old_b], [new_b])
     assert [(old.line, code) for old, code, _ in results] == [(1, REMOVED)]
+
+
+def test_an_unknown_verification_mode_is_not_times_one(tmp_path):
+    before = with_imports(body_of("verify(m(), times(1)).foo();"), MOCKITO_IMPORTS)
+    after = with_imports(body_of("verify(m(), customMode()).foo();"), MOCKITO_IMPORTS)
+    assert REMOVED in codes(before, after, tmp_path)
+
+
+def test_a_constructor_reference_does_not_merge_arguments(tmp_path):
+    before = body_of("assertEquals(1.0, d());")
+    after = body_of("assertEquals(1.0, g(Foo::new) < 2 ? 1.0 : 0.0, 0.5);")
+    assert TOLERANCE in codes(before, after, tmp_path)
