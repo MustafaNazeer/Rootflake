@@ -4,8 +4,9 @@ Unicode escapes are translated first, as JLS 3.3 requires, so `// \\u000d @Disab
 here as it is to javac. Only CR, LF and CRLF end a line (JLS 3.4); whitespace is the JLS 3.6
 set and anything else outside a token is unparsable. Comments are dropped. Every `>` is its own
 token so nested generics close without the parser splitting `>>`. Lines are reported against
-the raw file, so an escaped line break does not shift them. The scanner is a single pass with
-no backtracking.
+the raw file, so an escaped line break does not shift them. An identifier holding a character
+javac ignores in names (JLS 3.8) is unparsable, since names are never normalized. The scanner
+is a single pass with no backtracking.
 """
 
 import re
@@ -28,7 +29,7 @@ _OPERATORS = sorted(
 _HEX = frozenset("0123456789abcdefABCDEF")
 _SPACE = frozenset(" \t\x0c\r\n")
 _IDENT_START = frozenset(["Lu", "Ll", "Lt", "Lm", "Lo", "Nl", "Sc", "Pc"])
-_IDENT_PART = _IDENT_START | {"Nd", "Mn", "Mc", "Cf"}
+_IDENT_PART = _IDENT_START | {"Nd", "Mn", "Mc"}
 _ASCII_IDENT = re.compile(r"[A-Za-z0-9_$]+")
 _NUMBER_BODY = re.compile(r"[0-9A-Za-z_.]*")
 
@@ -93,12 +94,16 @@ def _is_start(char: str) -> bool:
     return char == "$" or char == "_" or unicodedata.category(char) in _IDENT_START
 
 
+def _is_ignorable(char: str) -> bool:
+    """Character.isIdentifierIgnorable: javac drops these when comparing identifiers."""
+    code = ord(char)
+    return (code <= 0x08 or 0x0E <= code <= 0x1B or 0x7F <= code <= 0x9F) or unicodedata.category(
+        char
+    ) == "Cf"
+
+
 def _is_part(char: str) -> bool:
-    return (
-        _is_start(char)
-        or unicodedata.category(char) in _IDENT_PART
-        or (ord(char) <= 0x08 or 0x0E <= ord(char) <= 0x1B or 0x7F <= ord(char) <= 0x9F)
-    )
+    return _is_start(char) or unicodedata.category(char) in _IDENT_PART or _is_ignorable(char)
 
 
 class _Scanner:
@@ -219,6 +224,8 @@ class _Scanner:
             if match:
                 j = match.end()
             elif not text[j].isascii() and _is_part(text[j]):
+                if _is_ignorable(text[j]):
+                    raise self.fail("identifier holds a character javac ignores", j)
                 j += 1
             else:
                 break

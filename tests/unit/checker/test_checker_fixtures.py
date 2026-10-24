@@ -46,7 +46,7 @@ def trees(fixture: Path, tmp_path: Path) -> tuple[Path, Path]:
     if (fixture / "before").is_dir():
         shutil.copytree(fixture / "before", pristine)
     else:
-        pristine.mkdir()
+        pristine.mkdir(parents=True)
     shutil.copytree(pristine, workspace)
     subprocess.run(
         [

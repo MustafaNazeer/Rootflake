@@ -180,3 +180,20 @@ def test_every_fixture_pre_image_tokenizes():
     assert len(files) > 150
     for path in files:
         tokenize(path.read_bytes().decode("utf-8"))
+
+
+@pytest.mark.parametrize(
+    "ignorable",
+    ["​", "­", "⁠", "﻿", "\u0085", "\u009f"],
+    ids=["zero_width_space", "soft_hyphen", "word_joiner", "bom", "c1_next_line", "c1_last"],
+)
+def test_an_identifier_with_an_ignorable_character_is_unparsable(ignorable):
+    # javac drops these when it compares identifiers (JLS 3.8), so @Dis<ZWSP>abled would be
+    # @Disabled to it; the checker never normalizes names, so it refuses the file instead.
+    with pytest.raises(Unparsable):
+        tokenize(f"@Dis{ignorable}abled void t() {{}}")
+
+
+def test_an_escaped_ignorable_character_in_an_identifier_is_unparsable():
+    with pytest.raises(Unparsable):
+        tokenize("assert\\u200bEquals(1, 2);")
