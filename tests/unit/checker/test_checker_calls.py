@@ -58,12 +58,66 @@ class TestFollowing:
         assert names(reached) == ["h1", "h2", "h3", "o", "t"]
 
     def test_credit_refuses_an_ambiguous_name_and_arity(self):
+        p = program("class T { void t() { h(x); } void h(int a) {} void h(String s) {} }")
+        call = calls_in(p.units[PATH], method(p, "t").body)[0]
+        assert follow_for_credit(p, PATH, call) == []
+
+    def test_an_unqualified_call_credits_the_enclosing_declaration_only(self):
         p = program(
             "class T { void t() { h(); } void h() {} }",
             src__test__java__a__U="class U { void h() {} }",
         )
         call = calls_in(p.units[PATH], method(p, "t").body)[0]
-        assert follow_for_credit(p, call) == []
+        [(path, found)] = follow_for_credit(p, PATH, call)
+        assert (path, found) == (PATH, method(p, "h"))
+
+    def test_an_unqualified_call_to_an_unrelated_class_gets_no_credit(self):
+        p = program(
+            "class T { void t() { check(); } }",
+            src__test__java__a__U="class U { void check() {} }",
+        )
+        call = calls_in(p.units[PATH], method(p, "t").body)[0]
+        assert follow_for_credit(p, PATH, call) == []
+
+    def test_an_inherited_helper_from_a_read_supertype_gets_credit(self):
+        p = program(
+            "package a; class T extends Base { void t() { check(); } }",
+            src__test__java__a__Base="package a; class Base { void check() {} }",
+        )
+        call = calls_in(p.units[PATH], method(p, "t").body)[0]
+        [(path, _)] = follow_for_credit(p, PATH, call)
+        assert path == "src/test/java/a/Base.java"
+
+    def test_a_call_on_an_unresolved_receiver_gets_no_credit(self):
+        p = program(
+            "class T { void t() { other.check(); } }",
+            src__test__java__a__U="class U { void check() {} }",
+        )
+        call = calls_in(p.units[PATH], method(p, "t").body)[0]
+        assert follow_for_credit(p, PATH, call) == []
+
+    def test_a_static_call_on_a_read_class_gets_credit(self):
+        p = program(
+            "package a; class T { void t() { Checks.check(); } }",
+            src__test__java__a__Checks="package a; class Checks { static void check() {} }",
+        )
+        call = calls_in(p.units[PATH], method(p, "t").body)[0]
+        [(path, _)] = follow_for_credit(p, PATH, call)
+        assert path == "src/test/java/a/Checks.java"
+
+    def test_a_call_with_explicit_type_arguments_is_followed(self):
+        p = program(
+            "class T { void t() { Waits.<String>pause(); this.<Integer>go(); } void go() {} }",
+            src__test__java__a__Waits="class Waits { static <X> void pause() {} }",
+        )
+        found = calls_in(p.units[PATH], method(p, "t").body)
+        assert [(c.name, c.receiver) for c in found] == [("pause", "Waits"), ("go", "this")]
+        reached = reach(p, [(PATH, method(p, "t"))], scan=True, budget=ExpansionBudget())
+        assert names(reached) == ["go", "pause", "t"]
+
+    def test_a_generic_method_declaration_is_not_a_call(self):
+        p = program("class T { void t() { class L { <X> List<X> make() { return null; } } } }")
+        assert calls_in(p.units[PATH], method(p, "t").body) == []
 
     def test_lambdas_and_method_references_are_followed(self):
         p = program(

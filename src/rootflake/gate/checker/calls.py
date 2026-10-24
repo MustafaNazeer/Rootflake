@@ -10,7 +10,8 @@ from dataclasses import dataclass
 
 from rootflake.gate.checker.lexer import Unparsable
 from rootflake.gate.checker.scope import Program
-from rootflake.gate.checker.syntax import CompilationUnit, Method
+from rootflake.gate.checker.syntax import CompilationUnit, Method, TypeDecl
+from rootflake.gate.checker.tree import path_to
 
 MAX_EXPANSIONS = 2000
 CREDIT_DEPTH = 3
@@ -26,6 +27,7 @@ class Call:
     reference: bool
     start: int
     end: int
+    receiver_at: int | None = None
 
 
 @dataclass(frozen=True)
@@ -62,11 +64,29 @@ def _arity(unit: CompilationUnit, open_paren: int) -> int:
         i += 1
 
 
-def _receiver(unit: CompilationUnit, name_at: int) -> str | None:
+def _receiver(unit: CompilationUnit, dot_at: int) -> tuple[str | None, int | None]:
     tokens = unit.tokens
-    if name_at >= 2 and tokens[name_at - 1].text in (".", "::"):
-        before = tokens[name_at - 2]
-        return before.text if before.kind in ("ident", "keyword") else "<expr>"
+    if dot_at >= 1 and tokens[dot_at].text in (".", "::"):
+        before = tokens[dot_at - 1]
+        name = before.text if before.kind in ("ident", "keyword") else "<expr>"
+        return name, dot_at - 1
+    return None, None
+
+
+def _type_arguments_start(tokens, close: int) -> int | None:
+    """Index of the `<` matching the `>` at close, scanning back over balanced angles."""
+    depth, j = 0, close
+    while j >= 0:
+        text = tokens[j].text if tokens[j].kind == "op" else ""
+        if text == ">":
+            depth += 1
+        elif text == "<":
+            depth -= 1
+            if depth == 0:
+                return j
+        elif text in (";", "{", "}", "(", ")"):
+            return None
+        j -= 1
     return None
 
 
@@ -78,19 +98,28 @@ def calls_in(unit: CompilationUnit, node) -> list[Call]:
             continue
         before = tokens[i - 1] if i else None
         if tokens[i + 1].text == "(" and tokens[i + 1].kind == "op":
-            if before is not None and (
+            dot_at = i - 1
+            if before is not None and before.text == ">" and before.kind == "op":
+                opened = _type_arguments_start(tokens, i - 1)
+                if opened is None or opened == 0 or tokens[opened - 1].text != ".":
+                    continue
+                dot_at = opened - 1
+            elif before is not None and (
                 before.text in _NOT_CALL_BEFORE
                 or before.kind == "ident"
                 or before.text in _DECLARATION_BEFORE
-                or before.text in (">", "]")
+                or before.text == "]"
             ):
                 continue
             if _is_constructor(tokens, i):
                 continue
-            close = _arity(unit, i + 1)
-            out.append(Call(token.text, close, _receiver(unit, i), False, i, i + 1))
+            receiver, receiver_at = _receiver(unit, dot_at)
+            out.append(
+                Call(token.text, _arity(unit, i + 1), receiver, False, i, i + 1, receiver_at)
+            )
         elif before is not None and before.text == "::" and before.kind == "op":
-            out.append(Call(token.text, None, _receiver(unit, i), True, i, i + 1))
+            receiver, receiver_at = _receiver(unit, i - 1)
+            out.append(Call(token.text, None, receiver, True, i, i + 1, receiver_at))
     return out
 
 
@@ -105,12 +134,38 @@ def follow_for_scan(program: Program, call: Call) -> list[tuple[str, Method]]:
     return list(program.methods_by_name.get(call.name, []))
 
 
-def follow_for_credit(program: Program, call: Call) -> list[tuple[str, Method]]:
-    found = [
-        (path, method)
-        for path, method in program.methods_by_name.get(call.name, [])
-        if call.arity is None or _accepts(method, call.arity)
+def _matching(program: Program, owners, call: Call) -> list[tuple[str, Method]]:
+    return [
+        (program.owner[id(owner)], method)
+        for owner in owners
+        for method in owner.methods
+        if method.name == call.name and (call.arity is None or _accepts(method, call.arity))
     ]
+
+
+def follow_for_credit(program: Program, path: str, call: Call) -> list[tuple[str, Method]]:
+    """The one declaration the call resolves to, or nothing: credit is never guessed.
+
+    An unqualified or `this` call resolves in the innermost enclosing class that declares or
+    inherits (from a read supertype) a matching method; a call on a type name resolves in that
+    type. A call on any other receiver, such as a variable whose type is unknown, gets none.
+    """
+    unit = program.units[path]
+    if call.receiver in (None, "this", "super"):
+        for node in reversed(path_to(unit, call.start)):
+            if isinstance(node, TypeDecl):
+                owners = [node, *(decl for _, decl in program.supertypes(path, node))]
+                found = _matching(program, owners, call)
+                if found:
+                    return found if len(found) == 1 else []
+        return []
+    if call.receiver == "<expr>" or call.receiver_at is None:
+        return []
+    binding = program.resolve_type(path, call.receiver, call.receiver_at)
+    if binding.kind != "declared" or not isinstance(binding.decl, TypeDecl):
+        return []
+    owners = [binding.decl, *(decl for _, decl in program.supertypes(binding.path, binding.decl))]
+    found = _matching(program, owners, call)
     return found if len(found) == 1 else []
 
 
@@ -132,7 +187,10 @@ def reach(
             continue
         unit = program.units[current.path]
         for call in calls_in(unit, current.method.body):
-            targets = follow_for_scan(program, call) if scan else follow_for_credit(program, call)
+            if scan:
+                targets = follow_for_scan(program, call)
+            else:
+                targets = follow_for_credit(program, current.path, call)
             for path, method in targets:
                 if id(method) in seen:
                     continue
