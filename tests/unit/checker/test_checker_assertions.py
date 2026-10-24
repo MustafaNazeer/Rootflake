@@ -1123,3 +1123,107 @@ def test_a_condition_moved_into_a_wait_keeps_its_subject(tmp_path):
     before = with_imports(body_of('assertTrue("m", cursor.isReady());', helper), AWAIT_IMPORTS)
     after = with_imports(body_of("await().until(() -> cursor.isReady());", helper), AWAIT_IMPORTS)
     assert codes(before, after, tmp_path) == set()
+
+
+QUALIFIED = (
+    "import org.mockito.Mockito;\nimport org.hamcrest.Matchers;\n"
+    "import org.hamcrest.CoreMatchers;\nimport org.hamcrest.MatcherAssert;\n"
+)
+
+
+class TestSecondReview:
+    @pytest.mark.parametrize(
+        ("before", "after", "code"),
+        [("Mockito.verify(m(), Mockito.times(1)).foo();",
+          "Mockito.verify(m(), Mockito.atLeastOnce()).foo();",
+          "weaken_assertion/verification_mode_relaxed"),
+         ("MatcherAssert.assertThat(v(), Matchers.equalTo(1));",
+          "MatcherAssert.assertThat(v(), Matchers.anything());", None),
+         ('MatcherAssert.assertThat(l(), Matchers.contains("a", "b"));',
+          'MatcherAssert.assertThat(l(), Matchers.hasItem("a"));', None),
+         ("MatcherAssert.assertThat(v(), CoreMatchers.is(1));",
+          "MatcherAssert.assertThat(v(), CoreMatchers.not(CoreMatchers.nullValue()));", None)],
+        ids=["mockito_mode", "hamcrest_anything", "hamcrest_has_item", "core_matchers_not_null"],
+    )  # fmt: skip
+    def test_a_qualified_factory_change_is_judged(self, tmp_path, before, after, code):
+        result = codes(with_imports(body_of(before), QUALIFIED),
+                       with_imports(body_of(after), QUALIFIED), tmp_path)  # fmt: skip
+        assert (code in result) if code else (result & {REMOVED, RELAXED})
+
+    def test_a_removed_qualified_bdd_then_is_removed(self, tmp_path):
+        before = single_body("org.assertj.core.api.BDDAssertions.then(v()).isEqualTo(1); g();")
+        assert REMOVED in codes(before, single_body("g();"), tmp_path)
+
+    def test_a_qualified_timed_mode_keeps_the_mode(self, tmp_path):
+        before = with_imports(body_of("verify(m(), times(1)).foo();"), MOCKITO_IMPORTS + QUALIFIED)
+        after = with_imports(
+            body_of("verify(m(), Mockito.timeout(1000).times(1)).foo();"),
+            MOCKITO_IMPORTS + QUALIFIED,
+        )
+        assert codes(before, after, tmp_path) == set()
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [('try { f(); fail("x"); } catch (java.io.IOException e) { }',
+          'try { f(); fail("x"); } catch (java.io.IOException | RuntimeException e) { }'),
+         ("@Test(expectedExceptions = IllegalStateException.class)",
+          "@Test(expectedExceptions = {IllegalStateException.class, RuntimeException.class})")],
+        ids=["multi_catch", "expected_exceptions_array"],
+    )  # fmt: skip
+    def test_a_broad_type_added_beside_the_old_one_is_broadened(self, tmp_path, before, after):
+        if before.startswith("@"):
+            old = body_of("f();").replace("@Test public", f"{before} public")
+            new = body_of("f();").replace("@Test public", f"{after} public")
+        else:
+            old, new = body_of(before), body_of(after)
+        assert BROADENED in codes(old, new, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertThat(f().exists()).isTrue();",
+          'assertThat(new java.io.File(d(), "x").exists()).isTrue();'),
+         ("assertNotNull(svc().call());", "assertNotNull(new Svc().call());")],
+        ids=["assertj_is_true", "assert_not_null"],
+    )  # fmt: skip
+    def test_a_call_on_a_new_object_is_not_trivially_true(self, tmp_path, before, after):
+        assert codes(body_of(before), body_of(after), tmp_path) == set()
+
+    @pytest.mark.parametrize(
+        ("before", "after", "helper"),
+        [("assertTrue(a().equals(b()));", "assertTrue(b().equals(b()));", ""),
+         ("assertTrue(Objects.equals(a(), b()));", "assertTrue(Objects.equals(b(), b()));", ""),
+         ("collector.checkThat(v(), equalTo(1));", "collector.checkThat(v(), equalTo(v()));",
+          "  @org.junit.Rule public ErrorCollector collector = new ErrorCollector();")],
+        ids=["equals_self", "objects_equals_self", "error_collector_self"],
+    )  # fmt: skip
+    def test_a_self_comparison_is_trivially_true(self, tmp_path, before, after, helper):
+        imports = (
+            "import org.junit.rules.ErrorCollector;\nimport static org.hamcrest.Matchers.equalTo;\n"
+        )
+        old = with_imports(body_of(before, helper), imports)
+        new = with_imports(body_of(after, helper), imports)
+        assert REMOVED in codes(old, new, tmp_path)
+
+    def test_a_json_assert_mode_is_not_a_tolerance(self, tmp_path):
+        imports = "import org.skyscreamer.jsonassert.JSONAssert;\n"
+        before = with_imports(body_of("assertEquals(e(), a());"), imports)
+        after = with_imports(body_of("JSONAssert.assertEquals(e(), a(), true);"), imports)
+        assert TOLERANCE not in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertEquals(e(), a());", "assertEquals(e(), a() == null ? e() : a());"),
+         ("assertTrue(ok());", "assertTrue(flaky() ? true : ok());"),
+         ("assertFalse(bad());", "assertFalse(flaky() ? false : bad());"),
+         ("assertThat(a()).isEqualTo(e());", "assertThat(flaky() ? e() : a()).isEqualTo(e());")],
+        ids=["assert_equals", "assert_true", "assert_false", "assertj"],
+    )  # fmt: skip
+    def test_a_conditional_that_can_pick_a_passing_value_is_trivially_true(
+        self, tmp_path, before, after
+    ):
+        assert REMOVED in codes(body_of(before), body_of(after), tmp_path)
+
+    def test_a_conditional_expected_value_is_kept(self, tmp_path):
+        before = body_of('assertEquals("\\n", sep());')
+        after = body_of('assertEquals(isWin() ? "\\r\\n" : "\\n", sep());')
+        assert codes(before, after, tmp_path) == set()

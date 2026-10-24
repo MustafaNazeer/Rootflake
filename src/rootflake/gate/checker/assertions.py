@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 from rootflake.gate.checker.calls import Call, ExpansionBudget, calls_in, reach
-from rootflake.gate.checker.lexer import tokenize
+from rootflake.gate.checker.lexer import Unparsable, tokenize
 from rootflake.gate.checker.model import Context, FileChange, Finding
 from rootflake.gate.checker.scope import Program, is_library
 from rootflake.gate.checker.survive import SKIP_EXCEPTIONS, attributes
@@ -425,6 +425,12 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             continue
         names, end = _chain(unit, call)
         start = call.receiver_at if call.receiver not in (None, "<expr>") else call.start
+        while (
+            start >= 2
+            and unit.tokens[start - 1].text == "."
+            and (unit.tokens[start - 2].kind == "ident")
+        ):
+            start -= 2  # a fully qualified class name belongs to the assertion's text
         for inner in calls_in(unit, _Span(call.start + 1, end)):
             # A call inside a lambda handed to the chain, such as untilAsserted's, stays an
             # assertion of its own.
@@ -437,6 +443,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             if inner.name in MATCHER_FACTORIES
             and (
                 (inner.receiver is None and _library_call(program, path, inner.name, inner.start))
+                or _library_receiver(program, path, unit, inner)
                 or _timed_mode(program, path, unit, inner)
             )
         )
@@ -445,12 +452,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             if other is not None
             else (
                 _library_call(program, path, call.name, call.start)
-                or (
-                    call.receiver not in (None, "<expr>")
-                    and program.resolve_type(path, call.receiver, call.receiver_at).kind
-                    == "library"
-                    and not program.methods_by_name.get(call.name)
-                )
+                or _library_receiver(program, path, unit, call)
             )
         )
         out.append(
@@ -518,15 +520,20 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             if last is None or last.kind != "expression" or not _ends_in_fail(unit, last):
                 continue
             credited = _fail_resolves(program, path, unit, last)
-            for catch in node.catches:
-                for caught in catch.types:
-                    text = f"{' . '.join(caught.split('.'))} . class"
-                    out.append(Assertion(
-                        f"assertThrows ( {text} )", ("assertThrows",), (text,),
-                        _guard(unit, body, node.start, declared),
-                        frozenset(t for at, t in exits if at < node.start), credited,
-                        catch.line, catch.start, facts=facts,
-                    ))  # fmt: skip
+            # One expectation per try, listing every caught type, so a type added beside the
+            # old one is a broadening, not an added assertion.
+            types = tuple(
+                f"{' . '.join(caught.split('.'))} . class"
+                for catch in node.catches
+                for caught in catch.types
+            )
+            if types:
+                out.append(Assertion(
+                    f"assertThrows ( {' , '.join(types)} )", ("assertThrows",), types,
+                    _guard(unit, body, node.start, declared),
+                    frozenset(t for at, t in exits if at < node.start), credited,
+                    node.catches[0].line, node.catches[0].start, facts=facts,
+                ))  # fmt: skip
     for node in walk(body):
         if isinstance(node, Statement) and node.kind == "assert":
             out.append(
@@ -614,8 +621,8 @@ def _other_form(program: Program, path: str, call: Call, rule) -> bool | None:
     if call.receiver is None:
         return True if _library_call(program, path, "then", call.start) else None
     if call.receiver in _BDD_OWNERS and call.receiver_at is not None:
-        kind = program.resolve_type(path, call.receiver, call.receiver_at).kind
-        return True if kind == "library" else None
+        unit = program.units[path]
+        return True if _qualified_library(program, path, unit, call.receiver_at) else None
     return None
 
 
@@ -768,11 +775,41 @@ def _timed_mode(program: Program, path: str, unit: CompilationUnit, call: Call) 
                 break
         j -= 1
     name_at = j - 1
-    return (
-        tokens[name_at].text in _TIMED
-        and tokens[name_at - 1].text != "."
-        and _library_call(program, path, tokens[name_at].text, name_at)
-    )
+    if tokens[name_at].text not in _TIMED:
+        return False
+    if tokens[name_at - 1].text == ".":
+        return _qualified_library(program, path, unit, name_at - 2)
+    return _library_call(program, path, tokens[name_at].text, name_at)
+
+
+def _qualified_name(unit: CompilationUnit, last: int) -> str:
+    """The dotted name ending at the identifier token at last, such as `org.mockito.Mockito`."""
+    tokens, parts, j = unit.tokens, [unit.tokens[last].text], last
+    while j >= 2 and tokens[j - 1].text == "." and tokens[j - 2].kind == "ident":
+        parts.append(tokens[j - 2].text)
+        j -= 2
+    return ".".join(reversed(parts))
+
+
+def _qualified_library(program: Program, path: str, unit: CompilationUnit, at: int) -> bool:
+    """Whether the type name ending at token at is a test library class, by its fully
+    qualified spelling or by resolution."""
+    if at < 0 or unit.tokens[at].kind != "ident":
+        return False
+    name = _qualified_name(unit, at)
+    if "." in name and is_library(name):
+        return True
+    return program.resolve_type(path, unit.tokens[at].text, at).kind == "library"
+
+
+def _library_receiver(program: Program, path: str, unit: CompilationUnit, call: Call) -> bool:
+    """A factory called on a test library class, as in `Mockito.times(1)`, which is the same
+    method as the statically imported `times(1)`."""
+    if call.receiver in (None, "<expr>") or call.receiver_at is None:
+        return False
+    if program.methods_by_name.get(call.name):
+        return False
+    return _qualified_library(program, path, unit, call.receiver_at)
 
 
 @dataclass(frozen=True)
@@ -966,18 +1003,103 @@ def _trivially_true(assertion: Assertion) -> bool:
     name = assertion.signature[0]
     args = tuple(_strip_parens(a) for a in payload(assertion))
     if name in ("assertEquals", "assertSame") and len(args) >= 2:
-        actual, expected = args[-1], args[-2]
-        return actual == expected or (_constant(actual) and _constant(expected))
+        return _same_values(args[-1], args[-2])
     if name in ("assertTrue", "assertFalse") and args:
+        condition = args[-1]
+        passing = "true" if name == "assertTrue" else "false"
+        branches = _branches(condition)
         return (
-            _constant(args[-1])
-            or _same_on_both_sides(args[-1])
-            or _or_true(_without_literals(args[-1]))
+            _constant(condition)
+            or _same_on_both_sides(condition)
+            or _or_true(_without_literals(condition))
+            or _equals_self(condition)
+            or (branches is not None and passing in branches)
         )
     if name == "assertNotNull" and args:
-        return _constant(args[-1]) or args[-1].startswith("new ")
-    if name == "assertThat" and args:
+        return _constant(args[-1]) or _whole_new(args[-1])
+    if name in ("assertThat", "checkThat") and args:
         return _trivial_chain(assertion, args)
+    return False
+
+
+def _same_values(a: str, b: str) -> bool:
+    """Both sides the same expression, both literals, or a conditional on either side with a
+    branch that is the other side, so the comparison can always pass. A conditional whose
+    branches are both other values, such as a platform line ending, is a real expectation."""
+    if a == b or (_constant(a) and _constant(b)):
+        return True
+    return any(
+        branches is not None and other in branches
+        for branches, other in ((_branches(a), b), (_branches(b), a))
+    )
+
+
+def _branches(text: str) -> tuple[str, str] | None:
+    """The two results of a conditional `c ? x : y` at the top level of text."""
+    try:
+        tokens = tokenize(text)
+    except Unparsable:
+        return None
+    depth, question, colon, nested = 0, None, None, 0
+    for i, token in enumerate(tokens):
+        if token.kind == "op" and token.text in "([{":
+            depth += 1
+        elif token.kind == "op" and token.text in ")]}":
+            depth -= 1
+        elif depth == 0 and token.text == "?":
+            if question is None:
+                question = i
+            else:
+                nested += 1
+        elif depth == 0 and token.text == ":" and question is not None:
+            if nested:
+                nested -= 1
+            elif colon is None:
+                colon = i
+    if question is None or colon is None:
+        return None
+    then = _strip_parens(" ".join(t.text for t in tokens[question + 1 : colon]))
+    other = _strip_parens(" ".join(t.text for t in tokens[colon + 1 :]))
+    return then, other
+
+
+def _equals_self(condition: str) -> bool:
+    """`x.equals(x)` or `Objects.equals(x, x)`, with the same expression on both sides."""
+    words = condition.split()
+    if words[:4] == ["Objects", ".", "equals", "("] and words[-1] == ")":
+        found = _first_arguments(words, frozenset(["equals"]))
+        if found and len(found[0][1]) == 2:
+            left, right = (" ".join(a) for a in found[0][1])
+            return _strip_parens(left) == _strip_parens(right)
+        return False
+    if words[-1:] != [")"]:
+        return False
+    depth = 0
+    for i in range(len(words) - 1, -1, -1):
+        depth += words[i] == ")"
+        depth -= words[i] == "("
+        if depth == 0:
+            if i >= 2 and words[i - 1] == "equals" and words[i - 2] == ".":
+                receiver = _strip_parens(" ".join(words[: i - 2]))
+                argument = _strip_parens(" ".join(words[i + 1 : -1]))
+                return bool(receiver) and receiver == argument
+            return False
+    return False
+
+
+def _whole_new(text: str) -> bool:
+    """Exactly one `new T(...)` expression, with nothing after its closing bracket, so a call
+    on a new object, such as `new File(dir, name).exists()`, is not a literal."""
+    words = text.split()
+    if words[:1] != ["new"]:
+        return False
+    depth = 0
+    for i, word in enumerate(words):
+        depth += word in ("(", "{")
+        if word in (")", "}"):
+            depth -= 1
+            if depth == 0:
+                return i == len(words) - 1
     return False
 
 
@@ -994,14 +1116,16 @@ def _trivial_chain(assertion: Assertion, args: tuple[str, ...]) -> bool:
         subject = args[0]
         for name, call_args in calls:
             if name in ("isTrue", "isFalse", "isNotNull") and (
-                _constant(subject) or subject.startswith("new ")
+                _constant(subject) or (name == "isNotNull" and _whole_new(subject))
             ):
                 return True
+            if name in ("isTrue", "isFalse"):
+                branches = _branches(subject)
+                if branches is not None and ("true" if name == "isTrue" else "false") in branches:
+                    return True
             if name in _SELF_CHECKS and call_args and call_args[0]:
                 other = _strip_parens(" ".join(call_args[0]))
-                if other == _strip_parens(_without_literals(subject)) or (
-                    _constant(subject) and _constant(other)
-                ):
+                if _same_values(_strip_parens(_without_literals(subject)), other):
                     return True
         return False
     actual = _strip_parens(_without_literals(args[-2]))
@@ -1010,7 +1134,7 @@ def _trivial_chain(assertion: Assertion, args: tuple[str, ...]) -> bool:
             if call_args[0][0] in ("equalTo", "is"):
                 continue  # the inner call is judged on its own
             other = _strip_parens(" ".join(call_args[0]))
-            if other == actual or (_constant(actual) and _constant(other)):
+            if _same_values(actual, other):
                 return True
     return False
 
@@ -1282,10 +1406,12 @@ def _verifies(a: Assertion) -> bool:
 def _expected_types(a: Assertion) -> frozenset[str]:
     """Simple names of the exception types an assertion expects, from `X.class` arguments."""
     out = set()
-    for _, args in _first_arguments(_without_literals(a.text).split(), _EXCEPTION_CALLS):
-        first = args[0] if args else []
-        if len(first) >= 3 and first[-2:] == [".", "class"]:
-            out.add(first[-3])
+    for name, args in _first_arguments(_without_literals(a.text).split(), _EXCEPTION_CALLS):
+        # A synthesized expectation lists every caught or expected type; a real call names one.
+        candidates = args if name == "assertThrows" else args[:1]
+        for arg in candidates:
+            if len(arg) >= 3 and arg[-2:] == [".", "class"]:
+                out.add(arg[-3])
     return frozenset(out)
 
 
@@ -1367,7 +1493,11 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
         return "weaken_assertion/assertion_removed"  # not a named weakening, and never a match
 
     old_types, new_types = _expected_types(old), _expected_types(new)
-    if old_types and new_types and new_types & _BROAD and not old_types & _BROAD:
+    if (
+        old_types
+        and new_types
+        and ((new_types & _BROAD and not old_types & _BROAD) or old_types < new_types)
+    ):
         return "weaken_assertion/expected_exception_broadened"
     if (
         "isExactlyInstanceOf" in old.signature
@@ -1381,7 +1511,8 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
         if _LOOSE_MODES & set(new.signature) and not _LOOSE_MODES & set(old.signature):
             return "weaken_assertion/verification_mode_relaxed"
     equals = old.signature[0] == new.signature[0] == "assertEquals"
-    if equals and len(payload(new)) == 3 and len(payload(old)) == 2:
+    json = "JSONAssert" in new.text or "JSONAssert" in old.text  # its third argument is a mode
+    if equals and not json and len(payload(new)) == 3 and len(payload(old)) == 2:
         return "weaken_assertion/tolerance_widened"
     if old.signature == new.signature:
         old_tolerance, new_tolerance = _tolerance(old), _tolerance(new)
@@ -1767,11 +1898,11 @@ def _annotation_expectations(program: Program, path: str, method: Method) -> lis
         for name, value in attributes(unit, annotation).items():
             if name not in _EXPECTED_ATTRIBUTES:
                 continue
-            for text in _split_array(value):
-                out.append(Assertion(
-                    f"assertThrows ( {text} )", ("assertThrows",), (text,), (), frozenset(),
-                    credited, annotation.line, annotation.start,
-                ))  # fmt: skip
+            types = tuple(_split_array(value))
+            out.append(Assertion(
+                f"assertThrows ( {' , '.join(types)} )", ("assertThrows",), types, (),
+                frozenset(), credited, annotation.line, annotation.start,
+            ))  # fmt: skip
     return out
 
 
