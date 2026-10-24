@@ -538,11 +538,13 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
 
 
 def _wait_assertion(unit, body, declared, exits, start, name, arguments, before) -> Assertion:
-    """The assertion an Awaitility condition stands for under kind 3."""
+    """The assertion an Awaitility condition stands for under kind 3, with the subject its
+    condition reads, so a moved assertion keeps its subject."""
     return Assertion(
         f"{name} ( {' , '.join(arguments)} )", (name,), arguments,
         _guard(unit, body, start, declared), frozenset(t for at, t in exits if at < before),
         True, unit.tokens[start].line, start,
+        subject=_followed(_identifiers(arguments), _local_definitions(unit, body)),
     )  # fmt: skip
 
 

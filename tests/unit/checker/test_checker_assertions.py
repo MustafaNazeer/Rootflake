@@ -1116,3 +1116,10 @@ class TestCollectionTextToOrderFree:
         before = body_of('assertEquals("[x, y]", names().toString());')
         after = body_of('assertThat(names()).containsExactlyInAnyOrder("x, y");')
         assert REMOVED in codes(before, after, tmp_path)
+
+
+def test_a_condition_moved_into_a_wait_keeps_its_subject(tmp_path):
+    helper = "  Cursor cursor;"
+    before = with_imports(body_of('assertTrue("m", cursor.isReady());', helper), AWAIT_IMPORTS)
+    after = with_imports(body_of("await().until(() -> cursor.isReady());", helper), AWAIT_IMPORTS)
+    assert codes(before, after, tmp_path) == set()
