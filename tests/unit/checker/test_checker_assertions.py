@@ -1325,3 +1325,42 @@ def test_a_constructor_reference_does_not_merge_arguments(tmp_path):
     before = body_of("assertEquals(1.0, d());")
     after = body_of("assertEquals(1.0, g(Foo::new) < 2 ? 1.0 : 0.0, 0.5);")
     assert TOLERANCE in codes(before, after, tmp_path)
+
+
+class TestOneSidedBounds:
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertThat(x()).isGreaterThan(5);", "assertThat(x()).isGreaterThan(0);"),
+         ("assertThat(x()).isLessThan(10);", "assertThat(x()).isLessThan(1000);"),
+         ("assertTrue(x() > 5);", "assertTrue(x() > 0);"),
+         ("assertTrue(x() > 5);", "assertTrue(x() >= 5);"),
+         ("assertTrue(x() < 5);", "assertTrue(x() < LIMIT);"),
+         ("assertThat(x()).isGreaterThan(5);", "assertThat(x()).isGreaterThanOrEqualTo(5);"),
+         ("assertTrue(x() > 5);", "assertThat(x()).isGreaterThan(1);")],
+        ids=["lower_lowered", "upper_raised", "condition_lowered", "made_inclusive",
+             "unresolved_bound", "chain_made_inclusive", "condition_to_chain"],
+    )  # fmt: skip
+    def test_a_looser_bound_is_widened(self, tmp_path, before, after):
+        assert TOLERANCE in codes(body_of(before), body_of(after), tmp_path)
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertThat(x()).isGreaterThan(5);", "assertThat(x()).isGreaterThan(6);"),
+         ("assertTrue(x() >= 5);", "assertTrue(x() > 5);"),
+         ("assertTrue(x() < 10);", "assertTrue(x() < 10 && x() > 0);")],
+        ids=["raised_lower", "made_strict", "bound_added"],
+    )  # fmt: skip
+    def test_a_tighter_or_equal_bound_is_kept(self, tmp_path, before, after):
+        assert TOLERANCE not in codes(body_of(before), body_of(after), tmp_path)
+
+    def test_a_hamcrest_bound_lowered(self, tmp_path):
+        before, after = (
+            with_imports(
+                body_of(s).replace(
+                    "import static org.assertj.core.api.Assertions.assertThat;\n", ""
+                ),
+                HAMCREST_IMPORTS,
+            )
+            for s in ("assertThat(x(), greaterThan(5));", "assertThat(x(), greaterThan(0));")
+        )
+        assert TOLERANCE in codes(before, after, tmp_path)

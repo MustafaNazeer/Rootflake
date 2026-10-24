@@ -1548,47 +1548,78 @@ def _json_lenient(a: Assertion) -> bool:
     return any(m in a.text for m in loose) or (bool(a.arguments) and a.arguments[-1] == "false")
 
 
-def _intervals(a: Assertion) -> dict[str, tuple[float | None, float | None]]:
-    """Two sided bounds an assertion places on each subject: isBetween, a lower and an upper
-    chain bound, or a conjunction of comparisons in assertTrue."""
-    out: dict[str, tuple[float | None, float | None]] = {}
+# Chain and matcher bounds: (side, strict) for each, or both sides for the between forms.
+_BOUND_CALLS = {
+    "isGreaterThan": (("low", True),), "isGreaterThanOrEqualTo": (("low", False),),
+    "isLessThan": (("high", True),), "isLessThanOrEqualTo": (("high", False),),
+    "greaterThan": (("low", True),), "greaterThanOrEqualTo": (("low", False),),
+    "lessThan": (("high", True),), "lessThanOrEqualTo": (("high", False),),
+    "isBetween": (("low", False), ("high", False)),
+    "isStrictlyBetween": (("low", True), ("high", True)),
+}  # fmt: skip
+_SIGN_CALLS = {
+    "isPositive": ("low", True), "isNotNegative": ("low", False),
+    "isNegative": ("high", True), "isNotPositive": ("high", False),
+}  # fmt: skip
+_COMPARISONS = ((" >= ", "low", False), (" > ", "low", True), (" <= ", "high", False),
+                (" < ", "high", True))  # fmt: skip
+_FLIPPED = {"low": "high", "high": "low"}
+
+Bound = tuple[float | None, bool, str]  # value (None when it cannot be read), strict, text
+
+
+def _bounds(a: Assertion) -> dict[str, dict[str, Bound]]:
+    """The lower and upper bounds an assertion places on each subject: AssertJ chain bounds
+    and sign checks, Hamcrest bound matchers, and comparisons joined by `&&` in assertTrue."""
+    out: dict[str, dict[str, Bound]] = {}
     words = _without_literals(a.text).split()
-    subject = " ".join(a.arguments[:1])
-    for _, args in _first_arguments(words, frozenset(["isBetween", "isStrictlyBetween"])):
-        if len(args) == 2:
-            out[subject] = (_value(a, " ".join(args[0])), _value(a, " ".join(args[1])))
-    chain = dict(_first_arguments(words, _LOWER | _UPPER))
-    lower = next((v for k, v in chain.items() if k in _LOWER), None)
-    upper = next((v for k, v in chain.items() if k in _UPPER), None)
-    if lower and upper:
-        out[subject] = (_value(a, " ".join(lower[0])), _value(a, " ".join(upper[0])))
-    if a.signature[0] == "assertTrue" and payload(a):
-        bounds: dict[str, list] = {}
-        for conjunct in _strip_parens(payload(a)[-1]).split(" && "):
-            for op, low_if_left in ((" >= ", True), (" > ", True), (" <= ", False),
-                                    (" < ", False)):  # fmt: skip
-                if op in conjunct:
-                    left, _, right = conjunct.partition(op)
-                    left, right = _strip_parens(left), _strip_parens(right)
-                    number, other, is_low = _value(a, right), left, low_if_left
-                    if number is None:
-                        number, other, is_low = _value(a, left), right, not low_if_left
-                    if number is not None:
-                        bounds.setdefault(other, [None, None])[0 if is_low else 1] = number
-                    break
-        for name, (low, high) in bounds.items():
-            if low is not None and high is not None:
-                out[name] = (low, high)
+    args = payload(a)
+    root = a.signature[0]
+    if root in ("assertThat", "then", "checkThat") and args:
+        subject = _strip_parens(args[-2] if len(args) >= 2 else args[0])
+        for name, call_args in _first_arguments(words, frozenset(_BOUND_CALLS)):
+            for (side, strict), arg in zip(_BOUND_CALLS[name], call_args, strict=False):
+                text = _strip_parens(" ".join(arg))
+                out.setdefault(subject, {})[side] = (_value(a, text), strict, text)
+        for name, _ in _first_arguments(words, frozenset(_SIGN_CALLS)):
+            side, strict = _SIGN_CALLS[name]
+            out.setdefault(subject, {})[side] = (0.0, strict, "0")
+    if root == "assertTrue" and args:
+        for conjunct in _strip_parens(args[-1]).split(" && "):
+            for op, side, strict in _COMPARISONS:
+                if op not in conjunct:
+                    continue
+                left, _, right = conjunct.partition(op)
+                left, right = _strip_parens(left), _strip_parens(right)
+                if _value(a, left) is not None and _value(a, right) is None:
+                    left, right, side = right, left, _FLIPPED[side]  # `5 < x` bounds x from below
+                out.setdefault(left, {})[side] = (_value(a, right), strict, right)
+                break
     return out
 
 
-def _wider(old: dict, new: dict) -> bool:
-    for subject, (low, high) in old.items():
-        if subject not in new:
+def _looser(old: Assertion, new: Assertion) -> bool:
+    """A bound on a shared subject lowered (lower side), raised (upper side), made inclusive,
+    or no longer readable as a number; within the same assertion, a dropped side too."""
+    old_bounds, new_bounds = _bounds(old), _bounds(new)
+    same_form = old.signature == new.signature
+    for subject, sides in old_bounds.items():
+        if subject not in new_bounds:
             continue
-        new_low, new_high = new[subject]
-        if None in (low, high, new_low, new_high) or new_low < low or new_high > high:
-            return True
+        for side, (value, strict, text) in sides.items():
+            found = new_bounds[subject].get(side)
+            if found is None:
+                if same_form:
+                    return True
+                continue
+            new_value, new_strict, new_text = found
+            if new_text == text and new_strict == strict:
+                continue
+            if value is None or new_value is None:
+                return True
+            moved = new_value < value if side == "low" else new_value > value
+            if moved or (new_value == value and strict and not new_strict):
+                return True
     return False
 
 
@@ -1645,8 +1676,8 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
             new_tolerance is None or (new_tolerance and max(new_tolerance) > max(old_tolerance))
         ):
             return "weaken_assertion/tolerance_widened"
-        if _wider(_intervals(old), _intervals(new)):
-            return "weaken_assertion/tolerance_widened"
+    if _looser(old, new):
+        return "weaken_assertion/tolerance_widened"
     if not _shares_subject(old, new):
         return None
     if _set_converted(old, new):
