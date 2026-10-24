@@ -47,7 +47,17 @@ class TestFollowing:
             "void h2() {} void h3() { h4(); } void h4() {} }"
         )
         reached = reach(p, [(PATH, method(p, "t"))], scan=True, budget=ExpansionBudget())
-        assert names(reached) == ["h1", "h2", "h2", "h3", "h4", "t"]
+        assert names(reached) == ["h1", "h2", "h3", "h4", "t"]
+
+    def test_a_scan_rules_out_only_overloads_the_counted_arity_makes_impossible(self):
+        p = program(
+            "class T { void t() { h(new HashMap<String, Integer>()); g(1); } void h() {} "
+            "void h(Object o) {} void h(Object a, Object b) {} void h(Object a, Object b, "
+            "Object c) {} void g(int... xs) {} void g(int a, int b, int... xs) {} }"
+        )
+        reached = reach(p, [(PATH, method(p, "t"))], scan=True, budget=ExpansionBudget())
+        params = sorted(len(r.method.params) for r in reached if r.method.name in ("h", "g"))
+        assert params == [1, 1, 2]  # h(Object), h(Object, Object) and g(int...)
 
     def test_credit_follows_only_unique_declarations_three_levels_deep(self):
         p = program(

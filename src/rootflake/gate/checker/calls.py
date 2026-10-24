@@ -1,10 +1,11 @@
 """Calls in a span of code, and following them into the helpers they reach (ADR 0007 Decision 4).
 
-A rejection scan follows every declaration the call could reach, whatever its arity, with no
-depth limit: those of the receiver's type when it is a known type, otherwise every declaration
-with the name. Credit follows a call only when exactly one declaration matches its name and
-arity, at most three levels deep. A visited set breaks cycles, and one budget of 2,000
-expansions per check covers every follow; going past it is unparsable.
+A rejection scan follows every declaration the call could reach, with no depth limit: those of
+the receiver's type when it is a known type, otherwise every declaration with the name, less
+those the counted arity makes impossible. Credit follows a call only when exactly one
+declaration matches its name and arity, at most three levels deep. A visited set breaks
+cycles, and one budget of 2,000 expansions per check covers every follow; going past it is
+unparsable.
 """
 
 from dataclasses import dataclass
@@ -147,6 +148,23 @@ def _owners(program: Program, path: str, decl: TypeDecl) -> list[TypeDecl]:
 
 
 def follow_for_scan(program: Program, path: str, call: Call) -> list[tuple[str, Method]]:
+    """Every declaration the call could reach, by name, less those its arity rules out."""
+    return [(p, m) for p, m in _scan_targets(program, path, call) if _may_accept(m, call)]
+
+
+def _may_accept(method: Method, call: Call) -> bool:
+    """Whether the call could reach the method. A counted arity can only overstate the real one,
+    since a comma inside type arguments counts, so a method is ruled out only when it needs more
+    arguments than were counted, or none where at least one was passed."""
+    if call.arity is None:
+        return True
+    params = len(method.params)
+    if method.params and method.params[-1].type.endswith("..."):
+        return call.arity >= params - 1
+    return params <= call.arity and not (params == 0 and call.arity >= 1)
+
+
+def _scan_targets(program: Program, path: str, call: Call) -> list[tuple[str, Method]]:
     """Every declaration the call could reach, by name and any arity.
 
     Where the receiver is a type the call can only reach that type's methods, so a call on a

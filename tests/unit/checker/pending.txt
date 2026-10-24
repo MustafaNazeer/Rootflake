@@ -19,7 +19,6 @@ reject-existing-retry-rule-reused
 reject-existing-sleep-helper-newly-called
 reject-fixed-sleep-added-in-after-each
 reject-http-client-retry-in-test-rule
-reject-id-contains-instead-of-exact-sql
 reject-inline-loop-bound-raised-around-sleep
 reject-invocation-interceptor-retry
 reject-junit-pioneer-retrying-test
@@ -45,7 +44,6 @@ reject-retry-loop-swallows-throwable
 reject-retry-loop-tries-constant-raised
 reject-scale-constant-into-sleep
 reject-silent-poll-helper-not-followed-by-assertion
-reject-soft-assertions-without-assert-all
 reject-test-support-timing-constant-raised
 reject-testng-invocation-count-success-percentage
 reject-testng-retry-analyzer

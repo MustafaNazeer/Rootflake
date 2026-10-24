@@ -673,3 +673,83 @@ def test_a_skip_local_thrown_before_its_declaration_is_still_an_exit(tmp_path):
     after = body_of('if (ci()) { throw e; } RuntimeException e = new SkipException("x"); '
                     "assertEquals(1, f());")  # fmt: skip
     assert REMOVED in codes(before, after, tmp_path)
+
+
+AWAIT_IMPORTS = (
+    "import static org.awaitility.Awaitility.await;\nimport static org.hamcrest.Matchers.equalTo;\n"
+)
+MOCKITO_IMPORTS = "import static org.mockito.Mockito.*;\n"
+
+
+def with_imports(source: str, imports: str) -> str:
+    return source.replace("import org.junit.Test;\n", f"import org.junit.Test;\n{imports}")
+
+
+class TestLegitimateChangesKeepTheirMatch:
+    def test_a_changed_exact_assertion_pairs_before_a_later_unchanged_twin(self, tmp_path):
+        tail = 'assertTrue(s().contains("2020"));'
+        before = body_of(f'assertEquals("2020-01-01 10:00", s()); {tail}')
+        after = body_of(f'assertEquals("2020-01-01 05:00", s()); {tail}')
+        assert codes(before, after, tmp_path) == set()
+
+    @pytest.mark.parametrize(
+        "after",
+        ['assertEquals("why", e(), a());', 'assertEquals(e(), a(), "why");',
+         'assertEquals(e(), a(), () -> "why " + a());',
+         'assertEquals("why not " + n(), e(), a());'],
+        ids=["junit4_message", "junit5_message", "junit5_supplier", "concatenated"],
+    )  # fmt: skip
+    def test_an_added_message_is_not_a_tolerance(self, tmp_path, after):
+        assert codes(body_of("assertEquals(e(), a());"), body_of(after), tmp_path) == set()
+
+    def test_a_message_beside_a_condition_is_not_trivially_true(self, tmp_path):
+        before = body_of('assertTrue(x().isDone(), "m");')
+        after = body_of('assertTrue(y().isDone(), "m");')
+        assert REMOVED not in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize("call", ['as("x")', 'describedAs("x")', 'withFailMessage("x")'])
+    def test_an_added_description_keeps_the_assertion(self, tmp_path, call):
+        before = body_of("assertThat(a()).isEqualTo(1);")
+        after = body_of(f"assertThat(a()).{call}.isEqualTo(1);")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_timeout_wrapped_verification_mode_is_kept(self, tmp_path):
+        before = with_imports(body_of("run(); verify(m(), times(1)).call();"), MOCKITO_IMPORTS)
+        after = with_imports(
+            body_of("run(); verify(m(), timeout(1000).times(1)).call();"), MOCKITO_IMPORTS
+        )
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_timeout_wrapped_loose_mode_is_relaxed(self, tmp_path):
+        before = with_imports(body_of("run(); verify(m()).call();"), MOCKITO_IMPORTS)
+        after = with_imports(
+            body_of("run(); verify(m(), timeout(1000).atLeastOnce()).call();"), MOCKITO_IMPORTS
+        )
+        assert "weaken_assertion/verification_mode_relaxed" in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        "after",
+        ["await().until(() -> server().isRunning());", "await().until(server()::isRunning);"],
+        ids=["lambda", "method_reference"],
+    )  # fmt: skip
+    def test_assert_true_moved_into_a_wait_is_kept(self, tmp_path, after):
+        before = with_imports(body_of("assertTrue(server().isRunning());"), AWAIT_IMPORTS)
+        after_source = with_imports(body_of(after), AWAIT_IMPORTS)
+        if "::" in after:
+            before = before.replace("server().isRunning()", "server.isRunning()")
+            after_source = after_source.replace("server()::", "server::")
+        assert codes(before, after_source, tmp_path) == set()
+
+    def test_until_with_an_equal_to_matcher_is_kept(self, tmp_path):
+        before = with_imports(body_of("assertEquals(3, count());"), AWAIT_IMPORTS)
+        after = with_imports(body_of("await().until(() -> count(), equalTo(3));"), AWAIT_IMPORTS)
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_changed_helper_is_not_reached_by_a_call_of_another_arity(self, tmp_path):
+        helper = (
+            "  static void parse() { assertEquals(1, f()); }\n"
+            '  @Test public void other() { parser().parse("x"); }'
+        )
+        before = body_of("g();", helper)
+        after = body_of("g();", helper.replace("assertEquals(1, f())", "assertEquals(2, f())"))
+        assert codes(before, after, tmp_path) == set()

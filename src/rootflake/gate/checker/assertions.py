@@ -398,9 +398,11 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
         matchers = tuple(
             inner.name
             for inner in calls_in(unit, _Span(call.start + 1, end))
-            if inner.receiver is None
-            and inner.name in MATCHER_FACTORIES
-            and _library_call(program, path, inner.name, inner.start)
+            if inner.name in MATCHER_FACTORIES
+            and (
+                (inner.receiver is None and _library_call(program, path, inner.name, inner.start))
+                or _timed_mode(program, path, unit, inner)
+            )
         )
         credited = _library_call(program, path, call.name, call.start) or (
             call.receiver not in (None, "<expr>")
@@ -410,7 +412,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
         out.append(
             Assertion(
                 text=_text(unit, start, end),
-                signature=(*names, *matchers),
+                signature=(*(n for n in names if n not in _DESCRIPTIONS), *matchers),
                 arguments=_split_arguments(unit, call.start + 1, _close(unit, call.start + 1)),
                 guard=_guard(unit, body, call.start, declared),
                 exits_before=frozenset(text for at, text in exits if at < call.start),
@@ -433,16 +435,37 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
         ):
             if unit.tokens[node.start - 2].text != "until":
                 continue
+            expression = _text(unit, node.expression.start, node.expression.end)
             operands = _equality_operands(unit, node.expression.start, node.expression.end)
+            after = unit.tokens[node.end].text if node.end < len(unit.tokens) else ""
+            if after == ",":
+                expected = _equal_to_argument(program, path, unit, node.end + 1)
+                operands = (expected, expression) if expected is not None else None
+            elif after != ")":
+                operands = None
+            elif operands is None:
+                out.append(_wait_assertion(unit, body, declared, exits, node.expression.start,
+                                           "assertTrue", (expression,), node.start))  # fmt: skip
             if operands:
-                out.append(
-                    Assertion(
-                        f"assertEquals ( {operands[0]} , {operands[1]} )", ("assertEquals",),
-                        operands, _guard(unit, body, node.expression.start, declared),
-                        frozenset(t for at, t in exits if at < node.start), True,
-                        unit.tokens[node.expression.start].line, node.expression.start,
-                    )
-                )  # fmt: skip
+                out.append(_wait_assertion(unit, body, declared, exits, node.expression.start,
+                                           "assertEquals", operands, node.start))  # fmt: skip
+    for call in calls_in(unit, body):
+        tokens = unit.tokens
+        at = call.receiver_at
+        if (
+            call.reference
+            and at is not None
+            and at >= 2
+            and tokens[at - 1].text == "("
+            and tokens[at - 2].text == "until"
+            and tokens[call.end].text == ")"
+            and (tokens[at].kind == "ident" or tokens[at].text == "this")
+            and _chain_root(unit, at - 2) in AWAIT_ROOTS
+            and _chain_root(unit, at - 2) not in declared
+        ):
+            receiver = _text(unit, at, at + 1)
+            out.append(_wait_assertion(unit, body, declared, exits, at, "assertTrue",
+                                       (f"{receiver} . {call.name} ( )",), at))  # fmt: skip
     for node in walk(body):
         if isinstance(node, Statement) and node.kind == "assert":
             out.append(
@@ -451,6 +474,55 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                           node.line, node.start)
             )  # fmt: skip
     return out
+
+
+def _wait_assertion(unit, body, declared, exits, start, name, arguments, before) -> Assertion:
+    """The assertion an Awaitility condition stands for under kind 3."""
+    return Assertion(
+        f"{name} ( {' , '.join(arguments)} )", (name,), arguments,
+        _guard(unit, body, start, declared), frozenset(t for at, t in exits if at < before),
+        True, unit.tokens[start].line, start,
+    )  # fmt: skip
+
+
+def _equal_to_argument(program: Program, path: str, unit: CompilationUnit, i: int) -> str | None:
+    """X in a closing `equalTo(X))` argument that resolves to Hamcrest."""
+    tokens = unit.tokens
+    if tokens[i].text != "equalTo" or tokens[i + 1].text != "(":
+        return None
+    close = _close(unit, i + 1)
+    if tokens[close + 1].text != ")" or not _library_call(program, path, "equalTo", i):
+        return None
+    return _text(unit, i + 2, close)
+
+
+# AssertJ calls that only describe a failure; they change no check.
+_DESCRIPTIONS = frozenset(
+    ["as", "describedAs", "withFailMessage", "overridingErrorMessage", "withRepresentation"]
+)
+_TIMED = frozenset(["timeout", "after"])
+
+
+def _timed_mode(program: Program, path: str, unit: CompilationUnit, call: Call) -> bool:
+    """A Mockito mode chained on `timeout(n)` or `after(n)`, as in `timeout(100).times(2)`."""
+    tokens = unit.tokens
+    if call.receiver != "<expr>" or tokens[call.start - 2].text != ")":
+        return False
+    depth, j = 0, call.start - 2
+    while j > 0:
+        if tokens[j].kind == "op" and tokens[j].text == ")":
+            depth += 1
+        elif tokens[j].kind == "op" and tokens[j].text == "(":
+            depth -= 1
+            if depth == 0:
+                break
+        j -= 1
+    name_at = j - 1
+    return (
+        tokens[name_at].text in _TIMED
+        and tokens[name_at - 1].text != "."
+        and _library_call(program, path, tokens[name_at].text, name_at)
+    )
 
 
 @dataclass(frozen=True)
@@ -596,9 +668,35 @@ def _same_on_both_sides(arg: str) -> bool:
     return False
 
 
+# The fewest arguments each assertion takes without a message. JUnit 4 and TestNG put a
+# message first, JUnit 5 last (or a supplier); anything beyond these is a delta or a message.
+_PAYLOAD = {
+    "assertEquals": 2, "assertNotEquals": 2, "assertSame": 2, "assertNotSame": 2,
+    "assertArrayEquals": 2, "assertTrue": 1, "assertFalse": 1, "assertNull": 1,
+    "assertNotNull": 1,
+}  # fmt: skip
+
+
+def _is_message(arg: str) -> bool:
+    return arg.startswith('"') or arg.startswith("( ) ->")
+
+
+def payload(assertion: Assertion) -> tuple[str, ...]:
+    """The arguments without a message argument."""
+    args = assertion.arguments
+    least = _PAYLOAD.get(assertion.signature[0])
+    if least is None:
+        return args
+    if len(args) > least and _is_message(args[0]):
+        args = args[1:]
+    if len(args) > least and _is_message(args[-1]):
+        args = args[:-1]
+    return args
+
+
 def _trivially_true(assertion: Assertion) -> bool:
     name = assertion.signature[0]
-    args = tuple(_strip_parens(a) for a in assertion.arguments)
+    args = tuple(_strip_parens(a) for a in payload(assertion))
     if name in ("assertEquals", "assertSame") and len(args) >= 2:
         actual, expected = args[-1], args[-2]
         return actual == expected or (_constant(actual) and _constant(expected))
@@ -687,8 +785,8 @@ def _numbers(text: str) -> list[float]:
 def _tolerance(a: Assertion) -> list[float]:
     """The numbers that set an assertion's tolerance: the delta of a three argument
     assertEquals, or the arguments of a tolerance call such as within, closeTo or isBetween."""
-    if a.signature[0] == "assertEquals" and len(a.arguments) == 3:
-        return _numbers(a.arguments[-1])
+    if a.signature[0] == "assertEquals" and len(payload(a)) == 3:
+        return _numbers(payload(a)[-1])
     words = a.text.split()
     for names in _TOLERANCE_ORDER:
         found = _tolerance_call(words, names)
@@ -760,7 +858,7 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
         if _LOOSE_MODES & set(new.signature) and not _LOOSE_MODES & set(old.signature):
             return "weaken_assertion/verification_mode_relaxed"
     equals = old.signature[0] == new.signature[0] == "assertEquals"
-    if equals and len(new.arguments) == 3 and len(old.arguments) == 2:
+    if equals and len(payload(new)) == 3 and len(payload(old)) == 2:
         return "weaken_assertion/tolerance_widened"
     if old.signature == new.signature:
         old_tolerance, new_tolerance = _tolerance(old), _tolerance(new)
@@ -808,16 +906,22 @@ def _match(
     pool = list(after)
     soft = soft or {}
     results = []
-    for old in before:
+
+    def rebinds(old: Assertion) -> bool:
         type_names = {w for w in _names(old) if w[:1].isupper()}
-        uses_rebound = (
+        return (
             "*" in rebound
             or bool(_names(old) & rebound)
             or ("*types" in rebound and bool(type_names))
         )
+
+    # Unchanged twins are claimed first, so a changed assertion is never paired with a later
+    # assertion that is still there unchanged.
+    changed = []
+    for old in before:
         same = (
             None
-            if uses_rebound
+            if rebinds(old)
             else next(
                 (
                     new
@@ -831,7 +935,10 @@ def _match(
         )
         if same is not None:
             pool.remove(same)
-            continue
+        else:
+            changed.append(old)
+    for old in changed:
+        uses_rebound = rebinds(old)
         usable = [n for n in pool if n.credited and not n.scanned_only and _guard_ok(old, n)]
         weakened = next(((n, code) for n in usable if (code := _weakening(old, n))), None)
         if weakened is not None:
