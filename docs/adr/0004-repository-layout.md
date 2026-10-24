@@ -40,6 +40,7 @@ Rootflake has several parts with different toolchains: a Python package (runner,
 ├── corpus/                  versioned corpus files (format in ADR 0006)
 ├── dashboard/               React, Vite, TypeScript, Vitest
 ├── infra/                   Terraform
+├── tools/                   maintenance scripts run by hand, such as regenerating checker data
 ├── .github/workflows/       CI
 └── docs/
 ```
