@@ -620,3 +620,26 @@ def test_a_qualified_skip_local_thrown_later_is_not_an_exit(tmp_path):
     after = body_of('final org.testng.SkipException e = new org.testng.SkipException("x"); '
                     "if (ci()) { throw e; } assertEquals(1, f());")  # fmt: skip
     assert REMOVED not in codes(before, after, tmp_path)
+
+
+@pytest.mark.parametrize(
+    "middle",
+    ['if ((e = new IllegalStateException()) != null) { g(); }',
+     "for (int i = 0; i < 1; e = new IllegalStateException()) { i++; }",
+     "e += null;"],
+    ids=["if_header", "for_update", "compound"],
+)  # fmt: skip
+def test_a_skip_local_reassigned_anywhere_is_still_an_exit(tmp_path, middle):
+    before = body_of("assertEquals(1, f());")
+    after = body_of(f'RuntimeException e = new SkipException("x"); {middle} '
+                    "if (ci()) { throw e; } assertEquals(1, f());")  # fmt: skip
+    assert REMOVED in codes(before, after, tmp_path)
+
+
+def test_a_skip_local_with_more_after_the_constructor_is_still_an_exit(tmp_path):
+    before = body_of("assertEquals(1, f());")
+    initializer = 'ok() ? new SkipException("x") : new IllegalStateException()'
+    after = body_of(
+        f"RuntimeException e = {initializer}; if (ci()) {{ throw e; }} assertEquals(1, f());"
+    )
+    assert REMOVED in codes(before, after, tmp_path)

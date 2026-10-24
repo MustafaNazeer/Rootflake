@@ -220,35 +220,45 @@ def _library_call(program: Program, path: str, name: str, index: int) -> bool:
     return program.resolve_method(path, name, index).kind == "library"
 
 
+_ASSIGNMENTS = frozenset(
+    ["=", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">="]
+)  # `>>=` and `>>>=` lex as `>` tokens followed by `>=`
+
+
 def _throws_skip_local(unit: CompilationUnit, body: Block, statement: Statement) -> bool:
-    """`throw x;` where the local x is declared as exactly `new <skip exception>(...)` and never
-    assigned again."""
+    """`throw x;` where the local x is assigned exactly once in the whole body, by its own
+    declaration, and that initializer is nothing but `new <skip exception>(...)`."""
     tokens = unit.tokens[statement.start : statement.end]
     if len(tokens) != 3 or tokens[1].kind != "ident":
         return False
     name = tokens[1].text
-    initialized, reassigned = False, False
-    for node in walk(body):
-        if not isinstance(node, Statement) or node.kind not in ("local_var", "expression"):
-            continue
-        words = [t.text for t in unit.tokens[node.start : node.end]]
-        for k in range(len(words) - 1):
-            if words[k] != name or words[k + 1] != "=":
-                continue
-            declares = node.kind == "local_var" and k > 0 and words[k - 1] not in ("=", ",")
-            m = k + 3
-            while m + 2 < len(words) and words[m + 1] == ".":
-                m += 2  # a qualified name such as org.testng.SkipException
-            exact = (
-                words[k + 2 : k + 3] == ["new"]
-                and words[m : m + 1] != []
-                and (words[m] in SKIP_EXCEPTIONS)
-            )
-            if declares and exact and not initialized:
-                initialized = True
-            else:
-                reassigned = True
-    return initialized and not reassigned
+    all_tokens = unit.tokens
+    sites = [
+        i
+        for i in range(body.start, body.end - 1)
+        if all_tokens[i].text == name
+        and all_tokens[i].kind == "ident"
+        and all_tokens[i + 1].text in _ASSIGNMENTS
+        and all_tokens[i + 1].kind == "op"
+        and all_tokens[i - 1].text != "."
+    ]
+    if len(sites) != 1:
+        return False
+    at = sites[0]
+    before = all_tokens[at - 1]
+    if all_tokens[at + 1].text != "=" or not (
+        before.kind in ("ident", "keyword") or before.text in (">", "]")
+    ):
+        return False  # not a declaration with a plain initializer
+    if all_tokens[at + 2].text != "new":
+        return False
+    m = at + 3
+    while m + 2 < body.end and all_tokens[m + 1].text == ".":
+        m += 2
+    if all_tokens[m].text not in SKIP_EXCEPTIONS or all_tokens[m + 1].text != "(":
+        return False
+    close = _close(unit, m + 1)
+    return all_tokens[close + 1].text in (";", ",")
 
 
 def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str]]:
