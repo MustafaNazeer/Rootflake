@@ -154,3 +154,46 @@ class TestFollowing:
         reach(p, [(PATH, method(p, "t"))], scan=True, budget=budget)
         with pytest.raises(Unparsable):
             reach(p, [(PATH, method(p, "t"))], scan=True, budget=budget)
+
+
+class TestScanReceivers:
+    def test_a_call_on_an_unread_type_is_not_followed_into_a_same_named_method(self):
+        p = program(
+            "import x.RpcStatus; class T { void beginCount() { RpcStatus.beginCount(u); } "
+            "void other() { RpcStatus.beginCount(u); } }"
+        )
+        reached = reach(p, [(PATH, method(p, "other"))], scan=True, budget=ExpansionBudget())
+        assert names(reached) == ["other"]
+
+    def test_a_call_on_a_variable_is_followed_to_every_declaration(self):
+        p = program(
+            "class T { void t() { policy.shouldRetry(1); } }",
+            src__test__java__a__P="class P { boolean shouldRetry(int n) { return true; } }",
+        )
+        reached = reach(p, [(PATH, method(p, "t"))], scan=True, budget=ExpansionBudget())
+        assert names(reached) == ["shouldRetry", "t"]
+
+    def test_an_unqualified_call_is_followed_in_the_enclosing_class(self):
+        p = program(
+            "class T { void t() { h(); } void h() {} }",
+            src__test__java__a__U="class U { void h() {} }",
+        )
+        reached = reach(p, [(PATH, method(p, "t"))], scan=True, budget=ExpansionBudget())
+        assert [(r.path, r.method.name) for r in reached] == [(PATH, "t"), (PATH, "h")]
+
+    def test_an_unqualified_call_without_a_local_declaration_follows_every_one(self):
+        p = program(
+            "class T { void t() { h(); } }",
+            src__test__java__a__U="class U { static void h() {} }",
+        )
+        reached = reach(p, [(PATH, method(p, "t"))], scan=True, budget=ExpansionBudget())
+        assert names(reached) == ["h", "t"]
+
+    def test_a_call_on_a_read_type_follows_only_that_type(self):
+        p = program(
+            "package a; class T { void t() { Waits.pause(); } }",
+            src__test__java__a__Waits="package a; class Waits { static void pause() {} }",
+            src__test__java__a__Other="package a; class Other { static void pause() {} }",
+        )
+        reached = reach(p, [(PATH, method(p, "t"))], scan=True, budget=ExpansionBudget())
+        assert [r.path for r in reached] == [PATH, "src/test/java/a/Waits.java"]

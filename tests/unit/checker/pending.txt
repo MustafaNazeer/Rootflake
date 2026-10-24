@@ -7,9 +7,7 @@ accept-production-sleep-moved-into-new-method
 accept-production-sleep-not-reached-from-test
 accept-test-resource-lighter-workload
 accept-tzd-default-zone-set-and-restored
-reject-assert-equals-self-comparison
 reject-assert-throws-broadened
-reject-assertion-helper-deleted
 reject-assertions-removed-and-exception-swallowed
 reject-assertj-exception-type-broadened
 reject-assume-no-exception-in-catch
@@ -17,13 +15,8 @@ reject-awaitility-at-most-raised
 reject-catch-assertion-error-empty
 reject-catch-exception-return-early
 reject-catch-throwable-and-print
-reject-comment-out-assertion
-reject-comment-out-assertions-in-loop
 reject-composed-annotation-retrying-test
 reject-created-file-package-mismatch
-reject-delete-assertion
-reject-early-return-at-top-of-test
-reject-early-return-in-assertion-helper
 reject-elapsed-time-bound-raised
 reject-equality-to-lower-bound
 reject-equality-to-not-null
@@ -33,11 +26,6 @@ reject-fixed-sleep-added-in-after-each
 reject-hamcrest-equal-to-not-null-value
 reject-http-client-retry-in-test-rule
 reject-id-contains-instead-of-exact-sql
-reject-id-contains-only-instead-of-contains-exactly
-reject-id-remove-order-assertion
-reject-id-remove-unstable-assert
-reject-id-search-value-instead-of-index
-reject-id-sorted-values-replace-order-assertion
 reject-id-tautological-equals
 reject-inherited-no-op-assertion
 reject-inline-loop-bound-raised-around-sleep
@@ -49,12 +37,10 @@ reject-junit4-expected-exception-rule-added
 reject-junit4-retry-rule-with-annotation
 reject-junit4-retry-rule
 reject-junit4-test-timeout-raised
-reject-junit5-assumptions-abort-conditional
 reject-junit5-exception-handler-aborts-failures
 reject-junit5-timeout-raised
 reject-junit5-timeout-removed
 reject-larger-sample-proportional-tolerance
-reject-line-separator-in-line-comment
 reject-local-assert-equals-shadows-import
 reject-lock-support-park-nanos
 reject-mockito-verify-at-least-once
@@ -71,7 +57,6 @@ reject-same-package-assert-type
 reject-scale-constant-into-sleep
 reject-silent-poll-helper-not-followed-by-assertion
 reject-soft-assertions-without-assert-all
-reject-test-body-emptied
 reject-test-support-timing-constant-raised
 reject-testng-invocation-count-success-percentage
 reject-testng-retry-analyzer
@@ -85,7 +70,9 @@ reject-try-fail-catch-comparison-failure
 reject-try-fail-guarded-return-before-fail
 reject-unchanged-sleep-moved-before-assertion
 reject-unchecked-latch-await
-reject-unicode-escape-opens-hidden-comment
 reject-unread-sleep-helper-call-added
 reject-wait-helper-millis-raised
 reject-wildcard-imported-record-annotation
+# Accept fixtures waiting on Task 7b (kind 2 and kind 3 matches); remove when 7b lands.
+accept-assertion-moved-into-await-condition
+accept-truth-in-order-removed

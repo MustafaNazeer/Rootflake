@@ -8,14 +8,14 @@ inside it is a reject with a `checker/` code, never an accept.
 from collections.abc import Sequence
 from pathlib import Path
 
-from rootflake.gate.checker import survive
+from rootflake.gate.checker import assertions, survive
 from rootflake.gate.checker.files import MAX_FILES, CheckerError, read_side
 from rootflake.gate.checker.lexer import Unparsable, tokenize
 from rootflake.gate.checker.model import CheckResult, Context, FileChange, Finding, Target
 from rootflake.gate.checker.syntax import parse
 
 __all__ = ["CheckResult", "FileChange", "Finding", "Target", "check"]
-RULES = (survive,)
+RULES = (survive, assertions)
 
 
 def _judge(

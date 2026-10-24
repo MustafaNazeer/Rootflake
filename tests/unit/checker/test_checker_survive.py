@@ -189,7 +189,10 @@ class TestAssumptions:
         assert "disable/assumption_added" not in result
 
     def test_an_unchanged_assumption_is_not_a_finding(self, tmp_path):
-        before = cls("@Test public void testFoo() { assumeTrue(ok()); assertEquals(1, f()); }")
+        before = cls(
+            "@Test public void testFoo() { assumeTrue(ok()); assertEquals(1, f()); }",
+            imports="import org.junit.Test;\nimport static org.junit.Assert.*;",
+        )
         assert codes(before, before.replace("1, f()", "2, f()"), tmp_path) == set()
 
 

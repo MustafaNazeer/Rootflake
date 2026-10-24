@@ -1,7 +1,8 @@
 """Calls in a span of code, and following them into the helpers they reach (ADR 0007 Decision 4).
 
-A rejection scan follows every declaration with the call's name, whatever its arity, with no
-depth limit. Credit follows a call only when exactly one declaration matches its name and
+A rejection scan follows every declaration the call could reach, whatever its arity, with no
+depth limit: those of the receiver's type when it is a known type, otherwise every declaration
+with the name. Credit follows a call only when exactly one declaration matches its name and
 arity, at most three levels deep. A visited set breaks cycles, and one budget of 2,000
 expansions per check covers every follow; going past it is unparsable.
 """
@@ -130,8 +131,58 @@ def _is_constructor(tokens, i: int) -> bool:
     return j >= 0 and tokens[j].text == "new"
 
 
-def follow_for_scan(program: Program, call: Call) -> list[tuple[str, Method]]:
-    return list(program.methods_by_name.get(call.name, []))
+def _named(program: Program, owners, name: str) -> list[tuple[str, Method]]:
+    return [
+        (program.owner[id(owner)], method)
+        for owner in owners
+        for method in owner.methods
+        if method.name == name
+    ]
+
+
+def _owners(program: Program, path: str, decl: TypeDecl) -> list[TypeDecl]:
+    return [decl, *(found for _, found in program.supertypes(path, decl))]
+
+
+def follow_for_scan(program: Program, path: str, call: Call) -> list[tuple[str, Method]]:
+    """Every declaration the call could reach, by name and any arity.
+
+    Where the receiver is a type the call can only reach that type's methods, so a call on a
+    type the checker did not read is not followed into a same named method elsewhere. Where the
+    receiver's type is unknown (a variable or an expression), or an unqualified name has no
+    declaration in an enclosing class, every declaration with the name is followed.
+    """
+    every = list(program.methods_by_name.get(call.name, []))
+    if not every:
+        return []
+    unit = program.units[path]
+    if call.receiver in (None, "this", "super"):
+        for node in reversed(path_to(unit, call.start)):
+            if isinstance(node, TypeDecl):
+                found = _named(program, _owners(program, path, node), call.name)
+                if found:
+                    return found
+        return every
+    if call.receiver == "<expr>" or call.receiver_at is None:
+        return every
+    binding = program.resolve_type(path, call.receiver, call.receiver_at)
+    if binding.kind == "declared" and isinstance(binding.decl, TypeDecl):
+        return _named(program, _owners(program, binding.path, binding.decl), call.name)
+    if binding.kind in ("library", "imported", "java_lang", "type_param"):
+        return []
+    if call.receiver[:1].isupper():
+        same_name = [
+            decl
+            for decl_path in program.units
+            for decl in program.all_types(decl_path)
+            if decl.name == call.receiver
+        ]
+        return [
+            found
+            for decl in same_name
+            for found in _named(program, _owners(program, program.owner[id(decl)], decl), call.name)
+        ]
+    return every
 
 
 def _matching(program: Program, owners, call: Call) -> list[tuple[str, Method]]:
@@ -188,7 +239,7 @@ def reach(
         unit = program.units[current.path]
         for call in calls_in(unit, current.method.body):
             if scan:
-                targets = follow_for_scan(program, call)
+                targets = follow_for_scan(program, current.path, call)
             else:
                 targets = follow_for_credit(program, current.path, call)
             for path, method in targets:
