@@ -553,9 +553,9 @@ class TestSubjectFlagPrecision:
 
     def test_a_subject_followed_through_a_local_definition_is_kept(self, tmp_path):
         before = body_of(
-            "Long[] ns = map.keySet().toArray(new Long[0]); assertEquals(1, parse(ns[0]));"
+            "Long[] ns = map.keySet().toArray(new Long[0]); assertEquals(1, p.parse(ns[0]));"
         )
-        after = body_of("assertEquals(0, other.get(4L)); assertEquals(1, parse(4));")
+        after = body_of("assertEquals(0, other.get(4L)); assertEquals(1, p.parse(4));")
         assert "flag/assertion_subject_replaced" not in codes(before, after, tmp_path)
 
 
@@ -1257,3 +1257,59 @@ def test_jsonassert_text_in_a_message_does_not_hide_a_tolerance(tmp_path):
 def test_a_creation_expression_is_never_null(tmp_path, created):
     before = body_of("assertNotNull(f());")
     assert REMOVED in codes(before, body_of(f"assertNotNull({created});"), tmp_path)
+
+
+SUBJECT = "flag/assertion_subject_replaced"
+
+
+class TestSubjectRoots:
+    @pytest.mark.parametrize(
+        ("before", "after", "imports"),
+        [("assertEquals(3, q.size());", "assertEquals(3, Arrays.asList(1, 2, 3).size());", ""),
+         ("assertTrue(s.isRunning());", "await().until(() -> t.isRunning());", AWAIT_IMPORTS),
+         ('String s = f(); assertEquals("x", s);', 'String s = "x"; assertEquals("x", s);', "")],
+        ids=["method_name_only", "wait_on_another_receiver", "local_now_literal"],
+    )  # fmt: skip
+    def test_a_replaced_subject_is_flagged(self, tmp_path, before, after, imports):
+        helper = "  Queue q; Server s; Server t;"
+        old = with_imports(body_of(before, helper), imports)
+        new = with_imports(body_of(after, helper), imports)
+        assert SUBJECT in codes(old, new, tmp_path)
+
+    def test_the_same_root_through_another_method_is_not_flagged(self, tmp_path):
+        helper = "  Queue q;"
+        old = body_of("assertEquals(3, q.size());", helper)
+        new = body_of("assertEquals(3, q.count());", helper)
+        assert SUBJECT not in codes(old, new, tmp_path)
+
+    def test_a_local_still_defined_by_a_call_is_not_flagged(self, tmp_path):
+        old = body_of('String s = f(); assertEquals("x", s);')
+        new = body_of('String s = g(); assertEquals("x", s);')
+        assert SUBJECT not in codes(old, new, tmp_path)
+
+
+def test_a_reject_carries_no_flags(tmp_path):
+    helper = "  Queue q;"
+    before = body_of("assertEquals(3, q.size()); assertTrue(ok());", helper)
+    after = body_of("assertEquals(3, Arrays.asList(1, 2, 3).size());", helper)
+    assert codes(before, after, tmp_path) == {REMOVED}
+
+
+def test_type_names_are_not_roots():
+    from rootflake.gate.checker.assertions import roots_of
+
+    assert roots_of(("Collections . synchronizedList ( new ArrayList < String > ( ) )",)) == set()
+    assert roots_of(("ScheduledTask . TaskStatus . COMPLETED , task . getStatus ( )",)) == {"task"}
+
+
+def test_an_assertion_pairs_with_the_one_sharing_its_root():
+    from rootflake.gate.checker.assertions import Assertion, _match
+
+    def made(text, subject, line):
+        return Assertion(text, ("assertEquals",), ("1", "x"), (), frozenset(), True, line, line,
+                         subject=frozenset(subject))  # fmt: skip
+
+    old_a, old_b = made("assertEquals ( 1 , a . size ( ) )", {"a"}, 1), made("b1", {"b"}, 2)
+    new_b = made("assertEquals ( 2 , b . first ( ) )", {"b"}, 3)
+    results = _match([old_a, old_b], [new_b])
+    assert [(old.line, code) for old, code, _ in results] == [(1, REMOVED)]

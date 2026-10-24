@@ -363,7 +363,8 @@ def _equality_operands(unit: CompilationUnit, start: int, end: int) -> tuple[str
 
 
 def _local_definitions(unit: CompilationUnit, body: Block) -> dict[str, set[str]]:
-    """Each local's identifiers on the right of its declarations and assignments."""
+    """Each local's roots on the right of its declarations and assignments. A value with no
+    root that is not a literal, such as `f()`, stands for itself, as `#name`."""
     out: dict[str, set[str]] = {}
     for node in walk(body):
         if not isinstance(node, Statement) or node.kind not in ("local_var", "expression"):
@@ -372,7 +373,55 @@ def _local_definitions(unit: CompilationUnit, body: Block) -> dict[str, set[str]
         for i, token in enumerate(tokens[:-1]):
             if token.kind == "ident" and tokens[i + 1].text == "=" and tokens[i + 1].kind == "op":
                 rhs = " ".join(t.text for t in tokens[i + 2 :])
-                out.setdefault(token.text, set()).update(_identifiers((rhs,)))
+                roots = roots_of((rhs,))
+                if not roots and not _constant(rhs.rstrip(" ;")):
+                    roots = {f"#{token.text}"}
+                out.setdefault(token.text, set()).update(roots)
+    return out
+
+
+def _in_type_arguments(tokens, i: int) -> bool:
+    """Whether token i sits between a `<` that follows a type name and its `>`."""
+    depth, j = 0, i - 1
+    while j >= 0:
+        text = tokens[j].text
+        if text == ">":
+            depth += 1
+        elif text == "<":
+            if depth == 0:
+                return j > 0 and tokens[j - 1].kind == "ident" and tokens[j - 1].text[:1].isupper()
+            depth -= 1
+        elif text in ("(", ")", ";", "{", "}", "=", "&&", "||"):
+            return False
+        j -= 1
+    return False
+
+
+def roots_of(arguments: tuple[str, ...]) -> set[str]:
+    """The variable, field and receiver roots an expression reads; method names and names
+    after a dot are not roots, except a field read through `this`."""
+    out = set()
+    for arg in arguments:
+        try:
+            tokens = tokenize(_without_literals(arg))
+        except Unparsable:
+            out.add(f"#{arg}")
+            continue
+        for i, token in enumerate(tokens):
+            if token.kind != "ident":
+                continue
+            before = tokens[i - 1].text if i else ""
+            after = tokens[i + 1].text if i + 1 < len(tokens) else ""
+            if after == "(" or before in ("::", "new"):
+                continue  # a call, or a constructed type
+            if token.text[:1].isupper() and after in (".", "<"):
+                continue  # a type that qualifies a member or takes type arguments
+            if token.text[:1].isupper() and (before in ("<", ",") or after in (">", ",")):
+                if _in_type_arguments(tokens, i):
+                    continue
+            if before == "." and not (i >= 2 and tokens[i - 2].text == "this"):
+                continue
+            out.add(token.text)
     return out
 
 
@@ -476,9 +525,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                 line=unit.tokens[call.start].line,
                 start=call.start,
                 subject=_followed(
-                    _identifiers(
-                        _split_arguments(unit, call.start + 1, _close(unit, call.start + 1))
-                    ),
+                    roots_of(_split_arguments(unit, call.start + 1, _close(unit, call.start + 1))),
                     definitions,
                 ),
                 facts=facts,
@@ -561,7 +608,7 @@ def _wait_assertion(unit, body, declared, exits, start, name, arguments, before)
         f"{name} ( {' , '.join(arguments)} )", (name,), arguments,
         _guard(unit, body, start, declared), frozenset(t for at, t in exits if at < before),
         True, unit.tokens[start].line, start,
-        subject=_followed(_identifiers(arguments), _local_definitions(unit, body)),
+        subject=_followed(roots_of(arguments), _local_definitions(unit, body)),
     )  # fmt: skip
 
 
@@ -1634,8 +1681,14 @@ def _match(
         )
         if same is not None:
             pool.remove(same)
+            if old.subject and not same.subject:
+                # The text is the same, but what it reads is now defined from literals only.
+                results.append((old, "flag/assertion_subject_replaced", same))
         else:
             changed.append(old)
+    # An assertion that shares a root with something still in the pool pairs first, so one
+    # whose subject is gone cannot take another's twin and leave that one removed.
+    changed.sort(key=lambda old: not any(old.subject & n.subject for n in pool))
     for old in changed:
         uses_rebound = rebinds(old)
         usable = [n for n in pool if n.credited and not n.scanned_only and _guard_ok(old, n)]
@@ -1722,6 +1775,7 @@ def _soft_assertions(program: Program, path: str, method: Method) -> tuple[dict,
         assertion = Assertion(
             stripped, tuple(names), arguments, _guard(unit, method.body, call.start),
             frozenset(), True, unit.tokens[call.start].line, call.start,
+            subject=_followed(roots_of(arguments), _local_definitions(unit, method.body)),
         )  # fmt: skip
         closes = any(
             other.name == "assertAll"

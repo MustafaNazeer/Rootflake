@@ -62,7 +62,10 @@ def check(
         findings, changes = _read(paths, pristine, workspace)
         if any(f.code.startswith("checker/") for f in findings):
             return CheckResult(tuple(findings))
-        return CheckResult(tuple(findings + _judge(changes, target, overridden)))
+        found = findings + _judge(changes, target, overridden)
+        if any(not finding.is_flag for finding in found):
+            found = [finding for finding in found if not finding.is_flag]  # a reject beats a flag
+        return CheckResult(tuple(found))
     except Unparsable as error:
         return CheckResult((Finding("checker/unparsable", None, error.line),))
     except Exception:
