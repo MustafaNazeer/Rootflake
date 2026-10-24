@@ -95,6 +95,7 @@ class Program:
         self.types_by_fqn: dict[str, tuple[str, TypeDecl]] = {}
         self.methods_by_name: dict[str, list[tuple[str, Method]]] = {}
         self.method_owner: dict[int, str] = {}
+        self._resolving: set[int] = set()
         for path, unit in units.items():
             prefix = f"{unit.package}." if unit.package else ""
             pending = [(decl, prefix + decl.name) for decl in unit.types]
@@ -133,6 +134,15 @@ class Program:
     def supertypes(self, path: str, decl: TypeDecl, seen: set[int] | None = None):
         """Read supertypes of decl, nearest first; unread ones are skipped."""
         seen = set() if seen is None else seen
+        if id(decl) in self._resolving:
+            return []  # already resolving this class's supertypes higher up the stack
+        self._resolving.add(id(decl))
+        try:
+            return self._supertypes(path, decl, seen)
+        finally:
+            self._resolving.discard(id(decl))
+
+    def _supertypes(self, path: str, decl: TypeDecl, seen: set[int]):
         out = []
         for name in [*decl.extends, *decl.implements]:
             binding = self.resolve_type(path, name, decl.start, header=True)
@@ -154,7 +164,7 @@ class Program:
 
     def resolve_type(self, path: str, name: str, index: int, header: bool = False) -> Binding:
         if "." in name:
-            return self._resolve_qualified(path, name, index)
+            return self._resolve_qualified(path, name, index, header)
         unit = self.units[path]
         for node in reversed(path_to(unit, index)):
             if header and isinstance(node, TypeDecl) and node.start == index:
@@ -207,9 +217,9 @@ class Program:
             return Binding("library", fqn)
         return Binding("imported", fqn)
 
-    def _resolve_qualified(self, path: str, name: str, index: int) -> Binding:
+    def _resolve_qualified(self, path: str, name: str, index: int, header: bool = False) -> Binding:
         head, rest = name.split(".", 1)
-        outer = self.resolve_type(path, head, index)
+        outer = self.resolve_type(path, head, index, header)
         if outer.kind in ("declared", "library") and outer.fqn:
             return self._named(f"{outer.fqn}.{rest}")
         return self._named(name)

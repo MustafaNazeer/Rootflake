@@ -582,3 +582,10 @@ class TestFourthReview:
         before = body_7b("assertEquals(1, f());")
         after = body_7b("Waiter await = waiter(); await.until(() -> assertEquals(1, f()));")
         assert REMOVED in codes(before, after, tmp_path)
+
+
+def test_a_deleted_assertion_using_a_rebound_name_is_removed_not_rebound(tmp_path):
+    before = body_of("assertEquals(1, f());")
+    after = body_of("f();", "  static void assertEquals(int a, int b) {}")
+    result = codes(before, after, tmp_path)
+    assert REMOVED in result and REBOUND not in result

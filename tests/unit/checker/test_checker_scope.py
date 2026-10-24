@@ -211,3 +211,18 @@ class TestMethodResolution:
         assert self.resolve("package a; class T { void t() { check(); } }", "check").kind == (
             "unresolved"
         )
+
+
+def test_an_anonymous_class_with_a_qualified_supertype_resolves_without_recursion():
+    p = program(
+        src__test__java__a__T=(
+            "package a; import x.AsyncCallbacks; class T { void t() { "
+            "f(new AsyncCallbacks.DeleteCallback() { public void done() { h(); } }); } }"
+        )
+    )
+    anonymous = next(d for d in p.all_types("src/test/java/a/T.java") if d.kind == "anonymous")
+    assert p.supertypes("src/test/java/a/T.java", anonymous) == []
+    assert (
+        p.resolve_type("src/test/java/a/T.java", "Inner", anonymous.body_start + 1).kind
+        == "unresolved"
+    )

@@ -741,6 +741,7 @@ def _match(
     after: list[Assertion],
     soft: dict[str, Assertion] | None = None,
     rebound: frozenset[str] = frozenset(),
+    after_calls: frozenset = frozenset(),
 ) -> list[tuple[Assertion, str, Assertion | None]]:
     """Each before assertion left without a match, with the code it earns, plus the flags a
     match raises."""
@@ -748,7 +749,12 @@ def _match(
     soft = soft or {}
     results = []
     for old in before:
-        uses_rebound = "*" in rebound or bool(_names(old) & rebound)
+        type_names = {w for w in _names(old) if w[:1].isupper()}
+        uses_rebound = (
+            "*" in rebound
+            or bool(_names(old) & rebound)
+            or ("*types" in rebound and bool(type_names))
+        )
         same = (
             None
             if uses_rebound
@@ -793,9 +799,14 @@ def _match(
             pool.remove(relaxed)
             results.append((old, "weaken_assertion/equality_relaxed", relaxed))
             continue
+        # Rebinding makes an assertion that is still there, unchanged, count as changed; an
+        # assertion that is gone is a removal whatever its names now mean.
+        head = old.text.split(" (", 1)[0].split(" . ")
+        root = (head[0] if len(head) > 1 else None, head[-1])
+        still_there = root in after_calls
         code = (
             "weaken_assertion/assertion_rebound"
-            if uses_rebound
+            if uses_rebound and still_there
             else "weaken_assertion/assertion_removed"
         )
         results.append((old, code, None))
@@ -874,8 +885,12 @@ def _rebound_names(change: FileChange, ctx: Context) -> frozenset[str]:
     names: set[str] = set()
     if change.before.package != change.after.package:
         names.add("*")
-    for name, _, wildcard in _import_keys(change.before) ^ _import_keys(change.after):
-        names.add("*" if wildcard else name.rsplit(".", 1)[-1])
+    for name, static, wildcard in _import_keys(change.before) ^ _import_keys(change.after):
+        if wildcard:
+            # A type import on demand binds only type names; a static one binds members too.
+            names.add("*" if static else "*types")
+        else:
+            names.add(name.rsplit(".", 1)[-1])
     old_methods = {(p, m.name) for m_list in ctx.before.methods_by_name.values() for p, m in m_list}
     for name, found in ctx.after.methods_by_name.items():
         if any((p, name) not in old_methods for p, _ in found):
@@ -952,6 +967,11 @@ def _methods(program: Program, path: str) -> dict[tuple, Method]:
 def _file(change: FileChange, ctx: Context) -> Iterator[Finding]:
     before = _methods(ctx.before, change.path)
     after = _methods(ctx.after, change.path)
+    after_calls = frozenset(
+        (call.receiver if call.receiver not in ("<expr>",) else None, call.name)
+        for p in ctx.test_paths
+        for call in calls_in(ctx.after.units[p], _Span(0, len(ctx.after.units[p].tokens)))
+    )
     for key, old in before.items():
         new = after.get(key)
         if new is None:
@@ -965,7 +985,8 @@ def _file(change: FileChange, ctx: Context) -> Iterator[Finding]:
         if _supertypes_changed(ctx, change, new):
             rebound = rebound | {"*"}
         reported = set()
-        for _, code, culprit in _match(old_set, new_set + checked, unchecked, rebound):
+        matches = _match(old_set, new_set + checked, unchecked, rebound, after_calls)
+        for _, code, culprit in matches:
             if code not in reported:
                 reported.add(code)
                 yield Finding(code, change.path, culprit.line if culprit else new.line)

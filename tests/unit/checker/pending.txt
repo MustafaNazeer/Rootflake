@@ -1,33 +1,25 @@
 # Checker fixtures not yet decided correctly. Each one runs as a strict expected failure;
 # remove a line once its fixture passes. The checker is done when this list is empty.
-accept-id-compare-objects-not-serialised-json
 accept-id-look-up-column-index
 accept-production-scheduled-retry
 accept-production-sleep-moved-into-new-method
 accept-production-sleep-not-reached-from-test
 accept-test-resource-lighter-workload
 accept-tzd-default-zone-set-and-restored
-reject-assert-throws-broadened
 reject-assertions-removed-and-exception-swallowed
-reject-assertj-exception-type-broadened
 reject-assume-no-exception-in-catch
 reject-awaitility-at-most-raised
 reject-catch-assertion-error-empty
 reject-catch-exception-return-early
 reject-catch-throwable-and-print
 reject-composed-annotation-retrying-test
-reject-created-file-package-mismatch
 reject-elapsed-time-bound-raised
-reject-equality-to-lower-bound
 reject-equality-to-not-null
 reject-existing-retry-rule-reused
 reject-existing-sleep-helper-newly-called
 reject-fixed-sleep-added-in-after-each
-reject-hamcrest-equal-to-not-null-value
 reject-http-client-retry-in-test-rule
 reject-id-contains-instead-of-exact-sql
-reject-id-tautological-equals
-reject-inherited-no-op-assertion
 reject-inline-loop-bound-raised-around-sleep
 reject-invocation-interceptor-retry
 reject-junit-pioneer-retrying-test
@@ -40,8 +32,6 @@ reject-junit4-test-timeout-raised
 reject-junit5-exception-handler-aborts-failures
 reject-junit5-timeout-raised
 reject-junit5-timeout-removed
-reject-larger-sample-proportional-tolerance
-reject-local-assert-equals-shadows-import
 reject-lock-support-park-nanos
 reject-mockito-verify-at-least-once
 reject-nod-sleep-replaced-by-await
@@ -53,7 +43,6 @@ reject-production-helper-swallows-test-lambda
 reject-rerunner-jupiter-repeated-if-exceptions
 reject-retry-loop-swallows-throwable
 reject-retry-loop-tries-constant-raised
-reject-same-package-assert-type
 reject-scale-constant-into-sleep
 reject-silent-poll-helper-not-followed-by-assertion
 reject-soft-assertions-without-assert-all
@@ -75,7 +64,6 @@ reject-wait-helper-millis-raised
 reject-wildcard-imported-record-annotation
 # Accept fixtures waiting on Task 7b (kind 2 and kind 3 matches); remove when 7b lands.
 accept-assertion-moved-into-await-condition
-accept-truth-in-order-removed
 # Fixtures for the Decision 6 forms adopted 2026-10-23; remove each as its rule lands.
 reject-continue-added-before-loop-assertions
 reject-dynamic-test-dropped-from-test-factory
