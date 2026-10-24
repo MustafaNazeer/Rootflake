@@ -502,7 +502,9 @@ def _parses(source: str) -> bool:
 
 
 @pytest.mark.parametrize(
-    "member", ["List<@interface> x;", "int @ x;", "List<@> y() {}"], ids=["interface", "bare", "method"]
+    "member",
+    ["List<@interface> x;", "int @ x;", "List<@> y() {}"],
+    ids=["interface", "bare", "method"],
 )
 def test_a_stray_at_sign_in_a_member_type_ends_as_unparsable_not_a_hang(member):
     start = time.perf_counter()
