@@ -1902,10 +1902,14 @@ _FLIPPED = {"low": "high", "high": "low"}
 Bound = tuple[float | None, bool, str]  # value (None when it cannot be read), strict, text
 
 
-def _bounds(a: Assertion) -> dict[str, dict[str, Bound]]:
+def _bounds(a: Assertion) -> dict[str, dict[str, list[Bound]]]:
     """The lower and upper bounds an assertion places on each subject: AssertJ chain bounds
     and sign checks, Hamcrest bound matchers, and comparisons joined by `&&` in assertTrue."""
-    out: dict[str, dict[str, Bound]] = {}
+    out: dict[str, dict[str, list[Bound]]] = {}
+
+    def add(subject: str, side: str, bound: Bound) -> None:
+        out.setdefault(subject, {}).setdefault(side, []).append(bound)
+
     words = _without_literals(a.text).split()
     args = payload(a)
     root = a.signature[0]
@@ -1914,10 +1918,10 @@ def _bounds(a: Assertion) -> dict[str, dict[str, Bound]]:
         for name, call_args in _first_arguments(words, frozenset(_BOUND_CALLS)):
             for (side, strict), arg in zip(_BOUND_CALLS[name], call_args, strict=False):
                 text = _strip_parens(" ".join(arg))
-                out.setdefault(subject, {})[side] = (_value(a, text), strict, text)
+                add(subject, side, (_value(a, text), strict, text))
         for name, _ in _first_arguments(words, frozenset(_SIGN_CALLS)):
             side, strict = _SIGN_CALLS[name]
-            out.setdefault(subject, {})[side] = (0.0, strict, "0")
+            add(subject, side, (0.0, strict, "0"))
     if root == "assertTrue" and args:
         for conjunct in _strip_parens(args[-1]).split(" && "):
             for op, side, strict in _COMPARISONS:
@@ -1927,36 +1931,42 @@ def _bounds(a: Assertion) -> dict[str, dict[str, Bound]]:
                 left, right = _strip_parens(left), _strip_parens(right)
                 if _value(a, left) is not None and _value(a, right) is None:
                     left, right, side = right, left, _FLIPPED[side]  # `5 < x` bounds x from below
-                out.setdefault(left, {})[side] = (_value(a, right), strict, right)
+                add(left, side, (_value(a, right), strict, right))
                 break
     return out
 
 
 def _looser(old: Assertion, new: Assertion) -> bool:
-    """A bound on a shared subject lowered (lower side), raised (upper side), made inclusive,
-    or no longer readable as a number; within the same assertion, a dropped side too."""
-    old_bounds, new_bounds = _bounds(old), _bounds(new)
-    if set(old_bounds) != set(new_bounds):
-        return False  # bounds on other subjects belong to another assertion
-    same_form = old.signature == new.signature
-    for subject, sides in old_bounds.items():
+    """Some bound old places on a subject new also bounds has no equal or tighter bound on the
+    same side in new: lowered (lower side), raised (upper side), made inclusive, no longer
+    readable as a number, or dropped."""
+    new_bounds = _bounds(new)
+    for subject, sides in _bounds(old).items():
         if subject not in new_bounds:
-            continue
-        for side, (value, strict, text) in sides.items():
-            found = new_bounds[subject].get(side)
-            if found is None:
-                if same_form:
-                    return True
-                continue
-            new_value, new_strict, new_text = found
-            if new_text == text and new_strict == strict and new_value == value:
-                continue
-            if value is None or new_value is None:
-                return True
-            moved = new_value < value if side == "low" else new_value > value
-            if moved or (new_value == value and strict and not new_strict):
+            continue  # the matcher never pairs these; see _drops_bounded_subject
+        for side, bounds in sides.items():
+            kept = new_bounds[subject].get(side, [])
+            if not all(any(_holds(bound, k, side) for k in kept) for bound in bounds):
                 return True
     return False
+
+
+def _holds(old: Bound, new: Bound, side: str) -> bool:
+    """Whether new bounds its subject at least as tightly as old, on the same side."""
+    (value, strict, text), (new_value, new_strict, new_text) = old, new
+    if new_text == text and new_strict == strict and new_value == value:
+        return True
+    if value is None or new_value is None:
+        return False
+    if new_value != value:
+        return new_value > value if side == "low" else new_value < value
+    return new_strict or not strict
+
+
+def _drops_bounded_subject(old: Assertion, new: Assertion) -> bool:
+    """Old bounds a subject that new does not bound at all: new checks something else, so the
+    two are not one assertion changed, and old is left to be judged removed."""
+    return not set(_bounds(old)) <= set(_bounds(new))
 
 
 def _set_converted(old: Assertion, new: Assertion) -> bool:
@@ -2098,7 +2108,14 @@ def _match(
     changed.sort(key=lambda old: not any(old.subject & n.subject for n in pool))
     for old in changed:
         uses_rebound = rebinds(old)
-        usable = [n for n in pool if n.credited and not n.scanned_only and _guard_ok(old, n)]
+        usable = [
+            n
+            for n in pool
+            if n.credited
+            and not n.scanned_only
+            and _guard_ok(old, n)
+            and not _drops_bounded_subject(old, n)
+        ]
         weakened = next(((n, code) for n in usable if (code := _weakening(old, n))), None)
         if weakened is not None:
             pool.remove(weakened[0])

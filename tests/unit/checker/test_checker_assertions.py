@@ -1361,6 +1361,28 @@ class TestOneSidedBounds:
     def test_a_tighter_or_equal_bound_is_kept(self, tmp_path, before, after):
         assert TOLERANCE not in codes(body_of(before), body_of(after), tmp_path)
 
+    @pytest.mark.parametrize(
+        ("before", "after", "code"),
+        [("assertTrue(x() > 5 && y() < 3);", "assertTrue(x() > 0);", REMOVED),
+         ("assertTrue(x() > 5 && y() < 3);", "assertTrue(x() > 5);", REMOVED),
+         ("assertTrue(x() > 5);", "assertTrue(ok());", REMOVED),
+         ("assertTrue(x() > -1 && x() > t());", "assertTrue(x() > t());", TOLERANCE),
+         ("assertTrue(x() > 0 && x() < 10);", "assertThat(x()).isGreaterThan(0);", TOLERANCE)],
+        ids=["other_subject_dropped_and_lowered", "other_subject_dropped", "all_bounds_dropped",
+             "second_bound_on_a_side_dropped", "side_dropped_across_forms"],
+    )  # fmt: skip
+    def test_a_dropped_bound_is_rejected(self, tmp_path, before, after, code):
+        assert codes(body_of(before), body_of(after), tmp_path) == {code}
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertTrue(x() > 5);", "assertTrue(x() > 5 && z() > 1);"),
+         ("assertTrue(x() > 5 && y() < 3);", "assertTrue(y() < 3 && x() > 6);")],
+        ids=["subject_added", "reordered_and_raised"],
+    )  # fmt: skip
+    def test_bounds_kept_on_every_subject_pass(self, tmp_path, before, after):
+        assert codes(body_of(before), body_of(after), tmp_path) == set()
+
     def test_a_hamcrest_bound_lowered(self, tmp_path):
         before, after = (
             with_imports(
