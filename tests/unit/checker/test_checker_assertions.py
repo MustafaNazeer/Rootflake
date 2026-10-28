@@ -2015,3 +2015,43 @@ class TestModeNamesTheCallCannotVouchFor:
         call = "JSONCompareMode m = JSONCompareMode.LENIENT; JSONAssert.assertEquals(e(), a(), m);"
         old, new = (with_imports(body_of(s), self.IMPORTS) for s in (call, f"{call} f();"))
         assert codes(old, new, tmp_path) == set()
+
+
+class TestUnchangedRuleUnderAnOnDemandImport:
+    """An unchanged rule field the old side counted under `import org.junit.*;` still counts on
+    the new side, so its unchanged checks are not seen removed."""
+
+    IMPORTS = (
+        "import org.junit.*;\nimport org.junit.rules.ErrorCollector;\n"
+        "import org.junit.rules.ExpectedException;\n"
+    )
+    FIELDS = (
+        "  @Rule public ErrorCollector collector = new ErrorCollector();\n"
+        "  @Rule public ExpectedException thrown = ExpectedException.none();\n"
+        "  @Test public void other() {\n"
+        "    collector.checkThat(a(), org.hamcrest.Matchers.equalTo(1)); }\n"
+        "  @Test public void third() { thrown.expect(IllegalStateException.class); g(); }"
+    )
+
+    @pytest.mark.xfail(strict=True, reason="unchanged bare rule fields are not yet trusted")
+    def test_a_benign_change_elsewhere_passes(self, tmp_path):
+        before = with_imports(body_of("int v = f(); Assert.assertEquals(1, v);", self.FIELDS),
+                              self.IMPORTS)  # fmt: skip
+        after = with_imports(body_of("reset(); int v = f(); Assert.assertEquals(1, v);",
+                                     self.FIELDS), self.IMPORTS)  # fmt: skip
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_changed_rule_field_is_not_trusted(self, tmp_path):
+        changed = self.FIELDS.replace(
+            "@Rule public ErrorCollector collector = new ErrorCollector();",
+            "@Rule public ErrorCollector collector = make();",
+        )
+        before = with_imports(body_of("f();", self.FIELDS), self.IMPORTS)
+        after = with_imports(body_of("f();", changed), self.IMPORTS)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_created_rule_type_is_still_rejected(self, tmp_path):
+        before = with_imports(body_of("f();", self.FIELDS), self.IMPORTS)
+        after = with_imports(body_of("f(); g();", self.FIELDS), self.IMPORTS)
+        created = {"src/test/java/a/Rule.java": "package a;\npublic @interface Rule {}\n"}
+        assert _codes_creating(before, after, created, tmp_path) & {REMOVED, REBOUND}
