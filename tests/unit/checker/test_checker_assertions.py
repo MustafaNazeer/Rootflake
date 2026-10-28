@@ -1667,6 +1667,34 @@ class TestValuesBehindUnchangedText:
         old, new = (with_imports(body_of(s), JSON_IMPORTS) for s in (before, after))
         assert codes(old, new, tmp_path) & {REMOVED, RELAXED}
 
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [("assertEquals(e(), a(), true);", "assertEquals(e(), a(), false);"),
+         ("assertEquals(e(), a(), JSONCompareMode.STRICT);",
+          "assertEquals(e(), a(), JSONCompareMode.LENIENT);"),
+         ("assertEquals(e(), a(), NON_EXTENSIBLE);", "assertEquals(e(), a(), mode());")],
+        ids=["boolean", "mode_constant", "mode_to_call"],
+    )  # fmt: skip
+    def test_a_lenient_mode_through_ambiguous_wildcards_is_refused(self, tmp_path, before, after):
+        imports = (
+            "import static org.skyscreamer.jsonassert.JSONAssert.*;\n"
+            "import org.skyscreamer.jsonassert.JSONCompareMode;\n"
+        )
+        old, new = (with_imports(body_of(s), imports) for s in (before, after))
+        assert codes(old, new, tmp_path) & {REMOVED, RELAXED}
+
+    def test_an_exact_assertion_made_lenient_through_ambiguous_wildcards_is_refused(self, tmp_path):
+        imports = "import static org.skyscreamer.jsonassert.JSONAssert.*;\n"
+        before = with_imports(body_of("assertEquals(e(), a());"), imports)
+        after = with_imports(body_of("assertEquals(e(), a(), false);"), imports)
+        assert codes(before, after, tmp_path) & {REMOVED, RELAXED}
+
+    def test_an_unchanged_mode_through_ambiguous_wildcards_passes(self, tmp_path):
+        imports = "import static org.skyscreamer.jsonassert.JSONAssert.*;\n"
+        before = with_imports(body_of("assertEquals(e(), a(), true);"), imports)
+        after = with_imports(body_of("assertEquals(e(), a(), true); f();"), imports)
+        assert codes(before, after, tmp_path) == set()
+
     def test_an_unchanged_local_keeps_the_twin(self, tmp_path):
         source = body_of("double eps = 0.01; g(); assertEquals(1.0, d(), eps);")
         changed = source.replace("g();", "h();")

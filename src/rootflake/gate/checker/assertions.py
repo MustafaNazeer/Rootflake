@@ -1329,6 +1329,26 @@ def _assertion_owner(program: Program, path: str, unit: CompilationUnit, call: C
     return having[0] if len(having) == 1 else None
 
 
+def _candidate_owners(program: Program, unit: CompilationUnit, call: Call) -> frozenset[str]:
+    """Every class an unqualified assertion call may belong to by the file's static imports,
+    when they do not settle one."""
+    if call.receiver is not None or program.methods_by_name.get(call.name):
+        return frozenset()
+    singles = {
+        _owner(imp.name)
+        for imp in unit.imports
+        if imp.static and not imp.wildcard and imp.name.rsplit(".", 1)[-1] == call.name
+    }
+    wild = {
+        imp.name
+        for imp in unit.imports
+        if imp.static
+        and imp.wildcard
+        and (imp.name not in LIBRARY_MEMBERS or call.name in LIBRARY_MEMBERS[imp.name])
+    }
+    return frozenset(singles | wild)
+
+
 JSON_ASSERT = "org.skyscreamer.jsonassert.JSONAssert"
 
 
@@ -1336,6 +1356,7 @@ def _slot_fact(program: Program, path: str, unit: CompilationUnit, call: Call) -
     """The assertion's resolved class, and where that class takes its message."""
     owner = _assertion_owner(program, path, unit, call)
     found = {("owner", owner)} if owner else set()
+    found |= {("candidate", other) for other in _candidate_owners(program, unit, call)}
     if owner in _MESSAGE_FIRST:
         found.add(("slot", "first"))
     if owner in _MESSAGE_LAST:
@@ -1866,10 +1887,45 @@ _JSON_STRICT = frozenset(
 )  # fmt: skip
 
 
+_JSON_MODES = frozenset(["LENIENT", "STRICT", "NON_EXTENSIBLE", "STRICT_ORDER"])
+
+
+def _mode_shaped(a: Assertion) -> bool:
+    """Whether the assertion's last argument, read through a local, reads as a JSONAssert mode:
+    a boolean literal, a JSONCompareMode constant, or a comparator."""
+    if len(a.arguments) < 3:
+        return False
+    mode = _strip_parens(_resolved_argument(a, a.arguments[-1]))
+    words = mode.split()
+    if not words or mode in ("true", "false"):
+        return bool(words)
+    if words[-1] in _JSON_MODES and (len(words) == 1 or "JSONCompareMode" in words):
+        return True
+    return len(words) > 1 and words[0] == "new" and words[1].endswith("Comparator")
+
+
 def _is_json_assert(a: Assertion) -> bool:
-    """Whether the assertion call is JSONAssert's, qualified or statically imported."""
+    """Whether the assertion call is JSONAssert's, qualified or statically imported, or may be
+    by static imports that do not settle its class and has a mode shaped last argument."""
     qualified = ("JSONAssert . ", "org . skyscreamer . jsonassert . JSONAssert . ")
-    return a.text.startswith(qualified) or ("owner", JSON_ASSERT) in a.facts
+    return (
+        a.text.startswith(qualified)
+        or ("owner", JSON_ASSERT) in a.facts
+        or (("candidate", JSON_ASSERT) in a.facts and _mode_shaped(a))
+    )
+
+
+def _strictness_dropped(old: Assertion, new: Assertion) -> bool:
+    """The same assertion call whose strict last argument, `true`, STRICT or NON_EXTENSIBLE,
+    became anything else, whatever class the call belongs to."""
+    if old.signature[0] != new.signature[0] or len(old.arguments) != len(new.arguments):
+        return False
+    if len(old.arguments) < 3:
+        return False
+    mode, new_mode = (_strip_parens(_resolved_argument(x, x.arguments[-1])) for x in (old, new))
+    prefix = "org . skyscreamer . jsonassert . "
+    mode, new_mode = (m[len(prefix) :] if m.startswith(prefix) else m for m in (mode, new_mode))
+    return mode in _JSON_STRICT and new_mode not in _JSON_STRICT
 
 
 def _json_lenient(a: Assertion) -> bool:
@@ -1996,6 +2052,8 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
     if _json_lenient(new) and not _json_lenient(old) and ("JSONAssert" in old.text
                                                           or _is_exact(old)):  # fmt: skip
         return "weaken_assertion/assertion_removed"  # not a named weakening, and never a match
+    if _strictness_dropped(old, new):
+        return "weaken_assertion/assertion_removed"
 
     old_types, new_types = _expected_types(old), _expected_types(new)
     if (
