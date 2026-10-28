@@ -1741,3 +1741,28 @@ class TestDeclaredLibraryNames:
         before = body_of("org.assertj.core.api.BDDAssertions.then(r()).isEqualTo(3);")
         after = body_of("org.assertj.core.api.BDDAssertions.then(q()).isEqualTo(3);")
         assert REMOVED in _codes_creating(before, after, fake, tmp_path)
+
+
+class TestRuleAnnotationResolution:
+    """Only org.junit.Rule and org.junit.ClassRule, as resolved, make a rule field."""
+
+    RULE_IMPORTS = "import org.junit.rules.ExpectedException;\nimport java.io.IOException;\n"
+
+    def _sides(self, annotation: str, imports: str):
+        field = f"  {annotation} public ExpectedException thrown = ExpectedException.none();"
+        before = body_of("assertThrows(IOException.class, () -> f());", field)
+        after = body_of("thrown.expect(IOException.class); f();", field)
+        return (with_imports(s, self.RULE_IMPORTS + imports) for s in (before, after))
+
+    def test_the_junit_rule_annotation_keeps_the_expectation(self, tmp_path):
+        before, after = self._sides("@Rule", "import org.junit.Rule;\n")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_another_library_annotation_named_rule_is_not_a_rule(self, tmp_path):
+        before, after = self._sides("@Rule", "import org.mockito.junit.Rule;\n")
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_read_file_declaring_org_junit_rule_is_not_the_rule(self, tmp_path):
+        fake = {"src/test/java/org/junit/Rule.java": "package org.junit;\n@interface Rule {}\n"}
+        before, after = self._sides("@org.junit.Rule", "")
+        assert REMOVED in codes(before, after, tmp_path, fake)

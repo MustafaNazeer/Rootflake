@@ -700,12 +700,8 @@ _NEEDS_RULE = frozenset(["ExpectedException", "ErrorCollector"])
 
 def _is_rule(program: Program, path: str, field) -> bool:
     for annotation in field.annotations:
-        simple = annotation.name.rsplit(".", 1)[-1]
-        if simple not in ("Rule", "ClassRule"):
-            continue
-        if annotation.name in ("org.junit.Rule", "org.junit.ClassRule"):
-            return True
-        if program.resolve_type(path, annotation.name, annotation.start).kind == "library":
+        binding = program.resolve_type(path, annotation.name, annotation.start)
+        if binding.kind == "library" and binding.fqn in ("org.junit.Rule", "org.junit.ClassRule"):
             return True
     return False
 
