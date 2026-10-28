@@ -1858,3 +1858,28 @@ class TestBoundNamesAfterAComparison:
         before = body_of("List<Integer> lim = 5; assertTrue(x() > lim);")
         after = body_of("List<Integer> lim = 5; assertTrue(x() > lim); f();")
         assert codes(before, after, tmp_path) == set()
+
+
+class TestRuleUnderAnOnDemandImport:
+    """`import org.junit.*;` supplies Rule on the old side, so its checks are seen removed; the
+    new side still needs the annotation resolved."""
+
+    IMPORTS = "import org.junit.*;\nimport org.junit.rules.ErrorCollector;\n"
+    FIELD = "  @Rule public ErrorCollector c = new ErrorCollector();"
+    CALL = "c.checkThat(f(), org.hamcrest.Matchers.is(1));"
+
+    def test_a_removed_check_is_seen(self, tmp_path):
+        before = with_imports(body_of(f"{self.CALL} g();", self.FIELD), self.IMPORTS)
+        after = with_imports(body_of("g();", self.FIELD), self.IMPORTS)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_new_check_earns_no_credit(self, tmp_path):
+        before = with_imports(body_of("assertEquals(1, f());", self.FIELD), self.IMPORTS)
+        after = with_imports(body_of(self.CALL, self.FIELD), self.IMPORTS)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_shadowing_rule_type_is_not_the_rule(self, tmp_path):
+        helper = f"{self.FIELD}\n  @interface Rule {{}}"
+        before = with_imports(body_of(f"{self.CALL} g();", helper), self.IMPORTS)
+        after = with_imports(body_of("g();", helper), self.IMPORTS)
+        assert codes(before, after, tmp_path) == set()

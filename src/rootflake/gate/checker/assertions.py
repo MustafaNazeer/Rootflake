@@ -699,9 +699,18 @@ _NEEDS_RULE = frozenset(["ExpectedException", "ErrorCollector"])
 
 
 def _is_rule(program: Program, path: str, field) -> bool:
+    """A field annotated with org.junit.Rule or org.junit.ClassRule. On the old side a bare
+    Rule or ClassRule that nothing else names also counts under `import org.junit.*;`, so the
+    checks of a rule field are seen removed; the new side needs the name resolved."""
+    on_demand = program.old_side and any(
+        imp.wildcard and not imp.static and imp.name == "org.junit"
+        for imp in program.units[path].imports
+    )
     for annotation in field.annotations:
         binding = program.resolve_type(path, annotation.name, annotation.start)
         if binding.kind == "library" and binding.fqn in ("org.junit.Rule", "org.junit.ClassRule"):
+            return True
+        if on_demand and binding.kind == "unresolved" and annotation.name in ("Rule", "ClassRule"):
             return True
     return False
 

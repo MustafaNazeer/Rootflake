@@ -99,6 +99,7 @@ class Program:
         self.memo: dict[tuple, object] = {}  # per file results a rule computes once
         # The types a library name must not be, set by the context once both sides are read.
         self.declared_fqns: frozenset[str] = frozenset()
+        self.old_side = False  # the pristine side, where giving credit can only fail closed
         for path, unit in units.items():
             prefix = f"{unit.package}." if unit.package else ""
             pending = [(decl, prefix + decl.name) for decl in unit.types]
