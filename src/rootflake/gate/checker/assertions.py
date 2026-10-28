@@ -1458,34 +1458,64 @@ JSON_COMPARE_MODE = "org.skyscreamer.jsonassert.JSONCompareMode"
 _JSON_MODES = frozenset(["LENIENT", "STRICT", "NON_EXTENSIBLE", "STRICT_ORDER"])
 
 
-def _field_names(program: Program) -> frozenset[str]:
-    key = ("field_names",)
+def _member_names(program: Program) -> frozenset[str]:
+    """Every field, enum constant and record component name any read type declares."""
+    key = ("member_names",)
     if key not in program.memo:
         program.memo[key] = frozenset(
             name
             for path in program.units
             for decl in program.all_types(path)
-            for field in decl.fields
-            for name in field.names
+            for name in (
+                *(n for f in decl.fields for n in f.names),
+                *(c.name for c in decl.enum_constants),
+                *(p.name for p in decl.record_components),
+            )
         )
     return program.memo[key]
 
 
+def _unread_supertype(program: Program, path: str, at: int) -> bool:
+    """Whether a type enclosing token at has a supertype no read file declares, which may
+    declare any member name."""
+    for node in path_to(program.units[path], at):
+        if isinstance(node, TypeDecl):
+            for name in (*node.extends, *node.implements):
+                if program.resolve_type(path, name, node.start, header=True).kind != "declared":
+                    return True
+    return False
+
+
+def _hidden(program: Program, unit: CompilationUnit, at: int, name: str) -> bool:
+    """Whether a member of a read type or a declaration in scope may take the name."""
+    return name in _member_names(program) or _shadowed(unit, at, name)
+
+
 def _mode_trust(program: Program, path: str, unit: CompilationUnit, call: Call) -> frozenset:
     """The spellings of the JSONCompareMode constants that name them at this call: qualified
-    through a name that resolves to the class, fully qualified when no read file declares the
-    class, or bare when a static import of the class supplies the name and no field, local or
-    other static import can."""
+    through a name that resolves to the class and nothing else takes, fully qualified when no
+    read file declares the class and nothing takes `org`, or bare when a static import of the
+    class supplies the name, no member, local or other static import can, and no enclosing type
+    has a supertype that was not read."""
     if call.arity < 3:
         return frozenset()
-    out = set()
     qualified = program.resolve_type(path, "JSONCompareMode", call.start)
+    simple_ok = (
+        qualified.kind == "library"
+        and qualified.fqn == JSON_COMPARE_MODE
+        and not _hidden(program, unit, call.start, "JSONCompareMode")
+    )
+    full_ok = JSON_COMPARE_MODE not in program.declared_fqns and not _hidden(
+        program, unit, call.start, "org"
+    )
+    bare_ok = not _unread_supertype(program, path, call.start)
+    static = [imp for imp in unit.imports if imp.static]
+    out = set()
     for mode in _JSON_MODES:
-        if qualified.kind == "library" and qualified.fqn == JSON_COMPARE_MODE:
+        if simple_ok:
             out.add(("trusted_mode", f"JSONCompareMode . {mode}"))
-        if JSON_COMPARE_MODE not in program.declared_fqns:
+        if full_ok:
             out.add(("trusted_mode", f"org . skyscreamer . jsonassert . JSONCompareMode . {mode}"))
-        static = [imp for imp in unit.imports if imp.static]
         suppliers = {
             imp.name if imp.wildcard else _owner(imp.name)
             for imp in static
@@ -1496,9 +1526,9 @@ def _mode_trust(program: Program, path: str, unit: CompilationUnit, call: Call) 
             )
         }
         if (
-            suppliers == {JSON_COMPARE_MODE}
-            and mode not in _field_names(program)
-            and not _shadowed(unit, call.start, mode)
+            bare_ok
+            and suppliers == {JSON_COMPARE_MODE}
+            and not _hidden(program, unit, call.start, mode)
         ):
             out.add(("trusted_mode", mode))
     return frozenset(out)
@@ -2071,7 +2101,10 @@ def _mode(a: Assertion) -> str:
     """The last argument read through a local. A JSONCompareMode constant comes back as
     `JSONCompareMode . NAME` where its spelling names the constant at the call, and marked
     unknown with a leading `?` where it does not."""
+    written = _strip_parens(a.arguments[-1]) if a.arguments else ""
     mode = _strip_parens(_resolved_argument(a, a.arguments[-1])) if a.arguments else ""
+    if mode != written and mode not in ("true", "false"):
+        return f"? {mode}"  # trust is settled at the call, not where a local was assigned
     words = mode.split()
     if (
         words

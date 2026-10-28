@@ -1976,3 +1976,42 @@ class TestTrustedJsonModeNames:
         before = "cmp = x(); cmp = y(); JSONAssert.assertEquals(e(), a(), cmp);"
         after = "cmp = x(); cmp = z(); JSONAssert.assertEquals(e(), a(), cmp);"
         assert REMOVED in self._codes(tmp_path, before, after, helper=helper)
+
+
+class TestModeNamesTheCallCannotVouchFor:
+    IMPORTS = (
+        "import org.skyscreamer.jsonassert.JSONAssert;\n"
+        "import org.skyscreamer.jsonassert.JSONCompareMode;\n"
+        "import static org.skyscreamer.jsonassert.JSONCompareMode.LENIENT;\n"
+    )
+    BEFORE = "JSONAssert.assertEquals(e(), a(), JSONCompareMode.STRICT_ORDER);"
+
+    def _codes(self, tmp_path, after, source=None):
+        source = source or body_of
+        old, new = (with_imports(source(s), self.IMPORTS) for s in (self.BEFORE, after))
+        return codes(old, new, tmp_path)
+
+    def test_a_bare_name_under_an_unread_supertype_is_unknown(self, tmp_path):
+        def extending(s):
+            return body_of(s).replace(
+                "public class FooTest {", "public class FooTest extends Base {"
+            )
+
+        after = "JSONAssert.assertEquals(e(), a(), LENIENT);"
+        assert REMOVED in self._codes(tmp_path, after, extending)
+
+    def test_a_local_hiding_the_class_name_is_unknown(self, tmp_path):
+        after = (
+            "Object JSONCompareMode = k(); "
+            "JSONAssert.assertEquals(e(), a(), JSONCompareMode.LENIENT);"
+        )
+        assert REMOVED in self._codes(tmp_path, after)
+
+    def test_a_mode_read_through_a_local_is_unknown(self, tmp_path):
+        after = "JSONCompareMode m = JSONCompareMode.LENIENT; JSONAssert.assertEquals(e(), a(), m);"
+        assert REMOVED in self._codes(tmp_path, after)
+
+    def test_an_unchanged_mode_local_passes(self, tmp_path):
+        call = "JSONCompareMode m = JSONCompareMode.LENIENT; JSONAssert.assertEquals(e(), a(), m);"
+        old, new = (with_imports(body_of(s), self.IMPORTS) for s in (call, f"{call} f();"))
+        assert codes(old, new, tmp_path) == set()
