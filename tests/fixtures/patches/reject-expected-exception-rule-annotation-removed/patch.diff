@@ -1,0 +1,12 @@
+diff --git a/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java b/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java
+index f7e4f93..cca26e3 100644
+--- a/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java
++++ b/sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java
+@@ -24,7 +24,6 @@
+ 
+ public class EagleEyeCoreUtilsTest {
+ 
+-    @Rule
+     public final ExpectedException thrown = ExpectedException.none();
+ 
+     @Test

@@ -1,0 +1,25 @@
+{
+  "id": "accept-json-assert-strict-order-to-lenient",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "json_assert_strict_order_to_lenient",
+  "target": {
+    "class": "fr.insee.lunatic.conversion.ComponentMandatoryTest",
+    "method": "serializeWithMandatoryTrue"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Changes the mode of a JSONAssert.assertEquals call from JSONCompareMode.STRICT_ORDER to JSONCompareMode.LENIENT. Both modes are extensible, so the only check dropped is the order of array elements, as STRICT to NON_EXTENSIBLE drops it for a non extensible comparison. Accepted with no code: STRICT_ORDER to LENIENT is on the order only allowlist of the strict assertion principle (kind 2). Adapted: no merged change was found that makes this move on its own. Adapted: hand made on ComponentMandatoryTest.java as of the last commit that changed it, 27c96a750b096688e804b6a2a1230eca266c2b42 on the default branch; every context and removed line is that file's own. Not from IDoFT: the class fr.insee.lunatic.conversion.ComponentMandatoryTest does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/InseeFr/Lunatic-Model",
+    "commit": "27c96a750b096688e804b6a2a1230eca266c2b42",
+    "base": "27c96a750b096688e804b6a2a1230eca266c2b42",
+    "path": "src/test/java/fr/insee/lunatic/conversion/ComponentMandatoryTest.java",
+    "license": "MIT",
+    "fetched": "2026-10-27"
+  }
+}

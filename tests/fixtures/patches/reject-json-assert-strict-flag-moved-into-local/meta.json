@@ -1,0 +1,29 @@
+{
+  "id": "reject-json-assert-strict-flag-moved-into-local",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "json_assert_strict_flag_moved_into_local",
+  "target": {
+    "class": "org.apache.camel.component.jackson.transform.JsonDataTypeTransformerTest",
+    "method": "shouldHandleJsonNode"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Replaces the strict flag true of a JSONAssert.assertEquals call with a local boolean strict set to false, so the call reads as strict but compares leniently, accepting fields the expected document does not name. Rejected as assertion_removed: JSONAssert strictness is read through locals, false is LENIENT, and a strict comparison made lenient matches nothing. Adapted: built on the pre image of reject-json-assert-strict-to-lenient, JsonDataTypeTransformerTest.java at that fixture's source.base, in another test of the same class; the local is hand written and every context and removed line is that file's own. Not from IDoFT: the class does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/camel",
+    "commit": "eb9f3f3b3fb13e0efcee4bf4395e00fe833ac2a7",
+    "base": "eb9f3f3b3fb13e0efcee4bf4395e00fe833ac2a7",
+    "path": "components/camel-jackson/src/test/java/org/apache/camel/component/jackson/transform/JsonDataTypeTransformerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-24"
+  }
+}

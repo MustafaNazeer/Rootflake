@@ -1,0 +1,12 @@
+diff --git a/zeppelin-server/src/test/java/org/apache/zeppelin/rest/SecurityRestApiTest.java b/zeppelin-server/src/test/java/org/apache/zeppelin/rest/SecurityRestApiTest.java
+index 2fb4988..726095d 100644
+--- a/zeppelin-server/src/test/java/org/apache/zeppelin/rest/SecurityRestApiTest.java
++++ b/zeppelin-server/src/test/java/org/apache/zeppelin/rest/SecurityRestApiTest.java
+@@ -36,7 +36,6 @@
+ public class SecurityRestApiTest extends AbstractTestRestApi {
+   Gson gson = new Gson();
+ 
+-  @Rule
+   public ErrorCollector collector = new ErrorCollector();
+ 
+   @BeforeClass

@@ -1,0 +1,29 @@
+{
+  "id": "reject-error-collector-rule-annotation-removed",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "error_collector_rule_annotation_removed",
+  "target": {
+    "class": "org.apache.zeppelin.rest.SecurityRestApiTest",
+    "method": null
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Deletes the @Rule annotation from the class's ErrorCollector field and leaves every collector.checkThat call in place. Without the annotation JUnit 4 never wraps the test in the collector's Verifier statement, so every failed check is recorded and never reported, and the test passes (docs/source/test-library-semantics.md, rule fields without @Rule). Rejected as assertion_removed: an ErrorCollector check counts only through an active rule field, so every check in the class is removed. The patch acts on the whole class, so target.method is null. Adapted: no merged change was found that removes the annotation from an ErrorCollector field. Adapted: hand made on SecurityRestApiTest.java as of the last commit that changed it, 3ada8af5be77f8658d011c0df0f5867c59896d84; every context and removed line is that file's own. That commit is the last one before the file moved to JUnit 5. Not from IDoFT: the class org.apache.zeppelin.rest.SecurityRestApiTest does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/zeppelin",
+    "commit": "3ada8af5be77f8658d011c0df0f5867c59896d84",
+    "base": "3ada8af5be77f8658d011c0df0f5867c59896d84",
+    "path": "zeppelin-server/src/test/java/org/apache/zeppelin/rest/SecurityRestApiTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-27"
+  }
+}

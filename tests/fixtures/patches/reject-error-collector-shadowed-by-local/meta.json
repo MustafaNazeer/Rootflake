@@ -1,0 +1,29 @@
+{
+  "id": "reject-error-collector-shadowed-by-local",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "error_collector_shadowed_by_local",
+  "target": {
+    "class": "org.apache.zeppelin.rest.SecurityRestApiTest",
+    "method": "testRolesEscaped"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Declares a local ErrorCollector named collector just before the check in testRolesEscaped, so the unchanged collector.checkThat call now goes to a fresh collector that no rule ever verifies, and a failed check is lost. Rejected as assertion_removed: a name hides the rule field wherever a declaration of it is in scope at the call, so the check no longer counts as an assertion. Adapted: no merged change was found that shadows a rule field. Adapted: hand made on SecurityRestApiTest.java as of the last commit that changed it, 3ada8af5be77f8658d011c0df0f5867c59896d84; every context and removed line is that file's own. That commit is the last one before the file moved to JUnit 5. Not from IDoFT: the class org.apache.zeppelin.rest.SecurityRestApiTest does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/zeppelin",
+    "commit": "3ada8af5be77f8658d011c0df0f5867c59896d84",
+    "base": "3ada8af5be77f8658d011c0df0f5867c59896d84",
+    "path": "zeppelin-server/src/test/java/org/apache/zeppelin/rest/SecurityRestApiTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-27"
+  }
+}

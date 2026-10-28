@@ -1,0 +1,29 @@
+{
+  "id": "reject-limit-constant-raised-behind-unchanged-comparison",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "limit_constant_raised_behind_unchanged_comparison",
+  "target": {
+    "class": "org.apache.commons.math4.legacy.analysis.integration.MidPointIntegratorTest",
+    "method": "testLowAccuracy"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/tolerance_widened"
+  ],
+  "disputed": false,
+  "notes": "Raises the class constant NUM_ITER from 30 to 64, which every assertTrue(integrator.getIterations() < NUM_ITER) in the class reads, and in testLowAccuracy declares a local of the same name after that assertion to hold the iteration count. Rejected as tolerance_widened: whether a name is a local is decided by the declarations in scope at the assertion, and the new local is declared only after it, so the unchanged comparison still reads the raised field and its upper bound is looser. Adapted: no merged change was found that raises a limit constant behind an unchanged comparison. Adapted: hand made on MidPointIntegratorTest.java as of the last commit that changed it, 93e3ee4b78a7df17d196ca441a37815524ea4d36 on the default branch; every context and removed line is that file's own. Not from IDoFT: the class org.apache.commons.math4.legacy.analysis.integration.MidPointIntegratorTest does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/commons-math",
+    "commit": "93e3ee4b78a7df17d196ca441a37815524ea4d36",
+    "base": "93e3ee4b78a7df17d196ca441a37815524ea4d36",
+    "path": "commons-math-legacy/src/test/java/org/apache/commons/math4/legacy/analysis/integration/MidPointIntegratorTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-27"
+  }
+}

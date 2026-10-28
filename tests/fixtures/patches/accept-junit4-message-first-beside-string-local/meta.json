@@ -1,0 +1,26 @@
+{
+  "id": "accept-junit4-message-first-beside-string-local",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "junit4_message_first_beside_string_local",
+  "target": {
+    "class": "com.alibaba.csp.sentinel.eagleeye.EagleEyeCoreUtilsTest",
+    "method": "testFormatTime"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "The merged time zone fix of accept-tzd-offset-at-instant, which subtracts getOffset(instant) instead of getRawOffset() so daylight saving time is honoured, written with the formatted time in a String local and a leading failure message: assertEquals(\"formatted time\", \"2019-06-15 12:13:14.000\", formatted). In org.junit.Assert the message comes first, so the assertion still compares the same expected literal with the formatted time, now computed the fixed way: kind 1 of the strict assertion principle, accepted with no code. Read with the message in the last position, the String local would be taken for a message and the two literals for the compared values, a false reject. Adapted: the fix is the source pull request's own; the local and the message are hand written on its pre image, and every context and removed line is that file's own. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 lists com.alibaba.csp.sentinel.eagleeye.EagleEyeCoreUtilsTest.testFormatTime with Status Opened and Category TZD; the class has no Accepted row.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/alibaba/Sentinel",
+    "commit": "d9398b4f752f8424cf926ccc32b8d9b21473de69",
+    "pr": "https://github.com/alibaba/Sentinel/pull/3459",
+    "base": "195150bc745927429e9f14f501907310b46d702f",
+    "path": "sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

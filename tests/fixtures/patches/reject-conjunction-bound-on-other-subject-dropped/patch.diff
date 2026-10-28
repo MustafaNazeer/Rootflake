@@ -1,0 +1,13 @@
+diff --git a/tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java b/tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java
+index b879522..2bda831 100644
+--- a/tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java
++++ b/tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java
+@@ -255,7 +255,7 @@ public void testJsonMetadataOutput() throws Exception {
+         int enc = json.indexOf("\"Content-Encoding\"");
+         int fb = json.indexOf("fb:admins");
+         int title = json.indexOf("\"dc:title\"");
+-        assertTrue(enc > -1 && fb > -1 && enc < fb);
++        assertTrue(enc > -1);
+         assertTrue(fb > -1 && title > -1 && fb > title);
+         assertTrue(json.contains("\"X-TIKA:digest:MD2\":"));
+     }

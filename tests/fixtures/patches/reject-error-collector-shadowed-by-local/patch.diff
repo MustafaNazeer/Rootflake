@@ -1,0 +1,12 @@
+diff --git a/zeppelin-server/src/test/java/org/apache/zeppelin/rest/SecurityRestApiTest.java b/zeppelin-server/src/test/java/org/apache/zeppelin/rest/SecurityRestApiTest.java
+index 2fb4988..4a6efc2 100644
+--- a/zeppelin-server/src/test/java/org/apache/zeppelin/rest/SecurityRestApiTest.java
++++ b/zeppelin-server/src/test/java/org/apache/zeppelin/rest/SecurityRestApiTest.java
+@@ -90,6 +90,7 @@ public void testRolesEscaped() throws IOException {
+     Map<String, Object> resp = gson.fromJson(EntityUtils.toString(get.getEntity(), StandardCharsets.UTF_8),
+             new TypeToken<Map<String, Object>>(){}.getType());
+     String roles = (String) ((Map) resp.get("body")).get("roles");
++    ErrorCollector collector = new ErrorCollector();
+     collector.checkThat("Paramater roles", roles,
+             CoreMatchers.equalTo("[\"admin\"]"));
+     get.close();

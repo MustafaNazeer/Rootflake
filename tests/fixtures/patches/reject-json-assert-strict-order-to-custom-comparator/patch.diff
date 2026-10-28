@@ -1,0 +1,25 @@
+diff --git a/src/test/java/fr/insee/lunatic/conversion/ComponentMandatoryTest.java b/src/test/java/fr/insee/lunatic/conversion/ComponentMandatoryTest.java
+index f77359c..f5fe4d9 100644
+--- a/src/test/java/fr/insee/lunatic/conversion/ComponentMandatoryTest.java
++++ b/src/test/java/fr/insee/lunatic/conversion/ComponentMandatoryTest.java
+@@ -6,8 +6,10 @@
+ import org.junit.jupiter.params.ParameterizedTest;
+ import org.junit.jupiter.params.provider.Arguments;
+ import org.junit.jupiter.params.provider.MethodSource;
++import org.skyscreamer.jsonassert.Customization;
+ import org.skyscreamer.jsonassert.JSONAssert;
+ import org.skyscreamer.jsonassert.JSONCompareMode;
++import org.skyscreamer.jsonassert.comparator.CustomComparator;
+ 
+ import java.io.ByteArrayInputStream;
+ import java.util.stream.Stream;
+@@ -68,7 +70,8 @@ void serializeWithoutMandatory(Questionnaire questionnaire, String componentType
+                     }
+                   ]
+                 }""".formatted(componentTypeName);
+-        JSONAssert.assertEquals(expected, result, JSONCompareMode.STRICT_ORDER);
++        JSONAssert.assertEquals(expected, result, new CustomComparator(JSONCompareMode.STRICT_ORDER,
++                new Customization("components[*].componentType", (o1, o2) -> true)));
+     }
+ 
+     @ParameterizedTest

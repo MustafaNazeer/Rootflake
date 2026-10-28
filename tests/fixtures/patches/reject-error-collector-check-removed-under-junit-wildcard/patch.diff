@@ -1,0 +1,13 @@
+diff --git a/zeppelin-server/src/test/java/com/teragrep/zep_01/rest/SecurityRestApiTest.java b/zeppelin-server/src/test/java/com/teragrep/zep_01/rest/SecurityRestApiTest.java
+index 2c3879a..fb1674f 100644
+--- a/zeppelin-server/src/test/java/com/teragrep/zep_01/rest/SecurityRestApiTest.java
++++ b/zeppelin-server/src/test/java/com/teragrep/zep_01/rest/SecurityRestApiTest.java
+@@ -54,8 +54,6 @@ public void testTicket() throws IOException {
+     Map<String, String> body = (Map<String, String>) resp.get("body");
+     collector.checkThat("Paramater principal", body.get("principal"),
+         CoreMatchers.equalTo("admin"));
+-    collector.checkThat("Paramater ticket", body.get("ticket"),
+-        CoreMatchers.not("anonymous"));
+     get.close();
+   }
+ 

@@ -1,0 +1,13 @@
+diff --git a/src/test/java/com/conveyal/r5/analyst/scenario/ModifyStreetsTest.java b/src/test/java/com/conveyal/r5/analyst/scenario/ModifyStreetsTest.java
+index 533e086..e860cd1 100644
+--- a/src/test/java/com/conveyal/r5/analyst/scenario/ModifyStreetsTest.java
++++ b/src/test/java/com/conveyal/r5/analyst/scenario/ModifyStreetsTest.java
+@@ -35,7 +35,7 @@ public class ModifyStreetsTest {
+     private static final double SIZE_DEGREES = 0.05;
+     private static final int TIME_LIMIT_SECONDS = 1200;
+     // Analysis bounds
+-    private static final int MIN_ELEMENTS = 100;
++    private static final int MIN_ELEMENTS = 0;
+ 
+     /**
+      * Using a `ModifyStreets` modification, test that adjusting the `walkTimeFactor` appropriately changes travel time.

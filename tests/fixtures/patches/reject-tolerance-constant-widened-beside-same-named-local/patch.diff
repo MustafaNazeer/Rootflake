@@ -1,0 +1,24 @@
+diff --git a/commons-math-legacy/src/test/java/org/apache/commons/math4/legacy/analysis/function/BivariateFunctionTest.java b/commons-math-legacy/src/test/java/org/apache/commons/math4/legacy/analysis/function/BivariateFunctionTest.java
+index fee8102..b23a078 100644
+--- a/commons-math-legacy/src/test/java/org/apache/commons/math4/legacy/analysis/function/BivariateFunctionTest.java
++++ b/commons-math-legacy/src/test/java/org/apache/commons/math4/legacy/analysis/function/BivariateFunctionTest.java
+@@ -26,7 +26,7 @@
+  */
+ public class BivariateFunctionTest {
+ 
+-    private static final double EPS = Math.ulp(1d);
++    private static final double EPS = 1e-3;
+ 
+     @Test
+     public void testAtan2() {
+@@ -37,6 +37,10 @@ public void testAtan2() {
+     @Test
+     public void testSubtract() {
+         Subtract subtract = new Subtract();
++        {
++            double EPS = Math.ulp(5d);
++            Assert.assertEquals(5, subtract.value(15,10), EPS);
++        }
+         Assert.assertEquals(5, subtract.value(10,5), EPS);
+         Assert.assertEquals(-5, subtract.value(5,10), EPS);
+     }

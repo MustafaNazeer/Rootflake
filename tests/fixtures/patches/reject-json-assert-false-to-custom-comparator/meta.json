@@ -1,0 +1,29 @@
+{
+  "id": "reject-json-assert-false-to-custom-comparator",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "json_assert_false_to_custom_comparator",
+  "target": {
+    "class": "org.apache.camel.language.datasonnet.CamelLibsonnetTest",
+    "method": "testStringOps"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Replaces the strict flag false (LENIENT) of a JSONAssert.assertEquals call with a CustomComparator in LENIENT mode whose Customization accepts any value at the path replaced, so one of the string operations the test checks is no longer compared. Rejected as assertion_removed: a comparator new to the changed call is a removal whatever the old mode was, including the boolean false. Adapted: no merged change was found that moves a JSONAssert call onto a comparator with a customization. Adapted: hand made on CamelLibsonnetTest.java as of the last commit that changed it, 8629043381d0245e14ca1b8f591488e2e2ce2138 on the default branch; every context and removed line is that file's own. The comparator and its three imports are the hand written lines. Not from IDoFT: the class org.apache.camel.language.datasonnet.CamelLibsonnetTest does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/camel",
+    "commit": "8629043381d0245e14ca1b8f591488e2e2ce2138",
+    "base": "8629043381d0245e14ca1b8f591488e2e2ce2138",
+    "path": "components/camel-datasonnet/src/test/java/org/apache/camel/language/datasonnet/CamelLibsonnetTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-27"
+  }
+}

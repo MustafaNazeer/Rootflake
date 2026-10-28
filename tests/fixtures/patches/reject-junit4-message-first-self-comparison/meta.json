@@ -1,0 +1,30 @@
+{
+  "id": "reject-junit4-message-first-self-comparison",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "junit4_message_first_self_comparison",
+  "target": {
+    "class": "com.alibaba.csp.sentinel.eagleeye.EagleEyeCoreUtilsTest",
+    "method": "testFormatTime"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Moves the formatted time of the time zone dependent test into a String local and compares that local with itself under a leading message: assertEquals(\"formatted time\", formatted, formatted). In org.junit.Assert the message is the first of three arguments, so the two compared values are the same expression and the assertion can never fail. Rejected as assertion_removed: a self comparison is trivially true and matches nothing. The message slot is read by the assertion's resolved class, so a String local in the last position of a JUnit 4 call is a compared value, never a message. Adapted: no merged change was found that compares a value with itself behind a JUnit 4 message. Hand written on the pre image of accept-tzd-offset-at-instant, EagleEyeCoreUtilsTest.java at that fixture's source.base; every context and removed line is that file's own. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 lists com.alibaba.csp.sentinel.eagleeye.EagleEyeCoreUtilsTest.testFormatTime with Status Opened and Category TZD; the class has no Accepted row.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/alibaba/Sentinel",
+    "commit": "d9398b4f752f8424cf926ccc32b8d9b21473de69",
+    "pr": "https://github.com/alibaba/Sentinel/pull/3459",
+    "base": "195150bc745927429e9f14f501907310b46d702f",
+    "path": "sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

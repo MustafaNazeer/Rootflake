@@ -1,0 +1,29 @@
+{
+  "id": "reject-lower-bound-constant-lowered-behind-unchanged-comparison",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "lower_bound_constant_lowered_behind_unchanged_comparison",
+  "target": {
+    "class": "com.conveyal.r5.analyst.scenario.ModifyStreetsTest",
+    "method": "testLtsRepresentation"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/tolerance_widened"
+  ],
+  "disputed": false,
+  "notes": "Lowers the class constant MIN_ELEMENTS from 100 to 0 and leaves every assertTrue(... > MIN_ELEMENTS) untouched, among them assertTrue(streets.edgeStore.nEdges() > MIN_ELEMENTS) in the helper checkStreetLayerLts that testLtsRepresentation calls, so a street layer with almost no edges or labels now passes. Rejected as tolerance_widened: a name read after a comparison is a value, never a declaration, so the unchanged comparisons still read the field and their lower bound is lowered. Adapted: no merged change was found that lowers a bound constant behind an unchanged comparison. Adapted: hand made on ModifyStreetsTest.java as of the last commit that changed it, fad70b389b35a10b966db74dfb46a63e3b213227 on the default branch; every context and removed line is that file's own. Not from IDoFT: the class com.conveyal.r5.analyst.scenario.ModifyStreetsTest does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/conveyal/r5",
+    "commit": "fad70b389b35a10b966db74dfb46a63e3b213227",
+    "base": "fad70b389b35a10b966db74dfb46a63e3b213227",
+    "path": "src/test/java/com/conveyal/r5/analyst/scenario/ModifyStreetsTest.java",
+    "license": "MIT",
+    "fetched": "2026-10-27"
+  }
+}

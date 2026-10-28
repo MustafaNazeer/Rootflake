@@ -1,0 +1,29 @@
+{
+  "id": "reject-conjunction-bound-on-other-subject-dropped",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "conjunction_bound_on_other_subject_dropped",
+  "target": {
+    "class": "org.apache.tika.cli.TikaCLITest",
+    "method": "testJsonMetadataOutput"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Cuts assertTrue(enc > -1 && fb > -1 && enc < fb), the key order check of a test with an unstable JSON key order, down to assertTrue(enc > -1), so the bounds on fb and the order of the two keys are no longer checked. Rejected as assertion_removed: every bound the old assertion places on a subject needs an equal or tighter bound in its replacement, and a replacement that bounds none of a subject the old assertion bounded is not paired with it, so the old assertion is removed rather than matched as the same assertion with changed arguments. Adapted: no merged change was found that drops one conjunct of a multi subject assertTrue. Hand written on the pre image of reject-id-remove-order-assertion, TikaCLITest.java at that fixture's source.base, the same test whose order assertions that fixture deletes; every context and removed line is that file's own. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 lists org.apache.tika.cli.TikaCLITest.testJsonMetadataOutput with Status InspiredAFix and Category ID; the class has no Accepted row.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/tika",
+    "commit": "0bf30f0e653ff7262cd146cee6b0bfc81a6410ff",
+    "base": "9b24fec5012c89e60fad623db961cb35cb422b13",
+    "path": "tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

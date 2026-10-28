@@ -1,0 +1,29 @@
+{
+  "id": "reject-tolerance-constant-widened-beside-same-named-local",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "tolerance_constant_widened_beside_same_named_local",
+  "target": {
+    "class": "org.apache.commons.math4.legacy.analysis.function.BivariateFunctionTest",
+    "method": "testSubtract"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/tolerance_widened"
+  ],
+  "disputed": false,
+  "notes": "Widens the class tolerance EPS from Math.ulp(1d) to 1e-3, which every assertEquals(expected, actual, EPS) in the class reads unchanged, and adds to testSubtract a block with its own local EPS and a new assertion before the existing ones. Rejected as tolerance_widened: the local is out of scope at the unchanged assertions, so they still read the field, and a tolerance whose text is unchanged but whose value cannot be read holds only while every name in it keeps its assignments. Adapted: no merged change was found that widens a tolerance constant beside a local of the same name. Adapted: hand made on BivariateFunctionTest.java as of the last commit that changed it, 93e3ee4b78a7df17d196ca441a37815524ea4d36 on the default branch; every context and removed line is that file's own. Not from IDoFT: the class org.apache.commons.math4.legacy.analysis.function.BivariateFunctionTest does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/commons-math",
+    "commit": "93e3ee4b78a7df17d196ca441a37815524ea4d36",
+    "base": "93e3ee4b78a7df17d196ca441a37815524ea4d36",
+    "path": "commons-math-legacy/src/test/java/org/apache/commons/math4/legacy/analysis/function/BivariateFunctionTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-27"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "id": "reject-expected-exception-rule-annotation-removed",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "expected_exception_rule_annotation_removed",
+  "target": {
+    "class": "com.alibaba.csp.sentinel.eagleeye.EagleEyeCoreUtilsTest",
+    "method": null
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Deletes the @Rule annotation from the class's ExpectedException field and leaves every thrown.expect call in place. JUnit 4 applies a rule only through a member annotated with @Rule or @ClassRule, and without it thrown.expect only records a matcher, so a test that throws nothing passes (docs/source/test-library-semantics.md, rule fields without @Rule). Rejected as assertion_removed: an ExpectedException expectation counts only through an active rule field, so the four expectations of the class are removed. The patch acts on the whole class, so target.method is null. Adapted: no merged change was found that removes the annotation from an ExpectedException field. Hand written on the pre image of accept-tzd-offset-at-instant, EagleEyeCoreUtilsTest.java at that fixture's source.base; every context and removed line is that file's own. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 lists com.alibaba.csp.sentinel.eagleeye.EagleEyeCoreUtilsTest.testFormatTime with Status Opened and Category TZD; the class has no Accepted row.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/alibaba/Sentinel",
+    "commit": "d9398b4f752f8424cf926ccc32b8d9b21473de69",
+    "pr": "https://github.com/alibaba/Sentinel/pull/3459",
+    "base": "195150bc745927429e9f14f501907310b46d702f",
+    "path": "sentinel-core/src/test/java/com/alibaba/csp/sentinel/eagleeye/EagleEyeCoreUtilsTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "id": "reject-json-assert-strict-to-custom-comparator",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "json_assert_strict_to_custom_comparator",
+  "target": {
+    "class": "org.apache.camel.component.jackson.transform.JsonDataTypeTransformerTest",
+    "method": "shouldHandleExplicitContentClass"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_removed"
+  ],
+  "disputed": false,
+  "notes": "Replaces the strict flag true of a JSONAssert.assertEquals call with a CustomComparator in STRICT mode whose Customization accepts any value at the path age, so the field the test checks is no longer compared even though the mode still says STRICT. Rejected as assertion_removed: only true, STRICT and NON_EXTENSIBLE count as strict, and any other last argument, a comparator included, is a mode that can stop comparing a field, so a strict call moved to it matches nothing. Adapted: built on the pre image of reject-json-assert-strict-to-lenient, JsonDataTypeTransformerTest.java at that fixture's source.base, in another test of the same class; the comparator and its three imports are hand written and every context and removed line is that file's own. Not from IDoFT: the class does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/camel",
+    "commit": "eb9f3f3b3fb13e0efcee4bf4395e00fe833ac2a7",
+    "base": "eb9f3f3b3fb13e0efcee4bf4395e00fe833ac2a7",
+    "path": "components/camel-jackson/src/test/java/org/apache/camel/component/jackson/transform/JsonDataTypeTransformerTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-24"
+  }
+}

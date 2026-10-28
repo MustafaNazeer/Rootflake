@@ -1,0 +1,25 @@
+{
+  "id": "accept-conjunction-split-into-separate-assertions",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "conjunction_split_into_separate_assertions",
+  "target": {
+    "class": "org.apache.tika.cli.TikaCLITest",
+    "method": "testJsonMetadataPrettyPrintOutput"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Splits assertTrue(enc > -1 && fb > -1 && enc < fb) into three assertTrue calls, one per conjunct, which checks exactly the same conditions and only makes a failure name the condition that failed. It must be accepted, but the checker rejects it: no single replacement bounds every subject the old assertion bounded, so the old assertion is judged removed (assertion_removed). This is a known false reject, kept as the measured cost of the rule that every bound must be kept by one replacement (ADR 0007, amendment of 2026-10-27), and the fixture runs as an expected failure. Adapted: no merged change was found that splits a multi subject assertTrue. Hand written on the pre image of reject-id-remove-order-assertion, TikaCLITest.java at that fixture's source.base, in another test of the same class; every context and removed line is that file's own. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 lists org.apache.tika.cli.TikaCLITest.testJsonMetadataOutput with Status InspiredAFix and Category ID; the class has no Accepted row.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/tika",
+    "commit": "0bf30f0e653ff7262cd146cee6b0bfc81a6410ff",
+    "base": "9b24fec5012c89e60fad623db961cb35cb422b13",
+    "path": "tika-app/src/test/java/org/apache/tika/cli/TikaCLITest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}

@@ -1,0 +1,13 @@
+diff --git a/src/test/java/fr/insee/lunatic/conversion/ComponentMandatoryTest.java b/src/test/java/fr/insee/lunatic/conversion/ComponentMandatoryTest.java
+index f77359c..7f7c335 100644
+--- a/src/test/java/fr/insee/lunatic/conversion/ComponentMandatoryTest.java
++++ b/src/test/java/fr/insee/lunatic/conversion/ComponentMandatoryTest.java
+@@ -94,7 +94,7 @@ void serializeWithMandatoryTrue(Questionnaire questionnaire, String componentTyp
+                     }
+                   ]
+                 }""".formatted(componentTypeName);
+-        JSONAssert.assertEquals(expected, result, JSONCompareMode.STRICT_ORDER);
++        JSONAssert.assertEquals(expected, result, JSONCompareMode.LENIENT);
+     }
+ 
+     @ParameterizedTest
