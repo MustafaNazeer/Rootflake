@@ -1883,3 +1883,45 @@ class TestRuleUnderAnOnDemandImport:
         before = with_imports(body_of(f"{self.CALL} g();", helper), self.IMPORTS)
         after = with_imports(body_of("g();", helper), self.IMPORTS)
         assert codes(before, after, tmp_path) == set()
+
+
+class TestNewJsonComparators:
+    """A comparator, or any mode that is not a plain one, new to the after side can skip any
+    field, so it is refused whatever mode the old assertion had."""
+
+    IMPORTS = (
+        "import org.skyscreamer.jsonassert.JSONAssert;\n"
+        "import org.skyscreamer.jsonassert.JSONCompareMode;\n"
+        "import org.skyscreamer.jsonassert.Customization;\n"
+        "import org.skyscreamer.jsonassert.comparator.CustomComparator;\n"
+    )
+    ANY_ID = (
+        'new CustomComparator(JSONCompareMode.LENIENT, new Customization("id", (a, b) -> true))'
+    )
+
+    @pytest.mark.parametrize(
+        "old_mode", ["JSONCompareMode.LENIENT", "false", "JSONCompareMode.STRICT_ORDER"],
+        ids=["lenient", "false", "strict_order"],
+    )  # fmt: skip
+    @pytest.mark.parametrize("new_mode", ["ANY_ID", "mode()"], ids=["comparator", "unknown"])
+    def test_a_new_comparator_is_refused(self, tmp_path, old_mode, new_mode):
+        new_mode = self.ANY_ID if new_mode == "ANY_ID" else new_mode
+        before = with_imports(body_of(f"JSONAssert.assertEquals(e(), a(), {old_mode});"),
+                              self.IMPORTS)  # fmt: skip
+        after = with_imports(body_of(f"JSONAssert.assertEquals(e(), a(), {new_mode});"),
+                             self.IMPORTS)  # fmt: skip
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_an_unchanged_comparator_passes(self, tmp_path):
+        call = f"JSONAssert.assertEquals(e(), a(), {self.ANY_ID});"
+        before = with_imports(body_of(call), self.IMPORTS)
+        after = with_imports(body_of(f"{call} f();"), self.IMPORTS)
+        assert codes(before, after, tmp_path) == set()
+
+    def test_strict_order_to_lenient_is_an_order_only_relaxation(self, tmp_path):
+        call = "JSONAssert.assertEquals(e(), a(), JSONCompareMode.STRICT_ORDER);"
+        before = with_imports(body_of(call), self.IMPORTS)
+        after = with_imports(
+            body_of("JSONAssert.assertEquals(e(), a(), JSONCompareMode.LENIENT);"), self.IMPORTS
+        )
+        assert codes(before, after, tmp_path) == set()

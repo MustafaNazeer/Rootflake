@@ -2023,6 +2023,27 @@ def _is_json_assert(a: Assertion) -> bool:
     )
 
 
+def _json_mode_text(a: Assertion) -> str:
+    """The last argument read through a local, without the package qualifier."""
+    mode = _strip_parens(_resolved_argument(a, a.arguments[-1])) if a.arguments else ""
+    prefix = "org . skyscreamer . jsonassert . "
+    return mode[len(prefix) :] if mode.startswith(prefix) else mode
+
+
+_PLAIN_MODES = frozenset(
+    ["true", "false", *_JSON_MODES, *(f"JSONCompareMode . {m}" for m in _JSON_MODES)]
+)
+
+
+def _new_comparator(old: Assertion, new: Assertion) -> bool:
+    """A JSONAssert call whose mode is not a plain boolean or JSONCompareMode, such as a
+    comparator whose customizations can accept anything, and not the old call's mode."""
+    if not _is_json_assert(new) or len(new.arguments) < 3:
+        return False
+    mode = _json_mode_text(new)
+    return mode not in _PLAIN_MODES and (len(old.arguments) < 3 or mode != _json_mode_text(old))
+
+
 def _strictness_dropped(old: Assertion, new: Assertion) -> bool:
     """The same assertion call whose strict last argument, `true`, STRICT or NON_EXTENSIBLE,
     became anything else, whatever class the call belongs to."""
@@ -2167,7 +2188,7 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
     if _json_lenient(new) and not _json_lenient(old) and ("JSONAssert" in old.text
                                                           or _is_exact(old)):  # fmt: skip
         return "weaken_assertion/assertion_removed"  # not a named weakening, and never a match
-    if _strictness_dropped(old, new):
+    if _strictness_dropped(old, new) or _new_comparator(old, new):
         return "weaken_assertion/assertion_removed"
 
     old_types, new_types = _expected_types(old), _expected_types(new)
