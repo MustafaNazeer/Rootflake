@@ -1766,3 +1766,56 @@ class TestRuleAnnotationResolution:
         fake = {"src/test/java/org/junit/Rule.java": "package org.junit;\n@interface Rule {}\n"}
         before, after = self._sides("@org.junit.Rule", "")
         assert REMOVED in codes(before, after, tmp_path, fake)
+
+
+class TestRuleFieldShadowing:
+    """A name hides the rule field only where a declaration of it is in scope."""
+
+    FIELD = (
+        "  @org.junit.Rule public org.junit.rules.ErrorCollector c ="
+        " new org.junit.rules.ErrorCollector();"
+    )
+    CALL = "c.checkThat(q(), org.hamcrest.Matchers.is(3));"
+
+    def test_an_untyped_lambda_parameter_is_not_the_rule(self, tmp_path):
+        before = body_of(self.CALL, self.FIELD)
+        after = body_of(f"java.util.List.of(other()).forEach(c -> {self.CALL});", self.FIELD)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_helper_parameter_is_not_the_rule(self, tmp_path):
+        helper = f"{self.FIELD}\n  void check(Checker c) {{ {self.CALL} }}"
+        before = body_of(self.CALL, helper)
+        after = body_of("check(other());", helper)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_declaration_after_the_call_does_not_hide_it(self, tmp_path):
+        later = "if (x()) { Object c = null; g(c); }"
+        before = body_of(f"{self.CALL} {later}", self.FIELD)
+        after = body_of(later, self.FIELD)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_declaration_in_another_block_does_not_hide_it(self, tmp_path):
+        other = "if (x()) { Object c = null; g(c); }"
+        before = body_of(f"{other} {self.CALL}", self.FIELD)
+        after = body_of(other, self.FIELD)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        "shadow",
+        ["Checker c = make(); CALL",
+         "int n = 0, c = n; CALL",
+         "for (Checker c : all()) { CALL }",
+         "for (Checker c = make(); c != null; c = null) { CALL }",
+         "try (Checker c = make()) { CALL }",
+         "try { f(); } catch (CheckerError c) { CALL }"],
+        ids=["local", "primitive_second_declarator", "foreach", "for_init", "resource", "catch"],
+    )  # fmt: skip
+    def test_a_declaration_in_scope_hides_the_rule(self, tmp_path, shadow):
+        before = body_of(self.CALL, self.FIELD)
+        after = body_of(shadow.replace("CALL", self.CALL), self.FIELD)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_the_rule_call_itself_is_kept(self, tmp_path):
+        before = body_of(self.CALL, self.FIELD)
+        after = body_of(f"f(); {self.CALL}", self.FIELD)
+        assert codes(before, after, tmp_path) == set()

@@ -475,7 +475,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
     consumed: set[int] = set()
     for call in calls_in(unit, body):
         rule = rules.get(call.receiver) if call.receiver else None
-        if rule is not None and _declared_in(unit, body, call.receiver):
+        if rule is not None and _shadowed(unit, call.start, call.receiver):
             rule = None  # a local of the same name shadows the rule field
         if call.name == "expect" and rule and rule[0] == "ExpectedException" and call.arity == 1:
             arguments = _split_arguments(unit, call.start + 1, _close(unit, call.start + 1))
@@ -717,6 +717,88 @@ def _declared_in(unit: CompilationUnit, body: Block, name: str) -> bool:
             and (before.kind == "ident" or before.text in (">", "]"))
         ):
             return True
+    return False
+
+
+_CLOSERS = {">": 1, ">>": 2, ">>>": 3}
+
+
+def _declared_names(tokens, start: int, end: int) -> set[str]:
+    """The names a declaration in tokens[start:end] binds, as in `Map<K, V> a = f(), b[]` or
+    `final T x : xs`: each name its type or an earlier declarator leads to, outside every
+    initializer and type argument list."""
+    out: set[str] = set()
+    depth, angle, initializer, previous = 0, 0, False, None
+    for i in range(start, end):
+        text = tokens[i].text
+        if text in ("(", "[", "{"):
+            depth += 1
+        elif text in (")", "]", "}"):
+            depth -= 1
+        elif depth == 0 and not initializer and text == "<":
+            angle += 1
+        elif depth == 0 and not initializer and text in _CLOSERS:
+            angle -= _CLOSERS[text]
+        elif depth == 0 and angle == 0 and text == "=":
+            initializer = True
+        elif depth == 0 and angle == 0 and text == ",":
+            initializer = False
+        elif depth == 0 and angle == 0 and not initializer and tokens[i].kind == "ident":
+            following = tokens[i + 1].text if i + 1 < end else ";"
+            leads = previous is not None and (
+                previous.kind == "ident" or previous.text in _PRIMITIVES
+                or previous.text in (">", ">>", ">>>", "]")
+                or (previous.text == "," and out)
+            )  # fmt: skip
+            if leads and following in ("=", ",", ";", ":", "["):
+                out.add(text)
+        previous = tokens[i]
+    return out
+
+
+def _segments(tokens, span, separators: tuple[str, ...]) -> list[tuple[int, int]]:
+    """The top level pieces of a parenthesized span, split at the separators."""
+    pieces, depth, piece = [], 0, span.start + 1
+    for i in range(span.start + 1, span.end - 1):
+        text = tokens[i].text
+        depth += text in ("(", "[", "{")
+        depth -= text in (")", "]", "}")
+        if depth == 0 and text in separators:
+            pieces.append((piece, i))
+            piece = i + 1
+    pieces.append((piece, span.end - 1))
+    return pieces
+
+
+def _shadowed(unit: CompilationUnit, at: int, name: str) -> bool:
+    """Whether a declaration of name is in scope at token at: a parameter of an enclosing
+    method or lambda, typed or not, an enclosing catch, for loop or try resource, or a local
+    declared earlier in an enclosing block."""
+    tokens = unit.tokens
+    for node in path_to(unit, at):
+        if isinstance(node, Method) and any(p.name == name for p in node.params):
+            return True
+        if isinstance(node, Lambda) and name in node.params:
+            return True
+        if isinstance(node, Catch) and node.name == name and node.block.start <= at:
+            return True
+        if isinstance(node, Block):
+            for statement in node.statements:
+                if statement.start >= at:
+                    break
+                if statement.kind == "local_var" and name in _declared_names(
+                    tokens, statement.start, statement.end - 1
+                ):
+                    return True
+        if isinstance(node, Statement) and node.kind == "for" and node.header is not None:
+            first = _segments(tokens, node.header, (";",))[0]
+            if name in _declared_names(tokens, *first):
+                return True
+        if isinstance(node, Statement) and node.kind == "try" and node.resources is not None:
+            if node.blocks and node.blocks[0].start <= at < node.blocks[0].end:
+                for piece in _segments(tokens, node.resources, (";",)):
+                    if name in _declared_names(tokens, *piece):
+                        return True
     return False
 
 
