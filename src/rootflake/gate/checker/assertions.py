@@ -550,6 +550,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                 ),
                 facts=facts
                 | _slot_fact(program, path, unit, call)
+                | _mode_trust(program, path, unit, call)
                 | _definition_facts(program, path, body, start, end),
             )
         )
@@ -1453,6 +1454,54 @@ def _candidate_owners(program: Program, unit: CompilationUnit, call: Call) -> fr
 
 
 JSON_ASSERT = "org.skyscreamer.jsonassert.JSONAssert"
+JSON_COMPARE_MODE = "org.skyscreamer.jsonassert.JSONCompareMode"
+_JSON_MODES = frozenset(["LENIENT", "STRICT", "NON_EXTENSIBLE", "STRICT_ORDER"])
+
+
+def _field_names(program: Program) -> frozenset[str]:
+    key = ("field_names",)
+    if key not in program.memo:
+        program.memo[key] = frozenset(
+            name
+            for path in program.units
+            for decl in program.all_types(path)
+            for field in decl.fields
+            for name in field.names
+        )
+    return program.memo[key]
+
+
+def _mode_trust(program: Program, path: str, unit: CompilationUnit, call: Call) -> frozenset:
+    """The spellings of the JSONCompareMode constants that name them at this call: qualified
+    through a name that resolves to the class, fully qualified when no read file declares the
+    class, or bare when a static import of the class supplies the name and no field, local or
+    other static import can."""
+    if call.arity < 3:
+        return frozenset()
+    out = set()
+    qualified = program.resolve_type(path, "JSONCompareMode", call.start)
+    for mode in _JSON_MODES:
+        if qualified.kind == "library" and qualified.fqn == JSON_COMPARE_MODE:
+            out.add(("trusted_mode", f"JSONCompareMode . {mode}"))
+        if JSON_COMPARE_MODE not in program.declared_fqns:
+            out.add(("trusted_mode", f"org . skyscreamer . jsonassert . JSONCompareMode . {mode}"))
+        static = [imp for imp in unit.imports if imp.static]
+        suppliers = {
+            imp.name if imp.wildcard else _owner(imp.name)
+            for imp in static
+            if (
+                imp.name.rsplit(".", 1)[-1] == mode
+                if not imp.wildcard
+                else imp.name not in LIBRARY_MEMBERS or mode in LIBRARY_MEMBERS[imp.name]
+            )
+        }
+        if (
+            suppliers == {JSON_COMPARE_MODE}
+            and mode not in _field_names(program)
+            and not _shadowed(unit, call.start, mode)
+        ):
+            out.add(("trusted_mode", mode))
+    return frozenset(out)
 
 
 def _slot_fact(program: Program, path: str, unit: CompilationUnit, call: Call) -> frozenset:
@@ -1989,13 +2038,8 @@ def _json_mode(a: Assertion) -> bool:
     return len(a.arguments) >= 3  # JSONAssert has no delta; its last argument is the mode
 
 
-_JSON_STRICT = frozenset(
-    ["true", "STRICT", "NON_EXTENSIBLE", "JSONCompareMode . STRICT",
-     "JSONCompareMode . NON_EXTENSIBLE"]
-)  # fmt: skip
-
-
-_JSON_MODES = frozenset(["LENIENT", "STRICT", "NON_EXTENSIBLE", "STRICT_ORDER"])
+_JSON_STRICT = frozenset(["true", "JSONCompareMode . STRICT", "JSONCompareMode . NON_EXTENSIBLE"])
+_PLAIN_MODES = frozenset(["true", "false", *(f"JSONCompareMode . {m}" for m in _JSON_MODES)])
 
 
 def _mode_shaped(a: Assertion) -> bool:
@@ -2023,25 +2067,41 @@ def _is_json_assert(a: Assertion) -> bool:
     )
 
 
-def _json_mode_text(a: Assertion) -> str:
-    """The last argument read through a local, without the package qualifier."""
+def _mode(a: Assertion) -> str:
+    """The last argument read through a local. A JSONCompareMode constant comes back as
+    `JSONCompareMode . NAME` where its spelling names the constant at the call, and marked
+    unknown with a leading `?` where it does not."""
     mode = _strip_parens(_resolved_argument(a, a.arguments[-1])) if a.arguments else ""
-    prefix = "org . skyscreamer . jsonassert . "
-    return mode[len(prefix) :] if mode.startswith(prefix) else mode
+    words = mode.split()
+    if (
+        words
+        and words[-1] in _JSON_MODES
+        and (len(words) == 1 or words[-3:-1] == ["JSONCompareMode", "."])
+    ):
+        return (
+            f"JSONCompareMode . {words[-1]}" if ("trusted_mode", mode) in a.facts else f"? {mode}"
+        )
+    return mode
 
 
-_PLAIN_MODES = frozenset(
-    ["true", "false", *_JSON_MODES, *(f"JSONCompareMode . {m}" for m in _JSON_MODES)]
-)
+def _maybe_json_assert(a: Assertion) -> bool:
+    return len(a.arguments) >= 3 and (_is_json_assert(a) or ("candidate", JSON_ASSERT) in a.facts)
 
 
-def _new_comparator(old: Assertion, new: Assertion) -> bool:
-    """A JSONAssert call whose mode is not a plain boolean or JSONCompareMode, such as a
-    comparator whose customizations can accept anything, and not the old call's mode."""
-    if not _is_json_assert(new) or len(new.arguments) < 3:
+def _unknown_mode_changed(old: Assertion, new: Assertion) -> bool:
+    """A call that may be JSONAssert's whose mode is not a plain boolean or JSONCompareMode
+    constant on either side, such as a comparator whose customizations can accept anything,
+    and that mode is not the old call's mode with the same assignments behind it."""
+    if not _maybe_json_assert(new):
         return False
-    mode = _json_mode_text(new)
-    return mode not in _PLAIN_MODES and (len(old.arguments) < 3 or mode != _json_mode_text(old))
+    mode = _mode(new)
+    old_mode = _mode(old) if len(old.arguments) >= 3 else None
+    unknown = mode not in _PLAIN_MODES or (
+        old_mode is not None and _maybe_json_assert(old) and old_mode not in _PLAIN_MODES
+    )
+    if not unknown:
+        return False
+    return mode != old_mode or not _assignments_kept(old, new, new.arguments[-1])
 
 
 def _strictness_dropped(old: Assertion, new: Assertion) -> bool:
@@ -2051,22 +2111,16 @@ def _strictness_dropped(old: Assertion, new: Assertion) -> bool:
         return False
     if len(old.arguments) < 3:
         return False
-    mode, new_mode = (_strip_parens(_resolved_argument(x, x.arguments[-1])) for x in (old, new))
-    prefix = "org . skyscreamer . jsonassert . "
-    mode, new_mode = (m[len(prefix) :] if m.startswith(prefix) else m for m in (mode, new_mode))
-    return mode in _JSON_STRICT and new_mode not in _JSON_STRICT
+    return _mode(old) in _JSON_STRICT and _mode(new) not in _JSON_STRICT
 
 
 def _json_lenient(a: Assertion) -> bool:
     """A JSONAssert call whose mode, read through a local, is anything but `true`, STRICT or
-    NON_EXTENSIBLE: LENIENT, STRICT_ORDER, false, or a comparator, whose customizations can
-    accept anything."""
+    NON_EXTENSIBLE: LENIENT, STRICT_ORDER, false, a comparator, whose customizations can
+    accept anything, or a name that does not settle as a mode."""
     if not _is_json_assert(a) or len(a.arguments) < 3:
         return False
-    mode = _strip_parens(_resolved_argument(a, a.arguments[-1]))
-    if mode.startswith("org . skyscreamer . jsonassert . "):
-        mode = mode[len("org . skyscreamer . jsonassert . ") :]
-    return mode not in _JSON_STRICT
+    return _mode(a) not in _JSON_STRICT
 
 
 # Chain and matcher bounds: (side, strict) for each, or both sides for the between forms.
@@ -2188,7 +2242,7 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
     if _json_lenient(new) and not _json_lenient(old) and ("JSONAssert" in old.text
                                                           or _is_exact(old)):  # fmt: skip
         return "weaken_assertion/assertion_removed"  # not a named weakening, and never a match
-    if _strictness_dropped(old, new) or _new_comparator(old, new):
+    if _strictness_dropped(old, new) or _unknown_mode_changed(old, new):
         return "weaken_assertion/assertion_removed"
 
     old_types, new_types = _expected_types(old), _expected_types(new)

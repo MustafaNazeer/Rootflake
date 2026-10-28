@@ -1444,7 +1444,8 @@ class TestMoreKindsTwoAndThree:
           'assertThat(names()).containsExactlyInAnyOrder("b", "a");', ""),
          ("assertEquals(e(), a());", "JSONAssert.assertEquals(e(), a(), true);", JSON_IMPORTS),
          ("assertEquals(e(), a());",
-          "JSONAssert.assertEquals(a(), e(), JSONCompareMode.NON_EXTENSIBLE);", JSON_IMPORTS)],
+          "JSONAssert.assertEquals(a(), e(), JSONCompareMode.NON_EXTENSIBLE);",
+          JSON_IMPORTS + "import org.skyscreamer.jsonassert.JSONCompareMode;\n")],
         ids=["description_before_order_free", "assertj_to_string", "json_strict",
              "json_non_extensible_swapped"],
     )  # fmt: skip
@@ -1925,3 +1926,53 @@ class TestNewJsonComparators:
             body_of("JSONAssert.assertEquals(e(), a(), JSONCompareMode.LENIENT);"), self.IMPORTS
         )
         assert codes(before, after, tmp_path) == set()
+
+
+class TestTrustedJsonModeNames:
+    """A mode name is a JSONCompareMode constant only where it resolves to one, and a call that
+    may be JSONAssert's is judged whatever its last argument looks like."""
+
+    IMPORTS = (
+        "import org.skyscreamer.jsonassert.JSONAssert;\n"
+        "import org.skyscreamer.jsonassert.JSONCompareMode;\n"
+    )
+
+    def _codes(self, tmp_path, before, after, imports=IMPORTS, helper=""):
+        old, new = (with_imports(body_of(s, helper), imports) for s in (before, after))
+        return codes(old, new, tmp_path)
+
+    def test_a_field_named_like_a_mode_is_not_the_mode(self, tmp_path):
+        helper = (
+            "  static org.skyscreamer.jsonassert.comparator.JSONComparator LENIENT;\n"
+            "  static { LENIENT = a1(); if (k()) LENIENT = a2(); }"
+        )
+        imports = self.IMPORTS + "import static org.skyscreamer.jsonassert.JSONCompareMode.*;\n"
+        before = "JSONAssert.assertEquals(e(), a(), JSONCompareMode.STRICT_ORDER);"
+        after = "JSONAssert.assertEquals(e(), a(), LENIENT);"
+        assert REMOVED in self._codes(tmp_path, before, after, imports, helper)
+
+    def test_a_bare_mode_name_from_another_class_is_not_the_mode(self, tmp_path):
+        imports = self.IMPORTS + "import static com.example.Modes.*;\n"
+        before = "JSONAssert.assertEquals(e(), a(), JSONCompareMode.STRICT_ORDER);"
+        after = "JSONAssert.assertEquals(e(), a(), LENIENT);"
+        assert REMOVED in self._codes(tmp_path, before, after, imports)
+
+    def test_a_statically_imported_mode_is_the_mode(self, tmp_path):
+        imports = (
+            self.IMPORTS + "import static org.skyscreamer.jsonassert.JSONCompareMode.LENIENT;\n"
+        )
+        before = "JSONAssert.assertEquals(e(), a(), JSONCompareMode.STRICT_ORDER);"
+        after = "JSONAssert.assertEquals(e(), a(), LENIENT);"
+        assert self._codes(tmp_path, before, after, imports) == set()
+
+    def test_a_possible_json_assert_with_an_unknown_mode_is_refused(self, tmp_path):
+        imports = self.IMPORTS + "import static org.skyscreamer.jsonassert.JSONAssert.*;\n"
+        before = "assertEquals(e(), a(), JSONCompareMode.LENIENT);"
+        after = "Object cmp = k() ? x() : y(); assertEquals(e(), a(), cmp);"
+        assert REMOVED in self._codes(tmp_path, before, after, imports)
+
+    def test_an_unknown_mode_whose_value_changed_is_refused(self, tmp_path):
+        helper = "  static Object cmp;"
+        before = "cmp = x(); cmp = y(); JSONAssert.assertEquals(e(), a(), cmp);"
+        after = "cmp = x(); cmp = z(); JSONAssert.assertEquals(e(), a(), cmp);"
+        assert REMOVED in self._codes(tmp_path, before, after, helper=helper)
