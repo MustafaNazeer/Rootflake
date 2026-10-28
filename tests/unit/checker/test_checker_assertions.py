@@ -1819,3 +1819,42 @@ class TestRuleFieldShadowing:
         before = body_of(self.CALL, self.FIELD)
         after = body_of(f"f(); {self.CALL}", self.FIELD)
         assert codes(before, after, tmp_path) == set()
+
+
+class TestBoundNamesAfterAComparison:
+    """A name read after `>` is a value, not a declaration, and a local declared out of scope
+    of the assertion does not stand for the field it reads."""
+
+    @pytest.mark.parametrize(
+        ("before", "after", "helper_before", "helper_after"),
+        [("long t = run(); assertTrue(t > MIN_MS);", "long t = run(); assertTrue(t > MIN_MS);",
+          "  static final long MIN_MS = 100;", "  static final long MIN_MS = 0;"),
+         ("int lim = 5; assertTrue(x() > lim);", "int lim = 1; assertTrue(x() > lim);", "", ""),
+         ("{ double EPS = 1; g(EPS); } assertEquals(1.0, f(), EPS);",
+          "{ double EPS = 1; g(EPS); } assertEquals(1.0, f(), EPS);",
+          "  static final double EPS = 0.001;", "  static final double EPS = 100;"),
+         ("assertEquals(1.0, f(), EPS); double EPS = 1; g(EPS);",
+          "assertEquals(1.0, f(), EPS); double EPS = 1; g(EPS);",
+          "  static final double EPS = 0.001;", "  static final double EPS = 100;"),
+         ("run(() -> { double EPS = 1; g(EPS); }); assertEquals(1.0, f(), EPS);",
+          "run(() -> { double EPS = 1; g(EPS); }); assertEquals(1.0, f(), EPS);",
+          "  static final double EPS = 0.001;", "  static final double EPS = 100;"),
+         ("if (k()) { int LIMIT = 2; g(LIMIT); } assertTrue(x() > LIMIT);",
+          "if (k()) { int LIMIT = 2; g(LIMIT); } assertTrue(x() > LIMIT);",
+          "  static final int LIMIT = 10;", "  static final int LIMIT = 0;")],
+        ids=["field_after_gt", "local_after_gt", "sibling_block_local", "later_local",
+             "lambda_local", "sibling_local_after_gt"],
+    )  # fmt: skip
+    def test_a_widened_value_is_caught(self, tmp_path, before, after, helper_before, helper_after):
+        old, new = body_of(before, helper_before), body_of(after, helper_after)
+        assert codes(old, new, tmp_path) == {TOLERANCE}
+
+    def test_a_changed_value_source_for_the_subject_still_passes(self, tmp_path):
+        before = body_of("int v = f(); assertEquals(1, v);")
+        after = body_of("int v = g(); assertEquals(1, v);")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_declared_generic_local_has_no_value(self, tmp_path):
+        before = body_of("List<Integer> lim = 5; assertTrue(x() > lim);")
+        after = body_of("List<Integer> lim = 5; assertTrue(x() > lim); f();")
+        assert codes(before, after, tmp_path) == set()

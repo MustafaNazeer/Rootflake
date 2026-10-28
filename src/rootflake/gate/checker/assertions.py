@@ -706,28 +706,18 @@ def _is_rule(program: Program, path: str, field) -> bool:
     return False
 
 
-def _declared_in(unit: CompilationUnit, body: Block, name: str) -> bool:
-    """Whether the body declares a local or parameter named name (`Type name`)."""
-    tokens = unit.tokens
-    for i in range(body.start + 1, body.end):
-        before = tokens[i - 1]
-        if (
-            tokens[i].kind == "ident"
-            and tokens[i].text == name
-            and (before.kind == "ident" or before.text in (">", "]"))
-        ):
-            return True
-    return False
-
-
 _CLOSERS = {">": 1, ">>": 2, ">>>": 3}
 
 
 def _declared_names(tokens, start: int, end: int) -> set[str]:
-    """The names a declaration in tokens[start:end] binds, as in `Map<K, V> a = f(), b[]` or
-    `final T x : xs`: each name its type or an earlier declarator leads to, outside every
-    initializer and type argument list."""
-    out: set[str] = set()
+    return {tokens[i].text for i in _declarators(tokens, start, end)}
+
+
+def _declarators(tokens, start: int, end: int) -> list[int]:
+    """Where the names a declaration in tokens[start:end] binds sit, as in
+    `Map<K, V> a = f(), b[]` or `final T x : xs`: each name its type or an earlier declarator
+    leads to, outside every initializer and type argument list."""
+    out: list[int] = []
     depth, angle, initializer, previous = 0, 0, False, None
     for i in range(start, end):
         text = tokens[i].text
@@ -751,7 +741,7 @@ def _declared_names(tokens, start: int, end: int) -> set[str]:
                 or (previous.text == "," and out)
             )  # fmt: skip
             if leads and following in ("=", ",", ";", ":", "["):
-                out.add(text)
+                out.append(i)
         previous = tokens[i]
     return out
 
@@ -768,6 +758,34 @@ def _segments(tokens, span, separators: tuple[str, ...]) -> list[tuple[int, int]
             piece = i + 1
     pieces.append((piece, span.end - 1))
     return pieces
+
+
+def _ends_a_type(tokens, j: int) -> bool:
+    """Whether the tokens up to j end a type, as in `List<Map<K, V>>` or `int[]`, so the name
+    after them is declared rather than read after a comparison such as `x() > name`."""
+    while j >= 1 and tokens[j].text == "]" and tokens[j - 1].text == "[":
+        j -= 2
+    if j < 0 or tokens[j].text == "]":
+        return False
+    if tokens[j].kind == "ident" or tokens[j].text in _PRIMITIVES:
+        return True
+    depth = 0
+    while j >= 0 and (tokens[j].text in _CLOSERS or depth > 0):
+        text = tokens[j].text
+        if text in _CLOSERS:
+            depth += _CLOSERS[text]
+        elif text == "<":
+            depth -= 1
+            if depth == 0:
+                return j > 0 and tokens[j - 1].kind == "ident"
+        elif not (
+            tokens[j].kind == "ident"
+            or text in _PRIMITIVES
+            or text in (".", ",", "?", "&", "[", "]", "extends", "super")
+        ):
+            return False
+        j -= 1
+    return False
 
 
 def _shadowed(unit: CompilationUnit, at: int, name: str) -> bool:
@@ -899,7 +917,7 @@ def _definition_facts(program: Program, path: str, body: Block, start: int, end:
     }
     out = set()
     for name in names:
-        texts = local.get(name) if _declared_in(unit, body, name) else file_wide.get(name)
+        texts = local.get(name) if _shadowed(unit, start, name) else file_wide.get(name)
         if texts:
             out.add(("defs", name, texts))
     return frozenset(out)
@@ -986,14 +1004,12 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
                 literals.setdefault(name, []).append(False)
         elif isinstance(node, Statement) and node.kind == "local_var":
             tokens = unit.tokens[node.start : node.end]
+            declared = {
+                at - node.start for at in _declarators(unit.tokens, node.start, node.end - 1)
+            }
             for i, token in enumerate(tokens[:-1]):
                 follows = tokens[i + 1].text
-                if token.kind != "ident" or follows not in ("=", ";", ","):
-                    continue
-                before = tokens[i - 1] if i else None
-                if before is None or not (
-                    before.kind in ("ident", "keyword") or before.text in (">", "]", ",")
-                ):
+                if i not in declared or follows not in ("=", ";", ","):
                     continue  # not a declared name, such as a name read in an initializer
                 end = i + 2
                 while end < len(tokens) and tokens[end].text not in (",", ";"):
@@ -1014,10 +1030,10 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
     # so the name keeps no fact.
     tokens = unit.tokens
     for i in range(body.start + 1, body.end - 1):
-        token, before = tokens[i], tokens[i - 1]
+        token = tokens[i]
         if token.kind != "ident" or i in recorded or tokens[i + 1].text == "(":
             continue
-        if before.kind == "ident" or before.text in _PRIMITIVES or before.text in (">", "]"):
+        if _ends_a_type(tokens, i - 1):
             values.setdefault(token.text, []).append(None)
             types.setdefault(token.text, []).append(None)
             literals.setdefault(token.text, []).append(False)
@@ -1851,14 +1867,19 @@ def _tolerance(a: Assertion) -> list[float] | None:
     """The numbers that set an assertion's tolerance: the delta of a three argument
     assertEquals, or the arguments of a tolerance call such as within, closeTo or isBetween.
     A tolerance named by something other than a literal or a name bound only to one is None."""
+    text = _tolerance_text(a)
+    return [] if text is None else _resolved(a, text)
+
+
+def _tolerance_text(a: Assertion) -> str | None:
     if a.signature[0] == "assertEquals" and len(payload(a)) == 3:
-        return _resolved(a, payload(a)[-1])
+        return payload(a)[-1]
     words = _without_literals(a.text).split()
     for names in _TOLERANCE_ORDER:
         found = _tolerance_call(words, names)
         if found is not None:
-            return _resolved(a, found)
-    return []
+            return found
+    return None
 
 
 def _resolved(a: Assertion, text: str) -> list[float] | None:
@@ -2082,21 +2103,28 @@ def _looser(old: Assertion, new: Assertion) -> bool:
             continue  # the matcher never pairs these; see _drops_bounded_subject
         for side, bounds in sides.items():
             kept = new_bounds[subject].get(side, [])
-            if not all(any(_holds(bound, k, side) for k in kept) for bound in bounds):
+            if not all(any(_holds(old, new, bound, k, side) for k in kept) for bound in bounds):
                 return True
     return False
 
 
-def _holds(old: Bound, new: Bound, side: str) -> bool:
-    """Whether new bounds its subject at least as tightly as old, on the same side."""
+def _holds(old_a: Assertion, new_a: Assertion, old: Bound, new: Bound, side: str) -> bool:
+    """Whether new bounds its subject at least as tightly as old, on the same side. The same
+    text with no readable value holds only while every name in it keeps its assignments."""
     (value, strict, text), (new_value, new_strict, new_text) = old, new
     if new_text == text and new_strict == strict and new_value == value:
-        return True
+        return value is not None or _assignments_kept(old_a, new_a, text)
     if value is None or new_value is None:
         return False
     if new_value != value:
         return new_value > value if side == "low" else new_value < value
     return new_strict or not strict
+
+
+def _assignments_kept(old: Assertion, new: Assertion, text: str) -> bool:
+    """Whether every name text reads has the same assignments on both sides."""
+    names = _identifiers((text,))
+    return {f for f in _defs(old) if f[1] in names} == {f for f in _defs(new) if f[1] in names}
 
 
 def _drops_bounded_subject(old: Assertion, new: Assertion) -> bool:
@@ -2160,6 +2188,10 @@ def _weakening(old: Assertion, new: Assertion) -> str | None:
             new_tolerance is None or (new_tolerance and max(new_tolerance) > max(old_tolerance))
         ):
             return "weaken_assertion/tolerance_widened"
+        text = _tolerance_text(old)
+        if old_tolerance is None and new_tolerance is None and text == _tolerance_text(new):
+            if not _assignments_kept(old, new, text):
+                return "weaken_assertion/tolerance_widened"
     if _looser(old, new):
         return "weaken_assertion/tolerance_widened"
     if not _shares_subject(old, new):
