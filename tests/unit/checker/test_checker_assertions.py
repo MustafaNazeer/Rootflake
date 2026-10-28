@@ -1671,3 +1671,45 @@ class TestValuesBehindUnchangedText:
         source = body_of("double eps = 0.01; g(); assertEquals(1.0, d(), eps);")
         changed = source.replace("g();", "h();")
         assert codes(source, changed, tmp_path) == set()
+
+
+def _codes_creating(before: str, after: str, created: dict[str, str], root: Path) -> set[str]:
+    pristine, workspace = root / "p", root / "w"
+    for side, source in ((pristine, before), (workspace, after)):
+        (side / PATH).parent.mkdir(parents=True, exist_ok=True)
+        (side / PATH).write_text(source)
+    for rel, text in created.items():
+        (workspace / rel).parent.mkdir(parents=True, exist_ok=True)
+        (workspace / rel).write_text(text)
+    result = check(sorted([PATH, *created]), pristine, workspace, TARGET)
+    return {f.code for f in result.findings}
+
+
+class TestDeclaredLibraryNames:
+    """A fully qualified test library name that a read file declares is that file's class."""
+
+    def test_a_rule_field_of_a_created_library_type_is_not_credited(self, tmp_path):
+        fake = {
+            "src/test/java/org/junit/rules/ErrorCollector.java": (
+                "package org.junit.rules;\npublic class ErrorCollector {\n"
+                "  public <T> void checkThat(T value, Object matcher) {}\n}\n"
+            )
+        }
+        field = (
+            "  @org.junit.Rule public org.junit.rules.ErrorCollector c ="
+            " new org.junit.rules.ErrorCollector();"
+        )
+        before = body_of("c.checkThat(r(), org.hamcrest.Matchers.is(3));", field)
+        after = body_of("c.checkThat(q(), org.hamcrest.Matchers.is(3));", field)
+        assert _codes_creating(before, after, fake, tmp_path) == {REBOUND}
+
+    def test_a_then_on_a_created_library_class_is_not_credited(self, tmp_path):
+        fake = {
+            "src/test/java/org/assertj/core/api/BDDAssertions.java": (
+                "package org.assertj.core.api;\npublic class BDDAssertions {\n"
+                "  public static Object then(Object actual) { return actual; }\n}\n"
+            )
+        }
+        before = body_of("org.assertj.core.api.BDDAssertions.then(r()).isEqualTo(3);")
+        after = body_of("org.assertj.core.api.BDDAssertions.then(q()).isEqualTo(3);")
+        assert REMOVED in _codes_creating(before, after, fake, tmp_path)

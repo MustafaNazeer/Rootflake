@@ -58,6 +58,10 @@ class Context:
     def __post_init__(self) -> None:
         self.before = Program({c.path: c.before for c in self.changes if c.before is not None})
         self.after = Program({c.path: c.after for c in self.changes})
+        # A new assertion earns no credit through a name either side declares; an old one keeps
+        # what its own side gave it, so taking credit away never hides an assertion removed.
+        self.before.declared_fqns = frozenset(self.before.types_by_fqn)
+        self.after.declared_fqns = self.before.declared_fqns | frozenset(self.after.types_by_fqn)
         self.test_paths = {
             c.path
             for c in self.changes

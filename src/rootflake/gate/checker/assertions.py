@@ -739,9 +739,9 @@ def _rule_fields(program: Program, path: str) -> dict[str, tuple[str, bool]]:
                     continue
                 if simple in _NEEDS_RULE and not _is_rule(program, path, field):
                     continue
-                credited = is_library(field.type) or (
-                    program.resolve_type(path, simple, field.start).kind == "library"
-                )
+                credited = (
+                    is_library(field.type) and field.type not in program.declared_fqns
+                ) or program.resolve_type(path, simple, field.start).kind == "library"
                 for name in field.names:
                     out[name] = (simple, credited)
         program.memo[key] = out
@@ -1067,6 +1067,8 @@ def _qualified_library(program: Program, path: str, unit: CompilationUnit, at: i
     if at < 0 or unit.tokens[at].kind != "ident":
         return False
     name = _qualified_name(unit, at)
+    if "." in name and name in program.declared_fqns:
+        return False
     if "." in name and is_library(name):
         return True
     return program.resolve_type(path, unit.tokens[at].text, at).kind == "library"
@@ -1308,7 +1310,7 @@ def _assertion_owner(program: Program, path: str, unit: CompilationUnit, call: C
     if call.receiver not in (None, "<expr>") and call.receiver_at is not None:
         name = _qualified_name(unit, call.receiver_at)
         if "." in name:
-            return name if is_library(name) and name not in program.types_by_fqn else None
+            return name if is_library(name) and name not in program.declared_fqns else None
         binding = program.resolve_type(path, name, call.receiver_at)
         return binding.fqn if binding.kind == "library" else None
     if call.receiver is not None or program.methods_by_name.get(call.name):

@@ -97,6 +97,8 @@ class Program:
         self.method_owner: dict[int, str] = {}
         self._resolving: set[int] = set()
         self.memo: dict[tuple, object] = {}  # per file results a rule computes once
+        # The types a library name must not be, set by the context once both sides are read.
+        self.declared_fqns: frozenset[str] = frozenset()
         for path, unit in units.items():
             prefix = f"{unit.package}." if unit.package else ""
             pending = [(decl, prefix + decl.name) for decl in unit.types]
