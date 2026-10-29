@@ -284,7 +284,7 @@ Every widened timing bound in test code is rejected with `weaken_assertion/timin
 1. a type whose simple name contains `Retry`, `Rerun`, `Repeat`, `Flaky` or `Ignore`, compared without regard to case, is rejected with `retry/existing_retry_extension`;
 2. a type on a short allowlist of well known framework types (for example `org.mockito.junit.jupiter.MockitoExtension` and `org.junit.rules.TemporaryFolder`) is accepted, matched by fully qualified name resolved through a single type import or a qualified use, never through a wildcard import;
 3. a type declared in a file the checker reads, or in the one pristine file Decision 2 lets it read, is checked by the rules above, and the step 1 name rule is applied to each of its supertypes and interfaces too, and to every type it visibly delegates to in the code read (a field type, a `new X(...)`, a static call receiver), so a pristine wrapper around `new RetryRule(3)` is rejected; if a supertype or a delegate a rule needs is unread, the patch is flagged with `flag/unknown_test_extension`, never a plain accept;
-4. any other is flagged with `flag/unknown_test_extension`.
+4. any other is flagged with `flag/unknown_test_extension`. This holds on a class that runs no tests too, such as a nested Spring `@Configuration` class with `@Bean` methods: the patch is flagged for review, not rejected (`accept-spring-order-on-new-test-bean`).
 
 **Amended 2026-10-29: how the retry rules are read.**
 
