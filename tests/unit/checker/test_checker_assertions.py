@@ -2660,6 +2660,48 @@ class TestConditionsAndSubjectsThroughOnceAssignedLocals:
         )
         assert self.REMOVED in codes(body_of(self.LOOP), body_of(after), tmp_path)
 
+    @pytest.mark.parametrize(
+        "before, after",
+        [
+            ('if (list.size() > 0) { fail("x"); }',
+             'int c = list.size(); list.clear(); if (c > 0) { fail("x"); }'),
+            ('work(); if (queue.size() > 0) { fail("left"); }',
+             'int c = queue.size(); work(); if (c > 0) { fail("left"); }'),
+            ("work(); if (server.isRunning()) { assertEquals(1, server.count()); }",
+             "boolean up = server.isRunning(); work();"
+             " if (up) { assertEquals(1, server.count()); }"),
+            ("long start = clock.millis(); work(); assertTrue(clock.millis() - start < 100);",
+             "long start = clock.millis(); long now = clock.millis(); work();"
+             " assertTrue(now - start < 100);"),
+            ("work(); assertTrue(dir.listFiles().length < 5);",
+             "File[] files = Objects.requireNonNull(dir.listFiles()); work();"
+             " assertTrue(files.length < 5);"),
+            ("while (!done()) { assertTrue(step()); }",
+             "boolean d = done(); while (!d) { assertTrue(step()); }"),
+        ],
+    )  # fmt: skip
+    def test_a_local_read_after_work_that_may_change_it_is_not_read(self, before, after, tmp_path):
+        assert self.REMOVED in codes(body_of(before), body_of(after), tmp_path)
+
+    @pytest.mark.parametrize(
+        "after",
+        [
+            'Runnable r = () -> { boolean ok = failed(); }; if (ok) { fail("x"); }',
+            'if (ok) { fail("x"); } boolean ok = failed();',
+            '{ boolean ok = failed(); } if (ok) { fail("x"); }',
+            "Object o = new Object() { void m() { boolean ok = failed(); } };"
+            ' if (ok) { fail("x"); }',
+        ],
+    )
+    def test_a_local_out_of_scope_at_the_condition_is_not_read(self, after, tmp_path):
+        before = body_of('if (failed()) { fail("x"); }', "boolean ok;")
+        assert self.REMOVED in codes(before, body_of(after, "boolean ok;"), tmp_path)
+
+    def test_a_member_access_named_like_the_local_is_not_read(self, tmp_path):
+        before = body_of('if (other.ok) { fail("x"); }', "Other other;")
+        after = body_of('boolean ok = failed(); if (other.ok) { fail("x "); }', "Other other;")
+        assert self.REMOVED not in codes(before, after, tmp_path)
+
     def test_a_bounded_subject_read_through_require_non_null_is_kept(self, tmp_path):
         before = "File dir = dir(); assertTrue(dir.listFiles().length > 0);"
         after = (

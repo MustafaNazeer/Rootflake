@@ -82,8 +82,10 @@ class Assertion:
     # ("value", name, number) for a name bound only to a numeric literal, ("set", name) for a
     # name declared with a Set type, from the file and method the assertion sits in.
     facts: frozenset = frozenset()
-    # The guard with each local the method assigns once read as its value, when it differs.
+    # The guard read through the locals declared just before each condition (`_locals_before`),
+    # and the locals declared just before the assertion's own statement, as (name, value).
     read_guard: tuple[str, ...] = ()
+    read_locals: tuple[tuple[str, str], ...] = ()
 
 
 def _text(unit: CompilationUnit, start: int, end: int) -> str:
@@ -142,20 +144,16 @@ def _guard(
     read: bool = False,
 ) -> tuple[str, ...]:
     """The conditions between the method body and the token at index, outermost first. With
-    read, each local the method assigns once is read as its value."""
+    read, an `if`, `switch` or enhanced `for` header, each evaluated once, reads a local
+    declared just before its statement as its value (`_locals_before`)."""
     guard = []
     path = path_to(unit, index)
     inside = False
-    values: dict[str, str] | None = None
 
     def header(node: Statement) -> str:
-        nonlocal values
-        if not read:
+        if not read or (node.kind in _LOOPS and not _enhanced_for(unit, node)):
             return _text(unit, node.header.start, node.header.end)
-        if values is None:
-            values = _single_locals(unit, body)
-        words = _text(unit, node.header.start, node.header.end).split(" ")
-        return " ".join(values.get(w, w) for w in words)
+        return _read_through(unit, node.header.start, node.header.end, _locals_before(unit, node))
 
     for depth, node in enumerate(path):
         if node is body:
@@ -184,25 +182,69 @@ def _guard(
     return tuple(guard)
 
 
-def _single_locals(unit: CompilationUnit, body: Block) -> dict[str, str]:
-    """Each local the method declares once, with one declarator, assigned only by its
-    initializer, mapped to that value, so a condition written through `final String n =
-    file.getName();` reads the same as one written with `file.getName()`. A value with an
-    operator outside its brackets is bracketed, so substitution keeps its precedence."""
+def _locals_before(unit: CompilationUnit, statement: Statement) -> dict[str, str]:
+    """The locals declared, one declarator each with an initializer, in the run of statements
+    just before a statement in its own block, mapped to their values. The run stops at the
+    first statement that is not such a declaration, and no declaration is read once a later
+    one in the run, or anything between it and the statement, could change a value: a call,
+    an assignment, `++` or `--`. So `final String n = file.getName(); if (n...)` reads `n` as
+    `file.getName()`, and `int c = list.size(); list.clear(); if (c > 0)` reads nothing."""
     tokens = unit.tokens
-    declared: Counter = Counter()
+    holder = next(
+        (n for n in reversed(path_to(unit, statement.start))
+         if isinstance(n, Block) and any(st is statement for st in n.statements)),
+        None,
+    )  # fmt: skip
+    if holder is None:
+        return {}
+    at = next(k for k, st in enumerate(holder.statements) if st is statement)
     found: dict[str, str] = {}
-    for node in walk(body):
-        if not isinstance(node, Statement) or node.kind != "local_var":
-            continue
-        names = _declarators(tokens, node.start, node.end - 1)
-        for k in names:
-            declared[tokens[k].text] += 1
-        if len(names) == 1 and tokens[names[0] + 1].text == "=":
-            k = names[0]
-            found[tokens[k].text] = _non_null(_bracketed(tokens[k + 2 : node.end - 1]))
-    counts = _assignment_counts(tokens, body.start, body.end)
-    return {n: v for n, v in found.items() if declared[n] == 1 and counts.get(n) == 1 and v}
+    for previous in reversed(holder.statements[:at]):
+        if previous.kind != "local_var":
+            break
+        names = _declarators(tokens, previous.start, previous.end - 1)
+        if len(names) != 1 or tokens[names[0] + 1].text != "=":
+            break
+        k = names[0]
+        found.setdefault(tokens[k].text, _non_null(_bracketed(tokens[k + 2 : previous.end - 1])))
+        if _may_change(tokens, k + 2, previous.end - 1):
+            break
+    return found
+
+
+def _may_change(tokens, start: int, end: int) -> bool:
+    for i in range(start, end):
+        text = tokens[i].text
+        if text in ("++", "--") or text in _ASSIGNMENTS:
+            return True
+        if tokens[i].kind == "ident" and i + 1 < end and tokens[i + 1].text == "(":
+            return True
+    return False
+
+
+def _assertion_locals(unit: CompilationUnit, index: int) -> tuple[tuple[str, str], ...]:
+    statement = next((n for n in reversed(path_to(unit, index)) if isinstance(n, Statement)), None)
+    if statement is None:
+        return ()
+    return tuple(sorted(_locals_before(unit, statement).items()))
+
+
+def _enhanced_for(unit: CompilationUnit, node: Statement) -> bool:
+    return node.kind == "for" and any(
+        t.text == ":" for t in unit.tokens[node.header.start : node.header.end]
+    )
+
+
+def _read_through(unit: CompilationUnit, start: int, end: int, values: dict[str, str]) -> str:
+    """The text of a token range with each name in values, other than a member access, read
+    as its value."""
+    tokens = unit.tokens
+    return " ".join(
+        values[t.text]
+        if t.kind == "ident" and t.text in values and (i == 0 or tokens[i - 1].text != ".")
+        else t.text
+        for i, t in ((i, tokens[i]) for i in range(start, end))
+    )
 
 
 def _bracketed(tokens) -> str:
@@ -610,6 +652,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             arguments=_split_arguments(unit, call.start + 1, _close(unit, call.start + 1)),
             guard=_guard(unit, body, call.start, declared),
             read_guard=_guard(unit, body, call.start, declared, True),
+            read_locals=_assertion_locals(unit, call.start),
             exits_before=frozenset(text for at, text in exits if at < call.start),
             credited=credited,
             line=unit.tokens[call.start].line,
@@ -1785,7 +1828,7 @@ def _with_helpers(
                     found.text, found.signature, found.arguments, guard + found.guard,
                     exits | found.exits_before, found.credited, found.line, found.start,
                     False, origin, found.subject, found.facts,
-                    guard + found.read_guard if found.read_guard else (),
+                    guard + found.read_guard if found.read_guard else (), found.read_locals,
                 )
             )  # fmt: skip
     return out
@@ -1795,7 +1838,7 @@ def _as_scanned(assertion: Assertion) -> Assertion:
     return Assertion(
         assertion.text, assertion.signature, assertion.arguments, assertion.guard,
         assertion.exits_before, False, assertion.line, assertion.start, True, assertion.origin,
-        assertion.subject, assertion.facts, assertion.read_guard,
+        assertion.subject, assertion.facts, assertion.read_guard, assertion.read_locals,
     )  # fmt: skip
 
 
@@ -2916,11 +2959,11 @@ def _drops_bounded_subject(old: Assertion, new: Assertion) -> bool:
     `files.length` with `files = Objects.requireNonNull(dir.listFiles())` bounds
     `dir.listFiles().length`."""
     subjects = set(_bounds(new))
+    values = dict(new.read_locals)
     for subject in list(subjects):
         name, _, rest = subject.partition(" ")
-        value = _resolved_argument(new, name)
-        if value != name:
-            subjects.add(f"{_non_null(value)} {rest}".strip())
+        if name in values:
+            subjects.add(f"{values[name]} {rest}".strip())
     return not set(_bounds(old)) <= subjects
 
 
