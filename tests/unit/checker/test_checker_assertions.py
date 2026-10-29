@@ -2672,3 +2672,36 @@ class TestConditionsAndSubjectsThroughOnceAssignedLocals:
         before = "File dir = dir(); assertTrue(dir.listFiles().length > 0);"
         after = "File dir = dir(); File[] fs = other(); assertTrue(fs.length > 0);"
         assert self.REMOVED in codes(body_of(before), body_of(after), tmp_path)
+
+
+class TestBlockWaitConditions:
+    REMOVED = "weaken_assertion/assertion_removed"
+    POLL = "List<String> got = new ArrayList<>(); "
+    TAIL = ' assertEquals("a", got.get(0));'
+
+    def wait(self, block: str) -> str:
+        return f"await().until(() -> {{ {block} }});"
+
+    def test_an_assertion_moved_into_the_closing_return_is_kept(self, tmp_path):
+        before = self.POLL + self.wait("got.addAll(poll()); return true;") + (
+            " assertEquals(3, got.size());" + self.TAIL)  # fmt: skip
+        after = self.POLL + self.wait("got.addAll(poll()); return got.size() == 3;") + self.TAIL
+        assert not any(not c.startswith("flag/") for c in codes_7b(before, after, tmp_path))
+
+    def test_a_block_that_returns_early_is_not_a_condition(self, tmp_path):
+        before = self.POLL + self.wait("got.addAll(poll()); return true;") + (
+            " assertEquals(3, got.size());" + self.TAIL)  # fmt: skip
+        after = self.POLL + self.wait(
+            "if (got.isEmpty()) { return true; } got.addAll(poll()); return got.size() == 3;"
+        ) + self.TAIL  # fmt: skip
+        assert self.REMOVED in codes_7b(before, after, tmp_path)
+
+    def test_a_closing_condition_made_always_true_is_removed(self, tmp_path):
+        before = self.POLL + self.wait("got.addAll(poll()); return got.size() == 3;") + self.TAIL
+        after = self.POLL + self.wait("got.addAll(poll()); return true;") + self.TAIL
+        assert self.REMOVED in codes_7b(before, after, tmp_path)
+
+    def test_a_closing_condition_swapped_for_another_is_removed(self, tmp_path):
+        before = self.POLL + self.wait("got.addAll(poll()); return got.size() == 3;") + self.TAIL
+        after = self.POLL + self.wait("got.addAll(poll()); return !got.isEmpty();") + self.TAIL
+        assert self.REMOVED in codes_7b(before, after, tmp_path)

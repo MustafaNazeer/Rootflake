@@ -18,7 +18,7 @@ from rootflake.gate.checker.calls import Call, ExpansionBudget, calls_in, reach
 from rootflake.gate.checker.lexer import Unparsable, tokenize
 from rootflake.gate.checker.model import Context, FileChange, Finding
 from rootflake.gate.checker.scope import Program, is_library
-from rootflake.gate.checker.survive import SKIP_EXCEPTIONS, attributes
+from rootflake.gate.checker.survive import SKIP_EXCEPTIONS, _outside_nested, attributes
 from rootflake.gate.checker.syntax import (
     Block,
     Catch,
@@ -389,6 +389,8 @@ def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str]]:
                 unit, body, node.start
             ):
                 continue
+            if node.kind == "return" and _wait_value_return(unit, body, node):
+                continue
             # Mustafa 2026-10-23: an exit is its statement plus its full guard text, so an
             # existing exit under a changed condition counts as newly guarded.
             guard = " / ".join(_guard(unit, body, node.start))
@@ -632,6 +634,8 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                 continue
             first, last = span
             expression = _text(unit, first, last)
+            if expression == "true":
+                continue  # a wait that ends at once asserts nothing
             operands = _equality_operands(unit, first, last)
             after = unit.tokens[node.end].text if node.end < len(unit.tokens) else ""
             if after == ",":
@@ -733,15 +737,38 @@ def _equal_to_argument(program: Program, path: str, unit: CompilationUnit, i: in
 
 
 def _lambda_value(lam: Lambda) -> tuple[int, int] | None:
-    """The token span of what a lambda returns: its expression, or a block whose only statement
-    is `return c;`."""
+    """The token span of what a lambda returns: its expression, or a block that ends in
+    `return c;` and returns nowhere else outside nested lambdas and classes, so the wait ends
+    only when c holds."""
     if lam.expression is not None:
         return lam.expression.start, lam.expression.end
-    if lam.body is not None and len(lam.body.statements) == 1:
-        only = lam.body.statements[0]
-        if only.kind == "return" and only.end - only.start > 2:
-            return only.start + 1, only.end - 1
-    return None
+    if lam.body is None or not lam.body.statements:
+        return None
+    last = lam.body.statements[-1]
+    if last.kind != "return" or last.end - last.start <= 2:
+        return None
+    if any(
+        n is not last and isinstance(n, Statement) and n.kind == "return"
+        for n in _outside_nested(lam.body)
+    ):
+        return None
+    return last.start + 1, last.end - 1
+
+
+def _wait_value_return(unit: CompilationUnit, body: Block, node: Statement) -> bool:
+    """Whether a return is the closing `return c;` of an `until` block lambda whose value is
+    judged as the wait's assertion (kind 3), so it is that assertion and not an exit."""
+    lam = next((n for n in reversed(path_to(unit, node.start)) if isinstance(n, Lambda)), None)
+    return (
+        lam is not None
+        and lam.body is not None
+        and lam.body.statements
+        and lam.body.statements[-1] is node
+        and lam.start >= 2
+        and unit.tokens[lam.start - 2].text == "until"
+        and _lambda_value(lam) is not None
+        and _wait_lambda(unit, lam, frozenset())
+    )
 
 
 def _fail_resolves(program: Program, path: str, unit: CompilationUnit, last: Statement) -> bool:

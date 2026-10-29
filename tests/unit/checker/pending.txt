@@ -1,8 +1,6 @@
 # Checker fixtures not yet decided correctly. Each one runs as a strict expected failure;
 # remove a line once its fixture passes. The checker is done when only the known false
 # rejects under the last heading remain.
-# Accept fixtures waiting on Task 7b (kind 2 and kind 3 matches); remove when 7b lands.
-accept-assertion-moved-into-await-condition
 # Waits on a ruling: Decision 8 step 4 flags every newly added annotation of an unread type,
 # here Spring's @Configuration and @Bean on a nested class that runs no tests.
 accept-spring-order-on-new-test-bean
