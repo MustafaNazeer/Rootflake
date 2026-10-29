@@ -2421,3 +2421,42 @@ class TestTheTargetFileIsAlwaysRead:
     )  # fmt: skip
     def test_target_paths(self, paths, target, expected):
         assert target_paths(paths, target) == expected
+
+
+class TestBoundsInOtherBooleanForms:
+    """A comparison that must hold or must fail bounds its subject whichever boolean assertion
+    carries it."""
+
+    HAMCREST = "import static org.hamcrest.Matchers.*;\n"
+
+    @pytest.mark.parametrize(
+        ("old", "new"),
+        [("assertFalse(x() > 100);", "assertFalse(x() > 1000);"),
+         ("assertFalse(x() >= 100);", "assertFalse(x() > 100);"),
+         ("assertFalse(\"m\", x() > 100 || y() < 2);", "assertFalse(\"m\", x() > 100 || y() < 1);"),
+         ("assertThat(x() < 100).isTrue();", "assertThat(x() < 1000).isTrue();"),
+         ("assertThat(x() > 100).isFalse();", "assertThat(x() > 1000).isFalse();"),
+         ("assertThat(x() < 100, is(true));", "assertThat(x() < 1000, is(true));"),
+         ("assertThat(x() < 100, org.hamcrest.Matchers.equalTo(true));",
+          "assertThat(x() < 1000, org.hamcrest.Matchers.equalTo(true));"),
+         ("assertThat(x() > 100, is(false));", "assertThat(x() > 1000, is(false));"),
+         ("assert x() < 100;", "assert x() < 1000;"),
+         ("assert x() < 100 : \"slow\";", "assert x() < 1000 : \"slow\";")],
+        ids=["assert_false", "assert_false_inclusive", "assert_false_disjunction",
+             "assertj_is_true", "assertj_is_false", "hamcrest_is_true", "hamcrest_equal_to_true",
+             "hamcrest_is_false", "java_assert", "java_assert_message"],
+    )  # fmt: skip
+    def test_a_widened_bound_is_caught(self, tmp_path, old, new):
+        before, after = (with_imports(body_of(s), self.HAMCREST) for s in (old, new))
+        assert TOLERANCE in codes(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("old", "new"),
+        [("assertFalse(x() > 100);", "assertFalse(x() > 50);"),
+         ("assertThat(x() < 100).isTrue();", "assertThat(x() < 50).isTrue();"),
+         ("assert x() < 100;", "assert x() <= 50;")],
+        ids=["assert_false", "assertj_is_true", "java_assert"],
+    )  # fmt: skip
+    def test_a_tightened_bound_passes(self, tmp_path, old, new):
+        before, after = (with_imports(body_of(s), self.HAMCREST) for s in (old, new))
+        assert codes(before, after, tmp_path) == set()

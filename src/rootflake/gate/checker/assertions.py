@@ -2461,7 +2461,8 @@ Bound = tuple[float | None, bool, str]  # value (None when it cannot be read), s
 
 def _bounds(a: Assertion) -> dict[str, dict[str, list[Bound]]]:
     """The lower and upper bounds an assertion places on each subject: AssertJ chain bounds
-    and sign checks, Hamcrest bound matchers, and comparisons joined by `&&` in assertTrue."""
+    and sign checks, Hamcrest bound matchers, and the comparisons in a condition that must hold
+    (joined by `&&`) or must fail (joined by `||`)."""
     out: dict[str, dict[str, list[Bound]]] = {}
 
     def add(subject: str, side: str, bound: Bound) -> None:
@@ -2479,11 +2480,14 @@ def _bounds(a: Assertion) -> dict[str, dict[str, list[Bound]]]:
         for name, _ in _first_arguments(words, frozenset(_SIGN_CALLS)):
             side, strict = _SIGN_CALLS[name]
             add(subject, side, (0.0, strict, "0"))
-    if root == "assertTrue" and args:
-        for conjunct in _strip_parens(args[-1]).split(" && "):
+    for condition, negated in _conditions(a, root, args):
+        # A negated condition holds when no disjunct holds: `assertFalse(x > 100)` is x <= 100.
+        for conjunct in _strip_parens(condition).split(" || " if negated else " && "):
             for op, side, strict in _COMPARISONS:
                 if op not in conjunct:
                     continue
+                if negated:
+                    side, strict = _FLIPPED[side], not strict
                 left, _, right = conjunct.partition(op)
                 left, right = _strip_parens(left), _strip_parens(right)
                 lv, rv = _value(a, left), _value(a, right)
@@ -2494,6 +2498,35 @@ def _bounds(a: Assertion) -> dict[str, dict[str, list[Bound]]]:
                 add(left, side, (_value(a, right), strict, right))
                 break
     return out
+
+
+_TRUE_MATCHERS = {"is ( true )": False, "equalTo ( true )": False, "is ( equalTo ( true ) )": False,
+                  "is ( false )": True, "equalTo ( false )": True,
+                  "is ( equalTo ( false ) )": True}  # fmt: skip
+
+
+def _conditions(a: Assertion, root: str, args: tuple[str, ...]) -> list[tuple[str, bool]]:
+    """The boolean conditions an assertion requires, each with whether it must be false:
+    assertTrue and assertFalse, a Java assert statement, AssertJ `assertThat(c).isTrue()` and
+    `isFalse()`, and Hamcrest `assertThat(c, is(true))` and its equalTo and false forms."""
+    if root == "assertTrue" and args:
+        return [(args[-1], False)]
+    if root == "assertFalse" and args:
+        return [(args[-1], True)]
+    if root == "assert":
+        condition = a.text.removeprefix("assert ").removesuffix(" ;")
+        if " ? " not in condition:
+            condition = condition.partition(" : ")[0]
+        return [(condition, False)]
+    if root in ("assertThat", "then") and len(a.signature) == 2 and len(args) == 1:
+        found = {"isTrue": False, "isFalse": True}.get(a.signature[1])
+        return [] if found is None else [(args[0], found)]
+    matcher = (
+        re.sub(r"(?:[A-Za-z_$][\w$]* \. )+(?=(?:is|equalTo) \()", "", args[-1]) if args else ""
+    )
+    if root == "assertThat" and len(args) >= 2 and matcher in _TRUE_MATCHERS:
+        return [(args[-2], _TRUE_MATCHERS[matcher])]
+    return []
 
 
 def _constant_like(text: str) -> bool:
