@@ -95,8 +95,15 @@ class TestRaisedConstants:
         )
         assert TIMING in found
 
-    def test_another_name_bounding_that_loop_is_not(self, tmp_path):
+    def test_another_name_bounding_that_loop_is_widened_too(self, tmp_path):
         body = "for (int i = 0; i < COUNT; i++) { if (ready()) return; Thread.sleep(10); }"
+        found = fields(
+            "static final int COUNT = 5;", "static final int COUNT = 10;", body, tmp_path
+        )
+        assert TIMING in found
+
+    def test_another_name_bounding_a_loop_that_does_not_wait_is_not(self, tmp_path):
+        body = "for (int i = 0; i < COUNT; i++) { add(i); }"
         found = fields(
             "static final int COUNT = 5;", "static final int COUNT = 10;", body, tmp_path
         )

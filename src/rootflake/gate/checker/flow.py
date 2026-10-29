@@ -31,6 +31,7 @@ from rootflake.gate.checker.timing import (
     CODE,
     _argument_bounds,
     _arguments,
+    _file_constants,
     _masked,
     _member_key,
     _mode_spans,
@@ -39,7 +40,7 @@ from rootflake.gate.checker.timing import (
     sleep_form,
 )
 from rootflake.gate.checker.tree import path_to, walk
-from rootflake.gate.checker.values import CONVERSIONS, fold, literal
+from rootflake.gate.checker.values import CONVERSIONS, constant_lookup, fold, literal
 
 _NAME_WORDS = (
     "timeout", "wait", "delay", "sleep", "duration", "interval", "millis", "seconds",
@@ -52,8 +53,8 @@ _CLOCK_OWNERS = frozenset([
     "Instant", "LocalDateTime", "LocalTime", "ZonedDateTime", "OffsetDateTime", "Clock", "clock",
 ])  # fmt: skip
 
-TIMING, NAMED, CONVERSION = "timing", "named", "conversion"
-_ALL = frozenset([TIMING, NAMED, CONVERSION])
+TIMING, NAMED, CONVERSION, LOOP = "timing", "named", "conversion", "loop"
+_ALL = frozenset([TIMING, NAMED, CONVERSION, LOOP])
 
 
 def components(name: str) -> list[str]:
@@ -178,7 +179,7 @@ def sinks(program: Program, path: str) -> list[tuple[int, int, str]]:
                 out.append((annotation.arguments.start, annotation.arguments.end, TIMING))
         if isinstance(node, Statement) and node.kind in _LOOPS and node.header is not None:
             if waits_inside(program, path, node):
-                out.append((node.header.start, node.header.end, NAMED))
+                out += [(s, e, LOOP) for s, e in bound_spans(unit, node)]
     program.memo[key] = out
     return out
 
@@ -205,6 +206,36 @@ def waits_inside(program: Program, path: str, loop: Statement) -> bool:
                     if not inner.reference and sleep_form(program, reached.path, inner):
                         return True
     return False
+
+
+def _leaves(unit: CompilationUnit, branch: Statement) -> bool:
+    """Whether a branch ends the loop or the test: a break, return or throw, or a failing or
+    asserting call."""
+    for node in walk(branch):
+        if isinstance(node, Statement) and node.kind in ("break", "return", "throw"):
+            return True
+    return any(
+        not c.reference and (c.name == "fail" or is_assertion_name(c.name))
+        for c in calls_in(unit, branch)
+    )
+
+
+def bound_spans(unit: CompilationUnit, loop: Statement) -> list[tuple[int, int]]:
+    """Where a loop's bound is written: its header, and the condition of every `if` in its body
+    that leaves the loop, outside nested loops and lambdas."""
+    spans = [(loop.header.start, loop.header.end)] if loop.header is not None else []
+    for body in loop.blocks:
+        for node in walk(body):
+            if not isinstance(node, Statement) or node.kind != "if" or node.header is None:
+                continue
+            between = path_to(unit, node.start)
+            inner = between[between.index(loop) + 1 : -1] if loop in between else between
+            if any(isinstance(n, Lambda) or (isinstance(n, Statement) and n.kind in _LOOPS)
+                   for n in inner):  # fmt: skip
+                continue
+            if node.blocks and _leaves(unit, node.blocks[0]):
+                spans.append((node.header.start, node.header.end))
+    return spans
 
 
 class _Whole:
@@ -342,31 +373,8 @@ def flows(ctx: Context, item: tuple, kinds: frozenset) -> bool:
 # -- raised declarations --------------------------------------------------------------------
 
 
-def _file_constants(unit: CompilationUnit) -> dict[str, str]:
-    counts: Counter = Counter()
-    texts: dict[str, str] = {}
-    for node in walk(unit):
-        if isinstance(node, Field):
-            for name in node.names:
-                counts[name] += 1
-            for name, span in node.initializers.items():
-                texts[name] = _text(unit, span.start, span.end)
-    return {n: t for n, t in texts.items() if counts[n] == 1}
-
-
 def _numeric(text: str, constants: dict[str, str]) -> float | None:
-    seen: set[str] = set()
-
-    def lookup(name: str) -> float | None:
-        if name in seen or name not in constants:
-            return None
-        seen.add(name)
-        try:
-            return fold(constants[name], lookup)
-        finally:
-            seen.discard(name)
-
-    value = fold(text, lookup)
+    value = fold(text, constant_lookup(constants))
     if value is None:
         is_duration, ms = duration_ms(text)
         value = ms if is_duration else None
@@ -398,6 +406,8 @@ def _raised(old: str, new: str, old_constants: dict, new_constants: dict) -> boo
         return False
     before, after = _numeric(old, old_constants), _numeric(new, new_constants)
     if before is None or after is None:
+        if _masked(old) == _masked(new) and "-" not in old.split():
+            return _any_raised([_literals(old)], [_literals(new)])  # only its literals moved
         return True  # a changed value that cannot be read fails closed
     return after > before
 
@@ -412,8 +422,8 @@ def _raised_values(ctx: Context, change: FileChange) -> Iterator[Finding]:
         name = key[1]
         if timing_name(name):
             kinds = _ALL
-        else:
-            kinds = frozenset([TIMING, CONVERSION] if is_field else [TIMING])
+        else:  # a raised literal whatever its name reaches the bound of a loop that waits
+            kinds = frozenset([TIMING, CONVERSION, LOOP] if is_field else [TIMING, LOOP])
         if is_field:
             item = ("name", name, None, 0, 0)
         else:
@@ -439,17 +449,56 @@ def _any_raised(old: list[list[float]], new: list[list[float]]) -> bool:
 
 
 def _loops(program: Program, path: str, unit: CompilationUnit) -> dict[tuple, list]:
+    """Each loop that waits, by member in source order: its bound text and line."""
     out: dict[tuple, list] = {}
     for node in walk(unit):
         if not isinstance(node, Statement) or node.kind not in _LOOPS or node.header is None:
             continue
         if not waits_inside(program, path, node):
             continue
-        header = _text(unit, node.header.start, node.header.end)
-        body = " ".join(_text(unit, b.start, b.end) for b in node.blocks)
-        key = (_member_key(path_to(unit, node.start)), _masked(header), body)
-        out.setdefault(key, []).append((_literals(header), node.line))
+        text = " ; ".join(_text(unit, s, e) for s, e in bound_spans(unit, node))
+        out.setdefault(_member_key(path_to(unit, node.start)), []).append((text, node.line))
     return out
+
+
+def _names(text: str) -> set[str]:
+    """The names a bound reads, less the calls it makes."""
+    words = text.split()
+    return {
+        w
+        for k, w in enumerate(words)
+        if (w[:1].isalpha() or w[:1] in "_$")
+        and literal(w) is None
+        and (k + 1 == len(words) or words[k + 1] != "(")
+    }
+
+
+def _loop_widened(old: str, new: str) -> bool:
+    """Whether a waiting loop's bound text got looser. Under the same shape its literals are
+    compared in place; a changed shape passes only when its literals are the same and it reads
+    no name the old bound did not, so a bound moved into a new name fails closed."""
+    if _masked(old) == _masked(new):
+        return _any_raised([_literals(old)], [_literals(new)])
+    return _literals(old) != _literals(new) or bool(_names(new) - _names(old))
+
+
+def _widened_loops(old: dict, new: dict, path: str) -> Iterator[Finding]:
+    for member, items in new.items():
+        olds = [text for text, _ in old.get(member, [])]
+        pending = list(range(len(items)))
+        pairs = []
+        for k in list(pending):  # loops whose bound text kept its shape pair first, in order
+            match = next((j for j, t in enumerate(olds) if t is not None
+                          and _masked(t) == _masked(items[k][0])), None)  # fmt: skip
+            if match is not None:
+                pairs.append((olds[match], k))
+                olds[match] = None
+                pending.remove(k)
+        rest = [t for t in olds if t is not None]
+        pairs += list(zip(rest, pending, strict=False))
+        for text, k in pairs:
+            if _loop_widened(text, items[k][0]):
+                yield Finding(CODE, path, items[k][1])
 
 
 def _clock_read(unit: CompilationUnit, start: int, end: int) -> bool:
@@ -507,7 +556,7 @@ def _raised_literals(old: dict, new: dict, path: str) -> Iterator[Finding]:
 
 def _file(ctx: Context, change: FileChange) -> Iterator[Finding]:
     yield from _raised_values(ctx, change)
-    yield from _raised_literals(
+    yield from _widened_loops(
         _loops(ctx.before, change.path, change.before),
         _loops(ctx.after, change.path, change.after),
         change.path,

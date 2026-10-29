@@ -34,7 +34,7 @@ from rootflake.gate.checker.syntax import (
     TypeDecl,
 )
 from rootflake.gate.checker.tree import path_to, walk
-from rootflake.gate.checker.values import TIME_UNITS, fold, literal
+from rootflake.gate.checker.values import TIME_UNITS, constant_lookup, fold, literal
 
 CODE = "weaken_assertion/timing_bound_widened"
 # The gate's wall time limit for one execution, in milliseconds. The gate thresholds ADR sets
@@ -346,14 +346,72 @@ class _Whole:
         self.start, self.end = 0, len(unit.tokens)
 
 
+def _fails(unit: CompilationUnit, branch) -> bool:
+    """Whether a branch throws, fails or asserts."""
+    for node in walk(branch):
+        if isinstance(node, Statement) and node.kind == "throw":
+            return True
+    return any(
+        not c.reference and (c.name == "fail" or is_assertion_name(c.name))
+        for c in calls_in(unit, branch)
+    )
+
+
+def _checks(unit: CompilationUnit, statement: Statement, start: int, end: int) -> bool:
+    """Whether the statement checks what tokens[start:end] hold: an assertion of it, or an `if`
+    on it that throws, fails or asserts."""
+    if statement.kind == "if" and statement.header is not None:
+        if statement.header.start <= start and end <= statement.header.end:
+            return any(_fails(unit, b) for b in statement.blocks)
+    for call in calls_in(unit, statement):
+        if call.reference or not (is_assertion_name(call.name) or call.name == "fail"):
+            continue
+        if call.end < start and end <= _close(unit, call.end):
+            return True
+    return False
+
+
 def _result_ignored(unit: CompilationUnit, call: Call, statement: Statement) -> bool:
-    if statement.kind != "expression":
+    """Whether a bounded wait's boolean goes unchecked (Decision 7): not asserted, not tested by
+    an `if` that fails, and not held in a local that a later statement checks. A result that
+    leaves through `return` or a loop condition is taken as checked."""
+    close = _close(unit, call.end)
+    if _checks(unit, statement, call.start, close + 1):
         return False
     tokens = unit.tokens
-    close = _close(unit, call.end)
-    if close + 1 >= len(tokens) or tokens[close + 1].text != ";" or close + 2 != statement.end:
+    name = None
+    if statement.kind == "local_var":
+        name = next(
+            (n for n, s, e in poll.initializer_spans(tokens, statement.start, statement.end)
+             if s <= call.start < e), None)  # fmt: skip
+    elif statement.kind == "expression":
+        for k in range(statement.start, call.start):
+            if tokens[k].kind == "op" and tokens[k].text == "=" and tokens[k - 1].kind == "ident":
+                name = tokens[k - 1].text
+                break
+        else:
+            return True
+    elif statement.kind == "if":
+        return True
+    else:
         return False
-    return not any(t.text == "=" and t.kind == "op" for t in tokens[statement.start : call.start])
+    if name is None:
+        return True
+    method = _method_at(unit, call.start)
+    if method is None or method.body is None:
+        return True
+    for node in walk(method.body):
+        if not isinstance(node, Statement) or node.start < statement.end:
+            continue
+        if node.kind == "return" and any(
+            t.text == name for t in tokens[node.start : node.end] if t.kind == "ident"
+        ):
+            return False
+        for k in range(node.start, node.end):
+            if tokens[k].kind == "ident" and tokens[k].text == name:
+                if _checks(unit, node, k, k + 1):
+                    return False
+    return True
 
 
 def sleep_form(program: Program, path: str, call: Call) -> bool:
@@ -398,18 +456,28 @@ def _annotation_bound(unit: CompilationUnit, annotation, line: int) -> list[Boun
 
 
 def _method_timeouts(unit: CompilationUnit) -> dict[tuple, Bound | None]:
-    """Each method's tightest timeout from its own and its enclosing classes' annotations."""
+    """Each method's timeout. Within one kind of annotation, a method's own overrides its
+    enclosing classes', the nearest class first: Jupiter documents this for `@Timeout`, and a
+    TestNG method's `@Test` is taken the same way, the stricter reading. Kinds that differ all
+    apply, so the tightest of them counts."""
     out = {}
     for node in walk(unit):
         if not isinstance(node, Method):
             continue
         nodes = path_to(unit, node.start)
-        bounds = [b for a in node.annotations for b in _annotation_bound(unit, a, node.line)]
-        for decl in nodes:
-            if isinstance(decl, TypeDecl):
-                bounds += [
-                    b for a in decl.annotations for b in _annotation_bound(unit, a, node.line)
+        owners = [node, *(d for d in reversed(nodes) if isinstance(d, TypeDecl))]
+        bounds = []
+        for kind in ("Timeout", "Test"):
+            for owner in owners:
+                found = [
+                    b
+                    for a in owner.annotations
+                    if a.name.rsplit(".", 1)[-1] == kind
+                    for b in _annotation_bound(unit, a, node.line)
                 ]
+                if found:
+                    bounds += found
+                    break
         out[_member_key(nodes)] = _tightest(bounds)
     return out
 
@@ -590,8 +658,18 @@ def _fixed_loop(
     return after is None or not poll.asserts_condition(unit, after, exits)
 
 
+_ENTRY_POINTS = frozenset([
+    "Test", "ParameterizedTest", "RepeatedTest", "TestFactory", "TestTemplate", "Before",
+    "BeforeEach", "BeforeClass", "BeforeAll", "BeforeMethod", "BeforeTest", "BeforeSuite",
+    "BeforeGroups", *_AFTER_LIFECYCLE,
+])  # fmt: skip
+
+
 def _called(program: Program, method: Method) -> bool:
-    """Whether a read file calls a method of this name, so its loop is judged at each call."""
+    """Whether a read file calls a method of this name, so its loop is judged at each call. A
+    test or lifecycle method is run by its engine, so its loop is judged where it is."""
+    if any(a.name.rsplit(".", 1)[-1] in _ENTRY_POINTS for a in method.annotations):
+        return False
     return any(
         not c.reference and c.name == method.name
         for unit in program.units.values()
@@ -677,8 +755,7 @@ def _sleep_findings(ctx: Context, change: FileChange, found: _Bounds) -> Iterato
                 continue
             method = _method_at(unit, call.start)
             loop = _innermost_loop(unit, call.start, method) if method is not None else None
-            key = (site.member, site.following, _masked(site.statement))
-            if loop is not None and key not in old_keys:
+            if loop is not None and _sleep_key(unit, call) not in old_keys:
                 defs = poll._local_definitions(unit, method.body)
                 scope = poll.Scope(program, {}, poll._counters(unit, loop), defs, defs)
                 check = (unit, None if _called(program, method) else loop, None)
@@ -700,16 +777,14 @@ def _lowered_sleeps(ctx: Context, change: FileChange) -> tuple[set[tuple], set[t
 
     def durations(program: Program, unit: CompilationUnit) -> dict:
         found = {}
+        lookup = constant_lookup(_file_constants(unit))
         for call in calls_in(unit, _Whole(unit)):
             if call.reference or not sleep_form(program, change.path, call):
                 continue
             args = _arguments(unit, call)
             values, _ = _argument_bounds(args, 0)
-            ms = values[0].ms if values else (fold(args[0]) if args else None)
-            site = _site(unit, call.start)
-            found.setdefault((site.member, site.following, _masked(site.statement)), []).append(
-                (ms, unit.tokens[call.start].line)
-            )
+            ms = values[0].ms if values else (fold(args[0], lookup) if args else None)
+            found.setdefault(_sleep_key(unit, call), []).append((ms, unit.tokens[call.start].line))
         return found
 
     old = durations(ctx.before, change.before)
@@ -728,6 +803,30 @@ def _lowered_sleeps(ctx: Context, change: FileChange) -> tuple[set[tuple], set[t
             if ms is not None and ms <= limit:
                 out.add((key[0], key[1], line))
     return out, old_keys
+
+
+def _file_constants(unit: CompilationUnit) -> dict[str, str]:
+    """The fields of a file declared once, by name, with their initializer text."""
+    counts: Counter = Counter()
+    texts: dict[str, str] = {}
+    for node in walk(unit):
+        if isinstance(node, Field):
+            for name in node.names:
+                counts[name] += 1
+            for name, span in node.initializers.items():
+                texts[name] = _text(unit, span.start, span.end)
+    return {n: t for n, t in texts.items() if counts[n] == 1}
+
+
+def _sleep_key(unit: CompilationUnit, call: Call) -> tuple:
+    """Where a sleep sits, with its own arguments left out, so a changed duration pairs."""
+    site = _site(unit, call.start)
+    statement, _ = _statement(path_to(unit, call.start))
+    if statement is None or call.arity is None:
+        return (site.member, site.following, _masked(site.statement))
+    close = _close(unit, call.end)
+    text = f"{_text(unit, statement.start, call.end + 1)} # {_text(unit, close, statement.end)}"
+    return (site.member, site.following, _masked(text))
 
 
 def _masked(text: str) -> str:

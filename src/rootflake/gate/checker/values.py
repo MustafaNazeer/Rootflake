@@ -124,3 +124,20 @@ def fold(text: str, lookup: Lookup | None = None) -> float | None:
     except ValueError, OverflowError, RecursionError:
         return None
     return value if folder.i == len(words) else None
+
+
+def constant_lookup(constants: dict[str, str]) -> Lookup:
+    """A lookup through a file's fields declared once with an initializer, followed through
+    each other and stopping at a cycle."""
+    seen: set[str] = set()
+
+    def lookup(name: str) -> float | None:
+        if name in seen or name not in constants:
+            return None
+        seen.add(name)
+        try:
+            return fold(constants[name], lookup)
+        finally:
+            seen.discard(name)
+
+    return lookup

@@ -129,6 +129,19 @@ def _field_definitions(program: Program) -> dict[str, list[str]]:
     return out
 
 
+def _final_fields(program: Program) -> frozenset[str]:
+    """Field names every declaration of which is final."""
+    key = ("poll_final_fields",)
+    if key not in program.memo:
+        final, other = set(), set()
+        for unit in program.units.values():
+            for node in walk(unit):
+                if isinstance(node, Field):
+                    (final if "final" in node.modifiers else other).update(node.names)
+        program.memo[key] = frozenset(final - other)
+    return program.memo[key]
+
+
 @dataclass
 class Scope:
     """What the words of a condition mean where it is read."""
@@ -154,8 +167,16 @@ def kinds(text: str, scope: Scope, seen: frozenset = frozenset()) -> set[str]:
     """What a condition reads: some of clock, counter and state."""
     words = text.split()
     out: set[str] = set()
+    skip_to = -1
     for k, word in enumerate(words):
+        if k <= skip_to:
+            continue
         if not (word[:1].isalpha() or word[:1] in ("_", "$")) or word in _KEYWORDS:
+            continue
+        end = _clock_chain(words, k)
+        if end is not None:
+            out.add("clock")
+            skip_to = end
             continue
         previous = words[k - 1] if k else ""
         receiver = words[k - 2] if previous == "." and k >= 2 else None
@@ -174,10 +195,34 @@ def kinds(text: str, scope: Scope, seen: frozenset = frozenset()) -> set[str]:
     return out
 
 
+def _is_clock(name: str, receiver: str | None) -> bool:
+    if name in _CLOCK_CALLS:
+        return receiver is None or receiver == "System"  # a static import of System's too
+    if name in ("now", "millis", "instant"):
+        return receiver in _CLOCK_OWNERS or (receiver or "").lower().endswith("clock")
+    return False
+
+
+def _clock_chain(words: list[str], k: int) -> int | None:
+    """Where a clock reading that starts at words[k] ends, as in `java.lang.System.nanoTime()`
+    or `systemClock.millis()`, or None when it is not one."""
+    if k and words[k - 1] == ".":
+        return None
+    names = [words[k]]
+    j = k
+    while j + 2 < len(words) and words[j + 1] == "." and words[j + 2][:1].isalpha():
+        j += 2
+        names.append(words[j])
+    if j + 1 >= len(words) or words[j + 1] != "(":
+        return None
+    receiver = names[-2] if len(names) > 1 else None
+    if not _is_clock(names[-1], receiver):
+        return None
+    return j
+
+
 def _call_kinds(word: str, receiver: str | None, scope: Scope, seen: frozenset) -> set[str]:
-    if word in _CLOCK_CALLS and receiver == "System":
-        return {"clock"}
-    if word in ("now", "millis", "instant") and receiver in _CLOCK_OWNERS:
+    if _is_clock(word, receiver):
         return {"clock"}
     if word in _TRANSPARENT:
         return set()
@@ -210,8 +255,13 @@ def _name_kinds(word: str, scope: Scope, seen: frozenset) -> set[str]:
     fields = _field_definitions(scope.program)
     if word in fields and fields[word]:
         out = set()
+        clock_only = True
         for value in fields[word]:
-            out |= kinds(value, scope, seen)
+            found = kinds(value, scope, seen)
+            clock_only = clock_only and "clock" in found
+            out |= found
+        if not clock_only and word not in _final_fields(scope.program):
+            out.add("state")  # a field a callback or another thread may set
         return out
     return {"state"}
 
