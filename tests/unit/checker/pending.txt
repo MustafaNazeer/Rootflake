@@ -13,10 +13,8 @@ reject-catch-assertion-error-empty
 reject-catch-exception-return-early
 reject-catch-throwable-and-print
 reject-composed-annotation-retrying-test
-reject-elapsed-time-bound-raised
 reject-existing-retry-rule-reused
 reject-http-client-retry-in-test-rule
-reject-inline-loop-bound-raised-around-sleep
 reject-invocation-interceptor-retry
 reject-junit-pioneer-retrying-test
 reject-junit4-expected-exception-added
@@ -32,13 +30,10 @@ reject-pristine-rule-retry-supertype
 reject-production-helper-swallows-test-lambda
 reject-rerunner-jupiter-repeated-if-exceptions
 reject-retry-loop-swallows-throwable
-reject-retry-loop-tries-constant-raised
 reject-silent-poll-helper-not-followed-by-assertion
-reject-test-support-timing-constant-raised
 reject-testng-invocation-count-success-percentage
 reject-testng-retry-analyzer
 reject-testng-retry-transformer
-reject-timeout-constant-raised
 reject-try-fail-always-throwing-expression-hides-body
 reject-try-fail-catch-comparison-failure
 reject-try-fail-guarded-return-before-fail
