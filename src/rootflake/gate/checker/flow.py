@@ -437,6 +437,84 @@ def _raised_values(ctx: Context, change: FileChange) -> Iterator[Finding]:
             yield Finding(CODE, change.path, line)
 
 
+# -- values changed after their declaration ------------------------------------------------
+
+_GROWING = {"*=": lambda v: v <= 1, "+=": lambda v: v <= 0, "<<=": lambda v: v == 0}
+_SHRINKING = {"/=": lambda v: v >= 1, "-=": lambda v: v >= 0, ">>=": lambda v: v >= 0}
+
+
+def _assignments(unit: CompilationUnit) -> list[tuple[tuple, str, str, int, int]]:
+    """Each statement that writes a plain name: its member and name, the operator, the right
+    hand text, its line and token."""
+    out = []
+    tokens = unit.tokens
+    for node in walk(unit):
+        if not isinstance(node, Statement) or node.kind != "expression":
+            continue
+        if node.end - node.start < 4 or tokens[node.start].kind != "ident":
+            continue
+        op = tokens[node.start + 1]
+        if op.kind != "op" or not op.text.endswith("=") or op.text in ("==", "!=", "<=", ">="):
+            continue
+        end = node.end - 1 if tokens[node.end - 1].text == ";" else node.end
+        key = (_member_key(path_to(unit, node.start)), tokens[node.start].text)
+        out.append((key, op.text, _text(unit, node.start + 2, end), op.line, node.start))
+    return out
+
+
+def _value_of(declarations: dict, member: tuple, name: str) -> str | None:
+    local = declarations.get((member, name, 1))
+    if local is not None:
+        return local[0]
+    fields = [d for k, d in declarations.items() if len(k) == 2 and k[1] == name and d[3]]
+    return fields[0][0] if len(fields) == 1 else None
+
+
+def _assignment_raised(op: str, text: str, start: str | None, constants: dict) -> bool:
+    value = _numeric(text, constants)
+    if op in _GROWING:
+        return value is None or not _GROWING[op](value)
+    if op in _SHRINKING:
+        return value is None or not _SHRINKING[op](value)
+    if op == "=" and start is not None:
+        return _raised(start, text, constants, constants)
+    return True  # a write that cannot be read fails closed
+
+
+def _changed_after_declaration(ctx: Context, change: FileChange) -> Iterator[Finding]:
+    unit = change.after
+    new_constants = _file_constants(unit)
+    declarations = _declarations(unit)
+    old_writes = Counter((k, op, t) for k, op, t, _, _ in _assignments(change.before))
+    candidates = []
+    old_declarations = _declarations(change.before)
+    for key, op, text, line, at in _assignments(unit):
+        if old_writes[(key, op, text)] > 0:
+            old_writes[(key, op, text)] -= 1
+            continue
+        if _value_of(old_declarations, key[0], key[1]) is None:
+            continue  # a value the patch declares is new code, judged where it is read
+        start = _value_of(declarations, key[0], key[1])
+        if _assignment_raised(op, text, start, new_constants):
+            candidates.append((key[1], line, at))
+    for key, (text, line, at, is_field) in declarations.items():
+        if is_field or key[2] != 1 or key in old_declarations:
+            continue
+        shadowed = _value_of({k: d for k, d in declarations.items() if len(k) == 2}, (), key[1])
+        if shadowed is not None and _raised(shadowed, text, new_constants, new_constants):
+            candidates.append((key[1], line, at))
+    for name, line, at in candidates:
+        kinds = _ALL if timing_name(name) else frozenset([TIMING, LOOP])
+        nodes = path_to(unit, at)
+        method = next((n for n in reversed(nodes) if isinstance(n, Method)), None)
+        if method is not None and method.body is not None and _local_declared(unit, method, name):
+            item = ("name", name, change.path, method.body.start, method.body.end)
+        else:
+            item = ("name", name, None, 0, 0)
+        if flows(ctx, item, kinds):
+            yield Finding(CODE, change.path, line)
+
+
 # -- raised literals in a loop header or an elapsed time assertion --------------------------
 
 
@@ -559,6 +637,7 @@ def _raised_literals(old: dict, new: dict, path: str) -> Iterator[Finding]:
 
 def _file(ctx: Context, change: FileChange) -> Iterator[Finding]:
     yield from _raised_values(ctx, change)
+    yield from _changed_after_declaration(ctx, change)
     yield from _widened_loops(
         _loops(ctx.before, change.path, change.before),
         _loops(ctx.after, change.path, change.after),

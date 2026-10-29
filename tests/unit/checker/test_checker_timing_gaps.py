@@ -258,3 +258,50 @@ class TestRulesTypedByInterface:
         before = self.rule("TestRule", "new Other(5)")
         after = self.rule("TestRule", "new Other(60)")
         assert TIMING not in codes(before, after, tmp_path)
+
+
+class TestValuesChangedAfterDeclaration:
+    WAIT = "assertTrue(latch.await(t, TimeUnit.MILLISECONDS));"
+
+    def test_a_compound_raise(self, tmp_path):
+        before = f"long t = 5000; {self.WAIT}"
+        after = f"long t = 5000; t *= 600; {self.WAIT}"
+        assert TIMING in judged(before, after, tmp_path)
+
+    def test_a_compound_lower_is_not(self, tmp_path):
+        before = f"long t = 5000; {self.WAIT}"
+        after = f"long t = 5000; t /= 2; {self.WAIT}"
+        assert TIMING not in judged(before, after, tmp_path)
+
+    def test_a_reassignment_raise(self, tmp_path):
+        before = f"long t = 5000; f(); {self.WAIT}"
+        after = f"long t = 5000; f(); t = 60000; {self.WAIT}"
+        assert TIMING in judged(before, after, tmp_path)
+
+    def test_a_reassignment_lower_is_not(self, tmp_path):
+        before = f"long t = 5000; f(); {self.WAIT}"
+        after = f"long t = 5000; f(); t = 1000; {self.WAIT}"
+        assert TIMING not in judged(before, after, tmp_path)
+
+    def test_an_unchanged_write_is_not(self, tmp_path):
+        before = f"long t = 5000; t *= 2; f(); {self.WAIT}"
+        assert TIMING not in judged(before, before.replace("f();", "g();"), tmp_path)
+
+    def test_a_field_raised_in_setup(self, tmp_path):
+        field = "long t = 5000;"
+        wait = method(self.WAIT)
+        setup = "@BeforeEach void setUp() { t = 60000; }"
+        before = cls(f"{field}\n{wait}")
+        after = cls(f"{field}\n{setup}\n{wait}")
+        assert TIMING in codes(before, after, tmp_path)
+
+    def test_a_local_that_shadows_a_field(self, tmp_path):
+        field = "static final long TIMEOUT = 5000;"
+        wait = "assertTrue(latch.await(TIMEOUT, TimeUnit.MILLISECONDS));"
+        before = cls(f"{field}\n{method(wait)}")
+        after = cls(f"{field}\n{method('long TIMEOUT = 60000; ' + wait)}")
+        assert TIMING in codes(before, after, tmp_path)
+
+    def test_a_new_local_written_twice_is_new_code(self, tmp_path):
+        after = f"long t; t = 5000; {self.WAIT}"
+        assert TIMING not in judged("assertTrue(ready());", after, tmp_path)
