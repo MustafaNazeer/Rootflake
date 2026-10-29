@@ -233,3 +233,28 @@ class TestRethrowsAreNotChecks:
             f" {self.SLEEP} }} assertEquals(3, n());"
         )
         assert TIMING not in judged("assertEquals(3, n());", after, tmp_path)
+
+
+class TestRulesTypedByInterface:
+    IMPORTS = (
+        "package a;\nimport org.junit.*;\nimport org.junit.rules.Timeout;\n"
+        "import org.junit.rules.TestRule;\nimport static org.junit.Assert.*;\n"
+    )
+
+    def rule(self, kind: str, initializer: str) -> str:
+        return cls(f"@Rule public {kind} timeout = {initializer};" + method("f();"), self.IMPORTS)
+
+    def test_a_raised_rule_typed_test_rule(self, tmp_path):
+        before, after = self.rule("TestRule", "Timeout.seconds(5)"), self.rule(
+            "TestRule", "Timeout.seconds(60)")  # fmt: skip
+        assert codes(before, after, tmp_path) == {TIMING}
+
+    def test_retyping_the_same_rule_is_not(self, tmp_path):
+        before = self.rule("Timeout", "Timeout.seconds(5)")
+        after = self.rule("TestRule", "new Timeout(5000)")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_another_test_rule_is_not_a_timeout(self, tmp_path):
+        before = self.rule("TestRule", "new Other(5)")
+        after = self.rule("TestRule", "new Other(60)")
+        assert TIMING not in codes(before, after, tmp_path)

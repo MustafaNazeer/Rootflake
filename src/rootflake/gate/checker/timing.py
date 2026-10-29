@@ -482,6 +482,10 @@ def _method_timeouts(unit: CompilationUnit) -> dict[tuple, Bound | None]:
     return out
 
 
+# A Timeout rule is often declared by its interface type.
+_RULE_TYPES = frozenset(["Timeout", "TestRule", "MethodRule"])
+
+
 def _rule_timeouts(unit: CompilationUnit) -> dict[tuple, Bound | None]:
     out = {}
     for node in walk(unit):
@@ -489,13 +493,16 @@ def _rule_timeouts(unit: CompilationUnit) -> dict[tuple, Bound | None]:
             continue
         bounds = []
         for field in node.fields:
-            if field.type.split("<")[0].rsplit(".", 1)[-1] != "Timeout":
+            kind = field.type.split("<")[0].rsplit(".", 1)[-1]
+            if kind not in _RULE_TYPES:
                 continue
             names = {a.name.rsplit(".", 1)[-1] for a in field.annotations}
             if not names & {"Rule", "ClassRule"}:
                 continue
             for span in field.initializers.values():
-                bounds.append(_rule_bound(_text(unit, span.start, span.end), field.line))
+                text = _text(unit, span.start, span.end)
+                if kind == "Timeout" or "Timeout" in text.split():
+                    bounds.append(_rule_bound(text, field.line))
         out[_member_key(path_to(unit, node.start))] = _tightest(bounds)
     return out
 
