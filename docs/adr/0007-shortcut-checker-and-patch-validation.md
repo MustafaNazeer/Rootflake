@@ -373,6 +373,7 @@ Two flags cover what the checker cannot read:
 * `flag/default_zone_or_locale_set` counts `setDefault` on a receiver named `TimeZone` or `Locale`, and `setProperty` or `put` whose first argument is one of the four property names as a literal.
 * `flag/test_resource_changed` lists every approved path with `src/test/resources` among its components. The checker does not read these files, so no new host read is made.
 * `flag/override` lists every overridden path the checker did not parse as Java; when the override admitted only files it did read, one flag with no path is raised.
+* Three readings were confirmed on 2026-10-29. An added per item loop whose `catch` only logs is still flagged as `flag/production_retry`, since telling it from a retry over attempts by shape alone would let a retry through, and a flag only asks for a review. Any string literal naming a test framework is still flagged as `flag/production_test_detection`, since production code rarely names one. A change under `src/main/resources` gets no flag, since the SH-15 path allowlist rejects it before the checker runs.
 
 ## Decision 10: the patch validator is SH-15
 
