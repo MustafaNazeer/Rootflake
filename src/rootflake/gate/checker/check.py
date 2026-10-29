@@ -43,7 +43,8 @@ def _module(path: str) -> str | None:
 
 def checked_target(target: Target | None) -> bool:
     """Whether a target is well formed: a dotted class name with optional nested parts, a method
-    name or none, and a module that is none, the repository root or a clean relative path."""
+    given as text or none, and a module that is none, the repository root or a clean relative
+    ASCII path."""
     if target is None:
         return True
     name, method, module = target.class_name, target.method, target.module
@@ -54,7 +55,7 @@ def checked_target(target: Target | None) -> bool:
         return False
     if module is None or module == "":
         return True
-    return isinstance(module, str) and path_syntax(module) is None
+    return isinstance(module, str) and module.isascii() and path_syntax(module) is None
 
 
 def target_paths(paths: Sequence[str], target: Target | None) -> list[str]:

@@ -180,9 +180,10 @@ def test_the_target_module_reaches_the_child(trees):
      Target("org.example.FooTest", "t", "."), Target("org.example.FooTest", "t", "core/"),
      Target("org.example.FooTest", "t", "./core"), Target("org.example.FooTest", "t", "../x"),
      Target("org.example.FooTest", "t", "/abs"), Target("org.example.FooTest", "t", "a//b"),
-     Target("org.example.FooTest", 3)],
+     Target("org.example.FooTest", 3), Target("org.example.FooTest", "t", "\udc80")],
     ids=["none_class", "int_class", "list_module", "dict_module", "int_module", "dot",
-         "trailing_slash", "dot_slash", "parent", "absolute", "empty_component", "int_method"],
+         "trailing_slash", "dot_slash", "parent", "absolute", "empty_component", "int_method",
+         "lone_surrogate_module"],
 )  # fmt: skip
 def test_a_malformed_target_is_refused_before_the_child_runs(trees, target):
     class Never(Scripted):
