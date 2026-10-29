@@ -525,3 +525,68 @@ class TestFifthReview:
         before = cls("@ParameterizedTest public void testFoo(int n) { assertEquals(n, f(n)); }")
         after = before.replace("public void", "private void")
         assert "disable/test_removed" in codes(before, after, tmp_path)
+
+
+class TestEngineSwitches:
+    """Moving a class's tests to another engine while it keeps lifecycle or rule members only
+    the old engine runs leaves those members dead."""
+
+    J4 = "import org.junit.Test;\nimport org.junit.Rule;\nimport org.junit.Before;"
+    J5 = "import org.junit.jupiter.api.Test;\nimport org.junit.Rule;\nimport org.junit.Before;"
+    RULE = "@Rule public ErrorCollector collector = new ErrorCollector();"
+    BEFORE = "@Before public void setUp() { start(); }"
+    TESTED = "@Test public void testFoo() { collector.checkThat(f(), is(1)); }"
+
+    @pytest.mark.parametrize("member", [RULE, BEFORE], ids=["rule", "before"])
+    def test_junit4_members_left_dead_under_jupiter(self, tmp_path, member):
+        body = f"{member}\n{self.TESTED}"
+        assert codes(cls(body, imports=self.J4), cls(body, imports=self.J5), tmp_path) == {
+            "weaken_assertion/assertion_rebound"
+        }
+
+    def test_jupiter_members_left_dead_under_junit4(self, tmp_path):
+        old = "import org.junit.jupiter.api.Test;\nimport org.junit.jupiter.api.AfterEach;"
+        new = "import org.junit.Test;\nimport org.junit.jupiter.api.AfterEach;"
+        body = f"@AfterEach public void check() {{ verify(); }}\n{TEST}"
+        assert codes(cls(body, imports=old), cls(body, imports=new), tmp_path) == {
+            "weaken_assertion/assertion_rebound"
+        }
+
+    def test_a_full_migration_passes(self, tmp_path):
+        old = cls(
+            f"{self.BEFORE}\n{TEST}", imports="import org.junit.Test;\nimport org.junit.Before;"
+        )
+        new = cls(
+            f"@BeforeEach public void setUp() {{ start(); }}\n{TEST}",
+            imports="import org.junit.jupiter.api.Test;\nimport org.junit.jupiter.api.BeforeEach;",
+        )
+        assert codes(old, new, tmp_path) == set()
+
+    def test_rule_migration_support_keeps_rules_alive(self, tmp_path):
+        new_imports = (
+            self.J5
+            + "\nimport org.junit.jupiter.migrationsupport.rules.EnableRuleMigrationSupport;"
+        )
+        body = f"{self.RULE}\n{self.TESTED}"
+        old = cls(body, imports=self.J4)
+        new = cls(body, header="@EnableRuleMigrationSupport", imports=new_imports)
+        assert codes(old, new, tmp_path) == set()
+
+    def test_a_switch_without_lifecycle_members_passes(self, tmp_path):
+        old = cls(TEST)
+        new = cls(TEST, imports="import org.junit.jupiter.api.Test;")
+        assert codes(old, new, tmp_path) == set()
+
+    def test_an_on_demand_junit4_import_counts_as_the_old_engine(self, tmp_path):
+        old = "import org.junit.*;\nimport org.junit.rules.ErrorCollector;"
+        new = old + "\nimport org.junit.jupiter.api.Test;"
+        body = f"{self.RULE}\n{self.TESTED}"
+        assert codes(cls(body, imports=old), cls(body, imports=new), tmp_path) == {
+            "weaken_assertion/assertion_rebound"
+        }
+
+    def test_an_unchanged_on_demand_import_passes(self, tmp_path):
+        imports = "import org.junit.*;\nimport org.junit.rules.ErrorCollector;"
+        body = f"{self.RULE}\n{self.TESTED}"
+        changed = body.replace("is(1)", "is(2)")
+        assert codes(cls(body, imports=imports), cls(changed, imports=imports), tmp_path) == set()

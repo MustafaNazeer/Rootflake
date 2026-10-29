@@ -1,0 +1,29 @@
+{
+  "id": "reject-junit4-rule-left-dead-under-jupiter-test-import",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "junit4_rule_left_dead_by_jupiter_test_import",
+  "target": {
+    "class": "com.teragrep.zep_01.rest.SecurityRestApiTest",
+    "method": "testTicket"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_rebound"
+  ],
+  "disputed": false,
+  "notes": "Adds import org.junit.jupiter.api.Test beside import org.junit.* in a JUnit 4 test that annotates its ErrorCollector with a bare @Rule and sets up with @BeforeClass. The single type import shadows the on demand Test, so every @Test in the class now runs under the Jupiter engine, which ignores @Rule and @BeforeClass: the collector never verifies and the setup never runs, while every check line is unchanged. This must be rejected as weaken_assertion/assertion_rebound on the class. The twin of accept-benign-change-under-junit-wildcard-rule on the same pre image. Adapted: no merged change was found that switches a test's engine this way. Adapted: hand made on SecurityRestApiTest.java as of the last commit that changed it, 20d77890abf7e5e36e2ca1a5a777418447e99f5f on the default branch; every context line is that file's own. Not from IDoFT: the class com.teragrep.zep_01.rest.SecurityRestApiTest does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/teragrep/zep_01",
+    "commit": "20d77890abf7e5e36e2ca1a5a777418447e99f5f",
+    "base": "20d77890abf7e5e36e2ca1a5a777418447e99f5f",
+    "path": "zeppelin-server/src/test/java/com/teragrep/zep_01/rest/SecurityRestApiTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-29"
+  }
+}

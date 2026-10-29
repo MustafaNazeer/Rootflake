@@ -1,0 +1,12 @@
+diff --git a/zeppelin-server/src/test/java/com/teragrep/zep_01/rest/SecurityRestApiTest.java b/zeppelin-server/src/test/java/com/teragrep/zep_01/rest/SecurityRestApiTest.java
+index 2c3879a..25e9230 100644
+--- a/zeppelin-server/src/test/java/com/teragrep/zep_01/rest/SecurityRestApiTest.java
++++ b/zeppelin-server/src/test/java/com/teragrep/zep_01/rest/SecurityRestApiTest.java
+@@ -24,6 +24,7 @@ import org.apache.http.util.EntityUtils;
+ import org.hamcrest.CoreMatchers;
+ import org.junit.*;
+ import org.junit.rules.ErrorCollector;
++import org.junit.jupiter.api.Test;
+ 
+ import java.io.IOException;
+ import java.nio.charset.StandardCharsets;

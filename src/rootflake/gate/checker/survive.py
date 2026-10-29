@@ -427,6 +427,80 @@ def _hidden_classes(change: FileChange, ctx: Context) -> Iterator[Finding]:
             yield Finding("disable/test_removed", change.path, decl.line)
 
 
+_ENGINES = {
+    "org.junit.Test": "junit4",
+    "org.junit.jupiter.api.Test": "jupiter",
+    "org.testng.annotations.Test": "testng",
+}
+# Members only one engine runs: JUnit 4 rules and lifecycle methods, Jupiter lifecycle methods
+# and extensions, TestNG configuration methods.
+_ENGINE_MEMBERS = {
+    "junit4": frozenset(["Rule", "ClassRule", "Before", "After", "BeforeClass", "AfterClass"]),
+    "jupiter": frozenset(["BeforeEach", "AfterEach", "BeforeAll", "AfterAll", "RegisterExtension",
+                          "ExtendWith"]),
+    "testng": frozenset(["BeforeMethod", "AfterMethod", "BeforeTest", "AfterTest",
+                         "BeforeSuite", "AfterSuite", "BeforeGroups", "AfterGroups"]),
+}  # fmt: skip
+_RULE_SUPPORT = frozenset(["EnableRuleMigrationSupport", "EnableJUnit4MigrationSupport"])
+
+
+def _on_demand(unit: CompilationUnit, name: str) -> str | None:
+    """The engine `Test` an on demand import supplies when it is the only engine package
+    imported so."""
+    if name != "Test":
+        return None
+    found = [f"{i.name}.Test" for i in unit.imports
+             if i.wildcard and not i.static and f"{i.name}.Test" in _ENGINES]  # fmt: skip
+    return found[0] if len(found) == 1 else None
+
+
+def _engines(program: Program, path: str, decl: TypeDecl) -> set[str]:
+    """The engines the class's test methods are written for, by what `@Test` resolves to."""
+    out = set()
+    for method in decl.methods:
+        for annotation in method.annotations:
+            if simple(annotation) == "Test":
+                binding = program.resolve_type(path, annotation.name, annotation.start)
+                if binding.kind == "declared":
+                    continue  # a local Test type is Decision 6's test_removed, reported there
+                fqn = binding.fqn or _on_demand(program.units[path], annotation.name)
+                out.add(_ENGINES.get(fqn or "", "unknown"))
+    return out
+
+
+def _member_annotations(program: Program, path: str, decl: TypeDecl) -> set[str]:
+    owners = [(path, decl), *program.supertypes(path, decl)]
+    names = set()
+    for _, owner in owners:
+        names |= {simple(a) for a in owner.annotations}
+        names |= {simple(a) for f in owner.fields for a in f.annotations}
+        names |= {simple(a) for m in owner.methods for a in m.annotations}
+    return names
+
+
+def _engine_switches(change: FileChange, ctx: Context) -> Iterator[Finding]:
+    """A class whose tests move to another engine while it keeps members only the old engine
+    runs: a JUnit 4 rule or `@Before` under Jupiter, a Jupiter `@AfterEach` under JUnit 4. The
+    checks those members make are then never run."""
+    if change.before is None:
+        return
+    before = _types(ctx.before, change.path)
+    for fqn, decl in _types(ctx.after, change.path).items():
+        old = before.get(fqn)
+        if old is None:
+            continue
+        old_engines = _engines(ctx.before, change.path, old) - {"unknown"}
+        new_engines = _engines(ctx.after, change.path, decl)
+        if not old_engines or new_engines <= old_engines:
+            continue
+        members = _member_annotations(ctx.after, change.path, decl)
+        dead = set().union(*(_ENGINE_MEMBERS[e] for e in old_engines - new_engines))
+        if members & _RULE_SUPPORT:
+            dead -= {"Rule", "ClassRule"}
+        if members & dead:
+            yield Finding("weaken_assertion/assertion_rebound", change.path, decl.line)
+
+
 def _annotations(change: FileChange, ctx: Context) -> Iterator[Finding]:
     before = _declarations(ctx.before, change.path) if change.before else {}
     after = _declarations(ctx.after, change.path)
@@ -747,3 +821,4 @@ def findings(ctx: Context) -> Iterator[Finding]:
         yield from _parameters(change, ctx)
         yield from _class_rows(change, ctx)
         yield from _hidden_classes(change, ctx)
+        yield from _engine_switches(change, ctx)
