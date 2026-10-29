@@ -18,7 +18,14 @@ import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
-from rootflake.gate.checker.check import CheckResult, Finding, Target, check, target_paths
+from rootflake.gate.checker.check import (
+    CheckResult,
+    Finding,
+    Target,
+    check,
+    checked_target,
+    target_paths,
+)
 from rootflake.gate.validator import Change, Rejection, Validation, path_syntax, validate
 from rootflake.sandbox.executor import DockerRunner, ProcessRunner
 
@@ -178,6 +185,8 @@ def check_isolated(
     runner: ProcessRunner = DEFAULT_RUNNER,
 ) -> CheckResult:
     error = CheckResult((Finding("checker/checker_error", None),))
+    if not checked_target(target):
+        return error
     with tempfile.TemporaryDirectory(prefix="rootflake-check-") as folder:
         work = Path(folder)
         request = {
@@ -214,7 +223,7 @@ def _main_validate(work: Path) -> None:
 def _main_check(work: Path) -> None:
     request = json.loads((work / "request.json").read_text())
     found = request["target"]
-    target = found and Target(found["class"], found["method"], found.get("module"))
+    target = found and Target(found["class"], found["method"], found["module"])
     result = check(
         request["paths"],
         Path(request["pristine"]),

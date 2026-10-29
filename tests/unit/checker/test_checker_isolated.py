@@ -171,3 +171,24 @@ def test_the_target_module_reaches_the_child(trees):
     check_isolated([JAVA], *trees, Target("org.example.FooTest", "t", "core"),
                    runner=Peek(OK, findings([])))  # fmt: skip
     assert seen["request"]["target"]["module"] == "core"
+
+
+@pytest.mark.parametrize(
+    "target",
+    [Target(None, "t"), Target(5, "t"), Target("org.example.FooTest", "t", ["x"]),
+     Target("org.example.FooTest", "t", {"m": 1}), Target("org.example.FooTest", "t", 7),
+     Target("org.example.FooTest", "t", "."), Target("org.example.FooTest", "t", "core/"),
+     Target("org.example.FooTest", "t", "./core"), Target("org.example.FooTest", "t", "../x"),
+     Target("org.example.FooTest", "t", "/abs"), Target("org.example.FooTest", "t", "a//b"),
+     Target("org.example.FooTest", 3)],
+    ids=["none_class", "int_class", "list_module", "dict_module", "int_module", "dot",
+         "trailing_slash", "dot_slash", "parent", "absolute", "empty_component", "int_method"],
+)  # fmt: skip
+def test_a_malformed_target_is_refused_before_the_child_runs(trees, target):
+    class Never(Scripted):
+        def run(self, args, timeout_s):
+            raise AssertionError("the child must not run")
+
+    assert check_isolated([JAVA], *trees, target, runner=Never(OK, findings([]))).findings == (
+        Finding("checker/checker_error", None),
+    )

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from rootflake.gate.checker.check import Target, check, target_paths
+from rootflake.gate.checker.check import Finding, Target, check, target_paths
 
 PATH = "src/test/java/a/FooTest.java"
 TARGET = Target("a.FooTest", "testFoo")
@@ -2439,6 +2439,30 @@ class TestTheTargetFileIsAlwaysRead:
         limits = (_limits("5"), _limits("50"))
         assert self._codes(tmp_path, limits, target, f"core/{PATH}") == {TOLERANCE}
 
+    def test_a_named_module_without_the_target_file_is_refused(self, tmp_path):
+        target = Target(TARGET.class_name, TARGET.method, "other")
+        found = self._codes(tmp_path, (_limits("5"), _limits("50")), target, f"core/{PATH}")
+        assert found == {"checker/checker_error"}
+
+    def test_a_derived_module_without_the_target_file_is_skipped(self, tmp_path):
+        limits = (_limits("5"), _limits("5", "  public static final int MIN = 1;\n"))
+        assert self._codes(tmp_path, limits, TARGET, f"core/{PATH}") == set()
+
+    def test_a_refused_target_file_is_reported_on_its_path(self, tmp_path):
+        pristine, workspace = tmp_path / "p", tmp_path / "w"
+        for side in (pristine, workspace):
+            (side / self.LIMITS).parent.mkdir(parents=True)
+            (side / self.LIMITS).write_text(_limits("5"))
+            (side / PATH).parent.mkdir(parents=True)
+            (side / "real.java").write_text(body_of("assertTrue(x() < Limits.MAX);"))
+            (side / PATH).symlink_to(side / "real.java")
+        result = check([self.LIMITS], pristine, workspace, TARGET)
+        assert result.findings == (Finding("checker/checker_error", PATH),)
+
+    def test_a_malformed_target_is_refused(self, tmp_path):
+        found = self._codes(tmp_path, (_limits("5"), _limits("5")), Target(None, "t"))
+        assert found == {"checker/checker_error"}
+
     @pytest.mark.parametrize(
         ("paths", "target", "expected"),
         [(["m/src/main/java/a/L.java"], Target("a.FooTest", "t"),
@@ -2449,8 +2473,13 @@ class TestTheTargetFileIsAlwaysRead:
          (["m/src/main/java/a/L.java"], Target("a.FooTest", "t", "n"),
           ["n/src/test/java/a/FooTest.java"]),
          (["m/src/main/java/a/L.java"], Target("a/../FooTest", "t"), []),
-         (["m/src/main/java/a/L.java"], None, [])],
-        ids=["module_of_path", "nested", "already_read", "named_module", "unsafe", "no_target"],
+         (["m/src/main/java/a/L.java"], None, []),
+         (["m/src/main/java/src/test/java/a/L.java"], Target("a.FooTest", "t"),
+          ["m/src/test/java/a/FooTest.java"]),
+         (["src/main/java/a/L.java"], Target("a.FooTest", "t", ""),
+          ["src/test/java/a/FooTest.java"])],
+        ids=["module_of_path", "nested", "already_read", "named_module", "unsafe", "no_target",
+             "first_src_component", "root_module"],
     )  # fmt: skip
     def test_target_paths(self, paths, target, expected):
         assert target_paths(paths, target) == expected
