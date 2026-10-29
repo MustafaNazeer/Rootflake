@@ -1,0 +1,25 @@
+{
+  "id": "accept-limit-constant-tightened-behind-unchanged-comparison",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "limit_constant_tightened_behind_unchanged_comparison",
+  "target": {
+    "class": "org.apache.commons.math4.legacy.analysis.integration.MidPointIntegratorTest",
+    "method": "testLowAccuracy"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Lowers the class constant NUM_ITER from 30 to 25, which every assertTrue(integrator.getIterations() < NUM_ITER) in the class reads, and changes nothing else. ADR 0007 Decision 5 lets a patch pass when it only tightens a bound kept in a constant: the field is declared once in the file, never written elsewhere, and folds to a value on both sides, so the unchanged comparison's upper bound reads 30 before and 25 after, which is stricter. The accept twin of reject-limit-constant-raised-behind-unchanged-comparison. Adapted: no merged change was found that tightens a limit constant behind an unchanged comparison; hand made on MidPointIntegratorTest.java as of the last commit that changed it, 93e3ee4b78a7df17d196ca441a37815524ea4d36 on the default branch; every context and removed line is that file's own, and the new value is written by hand. Not from IDoFT: the class does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/apache/commons-math",
+    "commit": "93e3ee4b78a7df17d196ca441a37815524ea4d36",
+    "base": "93e3ee4b78a7df17d196ca441a37815524ea4d36",
+    "path": "commons-math-legacy/src/test/java/org/apache/commons/math4/legacy/analysis/integration/MidPointIntegratorTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-29"
+  }
+}

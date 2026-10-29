@@ -49,3 +49,4 @@ accept-assertion-moved-into-await-condition
 reject-existing-return-moved-earlier
 # Known false rejects kept as the measured cost of a rule (ADR 0007); these stay until the rule changes.
 accept-conjunction-split-into-separate-assertions
+accept-production-jitter-constant-tightened-test-untouched

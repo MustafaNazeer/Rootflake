@@ -2565,3 +2565,71 @@ class TestConstantLikeSides:
         assert _unqualified_matcher(f"{chain} . foo ( true )") == f"{chain} . foo ( true )"
         assert _unqualified_matcher("org . hamcrest . Matchers . is ( true )") == "is ( true )"
         assert time.monotonic() - started < 1
+
+
+class TestTightenedBoundsBehindConstants:
+    """A bound or tolerance whose text is unchanged but whose constant got tighter passes, since
+    the value is read on both sides; one that got looser, or that loses its value, does not."""
+
+    LIMITS = "src/test/java/a/Limits.java"
+
+    @pytest.mark.parametrize(
+        ("field", "old", "new", "statement"),
+        [("static final int LIMIT = {};", "100", "50", "assertTrue(x() < LIMIT);"),
+         ("static final long T = {} * 1000;", "10", "5", "assertTrue(x() < T);"),
+         ("static final double EPS = {};", "0.1", "0.01", "assertEquals(1.0, d(), EPS);"),
+         ("static final int MIN = {};", "1", "5", "assertTrue(x() > MIN);"),
+         ("static final int LIMIT = {}; static final int L2 = LIMIT;", "100", "50",
+          "assertTrue(x() < L2);"),
+         ("static final long T = TimeUnit.SECONDS.toMillis({});", "10", "5",
+          "assertTrue(elapsed() < T);")],
+        ids=["literal", "product", "tolerance", "lower_bound", "chained", "unit_conversion"],
+    )  # fmt: skip
+    def test_a_tightened_constant_in_the_same_file(self, tmp_path, field, old, new, statement):
+        before = body_of(statement, "  " + field.format(old))
+        after = body_of(statement, "  " + field.format(new))
+        assert codes(before, after, tmp_path) == set()
+
+    @pytest.mark.parametrize(
+        ("field", "old", "new", "statement"),
+        [("static final int LIMIT = {};", "100", "200", "assertTrue(x() < LIMIT);"),
+         ("static final long T = {} * 1000;", "5", "10", "assertTrue(x() < T);"),
+         ("static final int LIMIT = {}; static final int L2 = LIMIT;", "50", "100",
+          "assertTrue(x() < L2);"),
+         ("static final int LIMIT = {};", "100", "OTHER", "assertTrue(x() < LIMIT);")],
+        ids=["raised", "raised_product", "raised_chained", "unreadable"],
+    )  # fmt: skip
+    def test_a_looser_or_unreadable_constant_still_fails(
+        self, tmp_path, field, old, new, statement
+    ):
+        before = body_of(statement, "  " + field.format(old))
+        after = body_of(statement, "  " + field.format(new))
+        assert codes(before, after, tmp_path) == {TOLERANCE}
+
+    def test_a_tightened_constant_in_another_read_file(self, tmp_path):
+        test = body_of("assertTrue(x() < Limits.MAX);")
+        files = {PATH: (test, test), self.LIMITS: (_limits("100"), _limits("50"))}
+        assert _codes_files(files, tmp_path) == set()
+
+    def test_a_raised_constant_in_another_read_file(self, tmp_path):
+        test = body_of("assertTrue(x() < Limits.MAX);")
+        files = {PATH: (test, test), self.LIMITS: (_limits("50"), _limits("100"))}
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    def test_a_tightened_statically_imported_constant(self, tmp_path):
+        test = with_imports(body_of("assertTrue(x() < MAX);"), "import static a.Limits.MAX;\n")
+        files = {PATH: (test, test), self.LIMITS: (_limits("100"), _limits("50"))}
+        assert _codes_files(files, tmp_path) == set()
+
+    def test_a_constant_another_file_writes_has_no_value(self, tmp_path):
+        limits = "package a;\npublic final class Limits {\n  public static int MAX = {};\n}\n"
+        test = body_of("Limits.MAX = 500; assertTrue(x() < Limits.MAX);")
+        sides = (limits.replace("{}", "100"), limits.replace("{}", "50"))
+        files = {PATH: (test, test), self.LIMITS: sides}
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    def test_a_field_shadowed_by_a_local_is_not_its_value(self, tmp_path):
+        statement = "int LIMIT = y(); assertTrue(x() < LIMIT);"
+        before = body_of(statement, "  static final int LIMIT = 100;")
+        after = body_of(statement.replace("y()", "z()"), "  static final int LIMIT = 50;")
+        assert TOLERANCE in codes(before, after, tmp_path)

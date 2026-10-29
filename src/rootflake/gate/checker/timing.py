@@ -32,6 +32,7 @@ from rootflake.gate.checker.syntax import (
     TypeDecl,
 )
 from rootflake.gate.checker.tree import path_to, walk
+from rootflake.gate.checker.values import TIME_UNITS, fold, literal
 
 CODE = "weaken_assertion/timing_bound_widened"
 # The gate's wall time limit for one execution, in milliseconds. The gate thresholds ADR sets
@@ -39,23 +40,14 @@ CODE = "weaken_assertion/timing_bound_widened"
 WALL_TIME_LIMIT_MS: float | None = None
 AWAITILITY_DEFAULT_MS = 10_000.0
 
-_TIME_UNITS = {
-    "NANOSECONDS": 1e-6, "MICROSECONDS": 1e-3, "MILLISECONDS": 1.0, "SECONDS": 1e3,
-    "MINUTES": 6e4, "HOURS": 3.6e6, "DAYS": 8.64e7,
-}  # fmt: skip
 _CHRONO_UNITS = {
     "NANOS": 1e-6, "MICROS": 1e-3, "MILLIS": 1.0, "SECONDS": 1e3, "MINUTES": 6e4,
     "HOURS": 3.6e6, "HALF_DAYS": 4.32e7, "DAYS": 8.64e7,
-}  # fmt: skip
-_CONVERSIONS = {
-    "toNanos": 1e-6, "toMicros": 1e-3, "toMillis": 1.0, "toSeconds": 1e3, "toMinutes": 6e4,
-    "toHours": 3.6e6, "toDays": 8.64e7,
 }  # fmt: skip
 _DURATION_FACTORIES = {
     "ofNanos": 1e-6, "ofMillis": 1.0, "ofSeconds": 1e3, "ofMinutes": 6e4, "ofHours": 3.6e6,
     "ofDays": 8.64e7,
 }  # fmt: skip
-_CASTS = frozenset(["int", "long", "short", "byte", "double", "float"])
 _LOOPS = frozenset(["for", "while", "do"])
 _AWAITILITY_ROOTS = frozenset(["await", "waitAtMost", "with", "given"])
 _AWAITILITY_BOUNDS = frozenset(["atMost", "timeout", "waitAtMost"])
@@ -88,112 +80,15 @@ class Bound:
 # -- folding ------------------------------------------------------------------------------
 
 
-def _literal(word: str) -> float | None:
-    text = word.replace("_", "")
-    try:
-        if text[:2].lower() == "0x":
-            return float(int(text[2:].rstrip("lL"), 16))
-        return float(text.rstrip("lLdDfF"))
-    except ValueError:
-        return None
-
-
-class _Folder:
-    """Folds a constant expression written as space separated tokens: literals, arithmetic,
-    casts, and `TimeUnit` conversions such as `TimeUnit.SECONDS.toMillis(10)`."""
-
-    def __init__(self, words: list[str]):
-        self.words, self.i = words, 0
-
-    def peek(self, k: int = 0) -> str | None:
-        j = self.i + k
-        return self.words[j] if j < len(self.words) else None
-
-    def take(self, expected: str | None = None) -> str:
-        word = self.peek()
-        if word is None or (expected is not None and word != expected):
-            raise ValueError(word)
-        self.i += 1
-        return word
-
-    def expression(self) -> float:
-        value = self.term()
-        while self.peek() in ("+", "-"):
-            value = value + self.term() if self.take() == "+" else value - self.term()
-        return value
-
-    def term(self) -> float:
-        value = self.unary()
-        while self.peek() in ("*", "/"):
-            if self.take() == "*":
-                value *= self.unary()
-            else:
-                divisor = self.unary()
-                if divisor == 0:
-                    raise ValueError("division by zero")
-                value /= divisor
-        return value
-
-    def unary(self) -> float:
-        word = self.peek()
-        if word in ("-", "+"):
-            self.take()
-            return -self.unary() if word == "-" else self.unary()
-        if word == "(" and self.peek(1) in _CASTS and self.peek(2) == ")":
-            self.i += 3
-            return self.unary()
-        return self.primary()
-
-    def primary(self) -> float:
-        word = self.take()
-        if word == "(":
-            value = self.expression()
-            self.take(")")
-            return value
-        if word in ("java", "TimeUnit") or word in _TIME_UNITS:
-            return self.conversion(word)
-        value = _literal(word)
-        if value is None:
-            raise ValueError(word)
-        return value
-
-    def conversion(self, first: str) -> float:
-        words = [first]
-        while self.peek() == ".":
-            self.take()
-            words.append(self.take())
-        unit, method = (words[-2], words[-1]) if len(words) >= 2 else (None, None)
-        if unit not in _TIME_UNITS or method not in _CONVERSIONS:
-            raise ValueError(".".join(words))
-        if words[:-2] not in ([], ["TimeUnit"], ["java", "util", "concurrent", "TimeUnit"]):
-            raise ValueError(".".join(words))
-        self.take("(")
-        value = self.expression()
-        self.take(")")
-        return value * _TIME_UNITS[unit] / _CONVERSIONS[method]
-
-
-def fold(text: str) -> float | None:
-    words = text.split()
-    if not words:
-        return None
-    folder = _Folder(words)
-    try:
-        value = folder.expression()
-    except ValueError, OverflowError:
-        return None
-    return value if folder.i == len(words) else None
-
-
 def _unit(text: str) -> float | None:
     words = text.split()
     if len(words) == 1:
-        return _TIME_UNITS.get(words[0], _CHRONO_UNITS.get(words[0]))
+        return TIME_UNITS.get(words[0], _CHRONO_UNITS.get(words[0]))
     if words[:-1] in (
         ["TimeUnit", "."],
         ["java", ".", "util", ".", "concurrent", ".", "TimeUnit", "."],
     ):
-        return _TIME_UNITS.get(words[-1])
+        return TIME_UNITS.get(words[-1])
     if words[:-1] in (
         ["ChronoUnit", "."],
         ["java", ".", "time", ".", "temporal", ".", "ChronoUnit", "."],
@@ -726,7 +621,7 @@ def _lowered_sleeps(ctx: Context, change: FileChange) -> set[tuple]:
 
 
 def _masked(text: str) -> str:
-    return " ".join("#" if _literal(w) is not None else w for w in text.split())
+    return " ".join("#" if literal(w) is not None else w for w in text.split())
 
 
 # -- ignored bounded waits ----------------------------------------------------------------

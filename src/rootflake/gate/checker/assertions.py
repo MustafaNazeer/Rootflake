@@ -9,6 +9,7 @@ or be matched by an added assertion that keeps its strength; otherwise it was re
 
 import json
 import re
+from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -22,12 +23,14 @@ from rootflake.gate.checker.syntax import (
     Block,
     Catch,
     CompilationUnit,
+    Field,
     Lambda,
     Method,
     Statement,
     TypeDecl,
 )
 from rootflake.gate.checker.tree import path_to, walk
+from rootflake.gate.checker.values import fold
 
 # Public static member names of commonly imported test library classes, read from each pinned
 # release (docs/source/test-library-semantics.md section 18).
@@ -1246,13 +1249,15 @@ def _assignment_counts(tokens, start: int, end: int) -> dict[str, int]:
 
 
 def _field_facts(program: Program, path: str) -> tuple[dict, dict, dict]:
-    """Each field name's literal values and declared types. A field keeps a value only when it
-    is declared once and nothing in the file assigns it again."""
+    """Each field name's constant values and declared types. A field keeps a value only when it
+    is declared once, nothing in the file assigns it again, no read file writes a field or
+    variable of that name, and its initializer folds, through other such fields of the file."""
     key = ("field_facts", path)
     if key not in program.memo:
         unit = program.units[path]
         assigned = _assignment_counts(unit.tokens, 0, len(unit.tokens))
-        values: dict[str, list] = {}
+        written = _writes(program)
+        texts: dict[str, list] = {}
         types: dict[str, list] = {}
         literals: dict[str, list] = {}
         for decl in (n for n in walk(unit) if isinstance(n, TypeDecl)):
@@ -1260,13 +1265,50 @@ def _field_facts(program: Program, path: str) -> tuple[dict, dict, dict]:
                 for name in field.names:
                     span = field.initializers.get(name)
                     text = _text(unit, span.start, span.end) if span else ""
-                    reassigned = assigned.get(name, 0) > (1 if span else 0)
-                    values.setdefault(name, []).append(None if reassigned else _number(text))
+                    reassigned = assigned.get(name, 0) > (1 if span else 0) or name in written
+                    texts.setdefault(name, []).append(None if reassigned or not span else text)
                     types.setdefault(name, []).append(field.type)
                     literals.setdefault(name, []).append(
                         bool(span) and not reassigned and _literal_expression(text)
                     )
+        resolving: set[str] = set()
+
+        def constant(name: str) -> float | None:
+            found = texts.get(name.replace("this . ", "", 1), [])
+            if len(found) != 1 or found[0] is None or name in resolving:
+                return None
+            resolving.add(name)
+            try:
+                return fold(found[0], constant)
+            finally:
+                resolving.discard(name)
+
+        values = {name: [constant(name) if len(found) == 1 else None for _ in found]
+                  for name, found in texts.items()}  # fmt: skip
         program.memo[key] = (values, types, literals)
+    return program.memo[key]
+
+
+def _writes(program: Program) -> frozenset[str]:
+    """The names any read file assigns other than where it declares them, qualified or not,
+    so `Limits.MAX = 50` in a test keeps `MAX` from having a value anywhere."""
+    key = ("writes",)
+    if key not in program.memo:
+        out = set()
+        for unit in program.units.values():
+            tokens = unit.tokens
+            declared = Counter()
+            for node in walk(unit):
+                if isinstance(node, Field):
+                    declared.update(n for n in node.names if n in node.initializers)
+                elif isinstance(node, Statement) and node.kind == "local_var":
+                    for at in _declarators(tokens, node.start, node.end - 1):
+                        if tokens[at + 1].text == "=":
+                            declared[tokens[at].text] += 1
+            for name, count in _assignment_counts(tokens, 0, len(tokens)).items():
+                if count > declared[name]:
+                    out.add(name)
+        program.memo[key] = frozenset(out)
     return program.memo[key]
 
 
@@ -1277,6 +1319,12 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
     declaration, has no value."""
     unit = program.units[path]
     field_values, field_types, field_literals = _field_facts(program, path)
+
+    def field_value(name: str) -> float | None:
+        found = field_values.get(name, [])
+        return found[0] if len(found) == 1 and name not in shadowing else None
+
+    shadowing = _declared_names(unit.tokens, body.start, body.end)
     literals = {name: list(found) for name, found in field_literals.items()}
     values = {name: list(found) for name, found in field_values.items()}
     types: dict[str, list] = {name: list(found) for name, found in field_types.items()}
@@ -1311,7 +1359,7 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
                     end += 1
                 initialized = follows == "="
                 recorded.add(node.start + i)
-                value = _number(" ".join(t.text for t in tokens[i + 2 : end]))
+                value = fold(" ".join(t.text for t in tokens[i + 2 : end]), field_value)
                 reassigned = assigned.get(token.text, 0) > (1 if initialized else 0)
                 values.setdefault(token.text, []).append(
                     value if initialized and not reassigned else None
@@ -1344,7 +1392,44 @@ def _facts(program: Program, path: str, body: Block) -> frozenset:
     for name, found in values.items():
         if len(found) == 1 and found[0] is not None:
             out.add(("value", name, found[0]))
+    out |= _qualified_values(program, path, body)
     return frozenset(out)
+
+
+def _qualified_values(program: Program, path: str, body: Block) -> set:
+    """Constants named through a type in a read file, as in `Limits.MAX`, and statically
+    imported from one, valued from that file's fields."""
+    unit, out = program.units[path], set()
+    tokens = unit.tokens
+    for i in range(body.start + 2, body.end - 1):
+        token = tokens[i]
+        if token.kind != "ident" or tokens[i - 1].text != "." or tokens[i + 1].text == "(":
+            continue
+        found = _qualifier(tokens, i)
+        if found is None:
+            continue
+        qualifier, at = found
+        binding = program.resolve_type(path, qualifier, at)
+        if binding.kind != "declared" or not isinstance(binding.decl, TypeDecl):
+            continue
+        if not _declares_field(binding.decl, token.text):
+            continue
+        values = _field_facts(program, binding.path)[0].get(token.text, [])
+        if len(values) == 1 and values[0] is not None:
+            out.add(("value", _text(unit, at, i + 1), values[0]))
+    for imp in unit.imports:
+        if imp.static and not imp.wildcard:
+            name = imp.name.rsplit(".", 1)[-1]
+            other = _static_import_source(program, path, name)
+            own = _field_facts(program, path)[0]
+            if other is None or other == path or name in own:
+                continue
+            if name in _declared_names(tokens, body.start, body.end):
+                continue
+            values = _field_facts(program, other)[0].get(name, [])
+            if len(values) == 1 and values[0] is not None:
+                out.add(("value", name, values[0]))
+    return out
 
 
 def _base_type(type_text: str) -> str:
@@ -1359,12 +1444,9 @@ def _set_type(type_text: str) -> bool:
 
 
 def _value(a: Assertion, text: str) -> float | None:
-    number = _number(text)
-    if number is not None:
-        return number
-    name = text.strip()
-    found = [f[2] for f in a.facts if f[0] == "value" and f[1] == name]
-    return found[0] if found else None
+    """The value of a bound or tolerance, folding the names whose value is a constant."""
+    known = {f[1]: f[2] for f in a.facts if f[0] == "value"}
+    return fold(text, known.get)
 
 
 _MODES = frozenset(

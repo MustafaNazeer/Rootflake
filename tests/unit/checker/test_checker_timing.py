@@ -4,7 +4,8 @@ import pytest
 
 from rootflake.gate.checker import timing
 from rootflake.gate.checker.check import Target, check
-from rootflake.gate.checker.timing import Bound, compare, duration_ms, fold
+from rootflake.gate.checker.timing import Bound, compare, duration_ms
+from rootflake.gate.checker.values import fold
 
 PATH = "src/test/java/a/FooTest.java"
 TARGET = Target("a.FooTest", "testFoo")
