@@ -1072,7 +1072,10 @@ def _method_source(program: Program, path: str, at: int):
 
 
 def _references(program: Program, path: str, start: int, end: int, calls: bool):
-    """The sources the names, and when calls is set the method calls, in a token range read."""
+    """The sources the names, and when calls is set the method calls, in a token range read.
+    With calls set, every name that is not a local or a qualifier also leads to every same
+    named member in a read file, as at the first hop, so a name reached through another is
+    covered the same way."""
     tokens = program.units[path].tokens
     for i in range(start, end):
         if tokens[i].kind != "ident":
@@ -1089,6 +1092,9 @@ def _references(program: Program, path: str, start: int, end: int, calls: bool):
             found = _name_source(program, path, tokens[i].text, i)
         if found is not None:
             yield found
+        qualifier = i + 1 < len(tokens) and tokens[i + 1].text == "."
+        if calls and not qualifier and (found is None or found[0][0] != "local"):
+            yield from _every_source(program, tokens[i].text)
 
 
 def _reached(program: Program, sources, calls: bool, line: int) -> tuple:
@@ -2501,14 +2507,56 @@ def _bounds(a: Assertion) -> dict[str, dict[str, list[Bound]]]:
 
 
 _TRUE_MATCHERS = {"is ( true )": False, "equalTo ( true )": False, "is ( equalTo ( true ) )": False,
+                  "is ( not ( false ) )": False, "not ( false )": False,
                   "is ( false )": True, "equalTo ( false )": True,
-                  "is ( equalTo ( false ) )": True}  # fmt: skip
+                  "is ( equalTo ( false ) )": True, "is ( not ( true ) )": True,
+                  "not ( true )": True}  # fmt: skip
+_MATCHER_NAMES = frozenset(["is", "equalTo", "not"])
+_BOOLEANS = {"true": False, "false": True}
+
+
+def _plain_booleans(text: str) -> str:
+    """The text with `Boolean.TRUE` and `Boolean.FALSE`, qualified or not, as literals."""
+    out: list[str] = []
+    for word in text.split(" "):
+        if word in ("TRUE", "FALSE") and out[-2:] == ["Boolean", "."]:
+            del out[-2:]
+            if out[-4:] == ["java", ".", "lang", "."]:
+                del out[-4:]
+            word = word.lower()
+        out.append(word)
+    return " ".join(out)
+
+
+def _unqualified_matcher(text: str) -> str:
+    """The matcher text with the type qualifiers before `is`, `equalTo` and `not` dropped, in
+    one pass over its words."""
+    words = text.split(" ")
+    out: list[str] = []
+    for i, word in enumerate(words):
+        if word in _MATCHER_NAMES and i + 1 < len(words) and words[i + 1] == "(":
+            while len(out) >= 2 and out[-1] == "." and re.fullmatch(r"[A-Za-z_$][\w$]*", out[-2]):
+                del out[-2:]
+        out.append(word)
+    return " ".join(out)
+
+
+def _equals_condition(args: tuple[str, ...]) -> tuple[str, bool] | None:
+    """For an equality between a boolean literal and a condition, the condition and whether it
+    must be false."""
+    plain = [_plain_booleans(arg) for arg in args]
+    literals = [i for i, arg in enumerate(plain) if arg in _BOOLEANS]
+    if len(plain) != 2 or len(literals) != 1:
+        return None
+    return args[1 - literals[0]], _BOOLEANS[plain[literals[0]]]
 
 
 def _conditions(a: Assertion, root: str, args: tuple[str, ...]) -> list[tuple[str, bool]]:
     """The boolean conditions an assertion requires, each with whether it must be false:
-    assertTrue and assertFalse, a Java assert statement, AssertJ `assertThat(c).isTrue()` and
-    `isFalse()`, and Hamcrest `assertThat(c, is(true))` and its equalTo and false forms."""
+    assertTrue and assertFalse, a Java assert statement, `assertEquals(true, c)` and its
+    negations, AssertJ and Truth `assertThat(c).isTrue()`, `isFalse()` and `isEqualTo(true)`,
+    Truth `assertWithMessage(m).that(c)`, and Hamcrest `assertThat(c, is(true))` and its
+    equalTo, not and `Boolean.TRUE` forms."""
     if root == "assertTrue" and args:
         return [(args[-1], False)]
     if root == "assertFalse" and args:
@@ -2518,22 +2566,35 @@ def _conditions(a: Assertion, root: str, args: tuple[str, ...]) -> list[tuple[st
         if " ? " not in condition:
             condition = condition.partition(" : ")[0]
         return [(condition, False)]
-    if root in ("assertThat", "then") and len(a.signature) == 2 and len(args) == 1:
-        found = {"isTrue": False, "isFalse": True}.get(a.signature[1])
+    if root in ("assertEquals", "assertNotEquals"):
+        found = _equals_condition(args)
+        if found is None:
+            return []
+        return [(found[0], found[1] != (root == "assertNotEquals"))]
+    words = _without_literals(a.text).split()
+    chain = a.signature
+    if root == "assertWithMessage" and len(chain) == 3 and chain[1] == "that":
+        that = _first_arguments(words, frozenset(["that"]))
+        args, chain = tuple(" ".join(w) for w in that[0][1]) if that else (), (root, chain[2])
+        root = "assertThat"
+    if root in ("assertThat", "then") and len(chain) == 2 and len(args) == 1:
+        found = {"isTrue": False, "isFalse": True}.get(chain[1])
+        if found is None and chain[1] in ("isEqualTo", "isNotEqualTo"):
+            call = _first_arguments(words, frozenset([chain[1]]))
+            value = _plain_booleans(" ".join(call[0][1][0])) if call and call[0][1] else ""
+            if value in _BOOLEANS:
+                found = _BOOLEANS[value] != (chain[1] == "isNotEqualTo")
         return [] if found is None else [(args[0], found)]
-    matcher = (
-        re.sub(r"(?:[A-Za-z_$][\w$]* \. )+(?=(?:is|equalTo) \()", "", args[-1]) if args else ""
-    )
+    matcher = _unqualified_matcher(_plain_booleans(args[-1])) if args else ""
     if root == "assertThat" and len(args) >= 2 and matcher in _TRUE_MATCHERS:
         return [(args[-2], _TRUE_MATCHERS[matcher])]
     return []
 
 
 def _constant_like(text: str) -> bool:
-    """A qualified name or an upper case one, which a test compares against, never a local."""
-    return (
-        re.fullmatch(r"[A-Za-z_$][\w$]*( \. [A-Za-z_$][\w$]*)+|[A-Z][A-Z0-9_]*", text) is not None
-    )
+    """An upper case name, qualified or not, which a test compares against, never a local or
+    an instance field."""
+    return re.fullmatch(r"([A-Za-z_$][\w$]* \. )*[A-Z][A-Z0-9_]*", text) is not None
 
 
 def _has_call(text: str) -> bool:

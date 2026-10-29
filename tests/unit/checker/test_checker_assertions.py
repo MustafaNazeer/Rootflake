@@ -2321,6 +2321,39 @@ class TestBoundsBehindInheritedAndImportedNames:
         after = body_of(statement, helpers.format(50))
         assert codes(before, after, tmp_path) == {TOLERANCE}
 
+    @pytest.mark.parametrize(
+        ("statement", "helpers"),
+        [("assertTrue(x() < LIMIT);", "  static final int LIMIT = MAX * 2;"),
+         ("int max = MAX; assertTrue(x() < max);", ""),
+         ("assertTrue(x() < bound());", "  int bound() { return MAX + 1; }")],
+        ids=["constant", "local", "helper"],
+    )  # fmt: skip
+    def test_an_inherited_constant_behind_another_name(self, tmp_path, statement, helpers):
+        test = body_of(statement, helpers).replace(
+            "public class FooTest {", "public class FooTest extends BaseTest {"
+        )
+        base = _class_file(
+            "a", "public abstract class BaseTest", "  protected static final int MAX = VALUE;"
+        )
+        files = self._files(test, test, base.replace("VALUE", "5"), base.replace("VALUE", "50"),
+                            self.BASE)  # fmt: skip
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    @pytest.mark.parametrize(
+        ("statement", "helpers"),
+        [("assertTrue(x() < LIMIT);", "  static final int LIMIT = Limits.MAX * 2;"),
+         ("int m = Limits.MAX; assertTrue(x() < m);", "")],
+        ids=["constant", "local"],
+    )  # fmt: skip
+    def test_an_on_demand_qualifier_behind_another_name(self, tmp_path, statement, helpers):
+        test = with_imports(body_of(statement, helpers), "import b.*;\n")
+        limits = (
+            "package b;\npublic final class Limits {\n  public static final int MAX = VALUE;\n}\n"
+        )
+        files = self._files(test, test, limits.replace("VALUE", "5"), limits.replace("VALUE", "50"),
+                            "src/test/java/b/Limits.java")  # fmt: skip
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
     def test_a_qualified_write_from_the_test(self, tmp_path):
         limits = _class_file("a", "public final class Limits", "  public static int MAX = 5;")
         files = self._files(body_of("f(); assertTrue(x() < Limits.MAX);"),
@@ -2441,10 +2474,31 @@ class TestBoundsInOtherBooleanForms:
           "assertThat(x() < 1000, org.hamcrest.Matchers.equalTo(true));"),
          ("assertThat(x() > 100, is(false));", "assertThat(x() > 1000, is(false));"),
          ("assert x() < 100;", "assert x() < 1000;"),
-         ("assert x() < 100 : \"slow\";", "assert x() < 1000 : \"slow\";")],
+         ("assert x() < 100 : \"slow\";", "assert x() < 1000 : \"slow\";"),
+         ("assertEquals(true, x() < 100);", "assertEquals(true, x() < 1000);"),
+         ("assertEquals(false, x() > 100);", "assertEquals(false, x() > 1000);"),
+         ("assertEquals(\"m\", Boolean.TRUE, x() < 100);",
+          "assertEquals(\"m\", Boolean.TRUE, x() < 1000);"),
+         ("assertNotEquals(false, x() < 100);", "assertNotEquals(false, x() < 1000);"),
+         ("assertThat(x() < 100).isEqualTo(true);", "assertThat(x() < 1000).isEqualTo(true);"),
+         ("assertThat(x() < 100).isEqualTo(Boolean.TRUE);",
+          "assertThat(x() < 1000).isEqualTo(Boolean.TRUE);"),
+         ("assertThat(x() < 100).isNotEqualTo(false);",
+          "assertThat(x() < 1000).isNotEqualTo(false);"),
+         ("assertThat(x() < 100, is(Boolean.TRUE));", "assertThat(x() < 1000, is(Boolean.TRUE));"),
+         ("assertThat(x() < 100, equalTo(java.lang.Boolean.TRUE));",
+          "assertThat(x() < 1000, equalTo(java.lang.Boolean.TRUE));"),
+         ("assertThat(x() < 100, is(not(false)));", "assertThat(x() < 1000, is(not(false)));"),
+         ("assertWithMessage(\"m\").that(x() < 100).isTrue();",
+          "assertWithMessage(\"m\").that(x() < 1000).isTrue();")],
         ids=["assert_false", "assert_false_inclusive", "assert_false_disjunction",
              "assertj_is_true", "assertj_is_false", "hamcrest_is_true", "hamcrest_equal_to_true",
-             "hamcrest_is_false", "java_assert", "java_assert_message"],
+             "hamcrest_is_false", "java_assert", "java_assert_message", "assert_equals_true",
+             "assert_equals_false", "assert_equals_boolean_true_message", "assert_not_equals_false",
+             "assertj_is_equal_to_true", "assertj_is_equal_to_boolean_true",
+             "assertj_is_not_equal_to_false", "hamcrest_is_boolean_true",
+             "hamcrest_equal_to_qualified_boolean_true", "hamcrest_is_not_false",
+             "truth_assert_with_message"],
     )  # fmt: skip
     def test_a_widened_bound_is_caught(self, tmp_path, old, new):
         before, after = (with_imports(body_of(s), self.HAMCREST) for s in (old, new))
@@ -2454,9 +2508,31 @@ class TestBoundsInOtherBooleanForms:
         ("old", "new"),
         [("assertFalse(x() > 100);", "assertFalse(x() > 50);"),
          ("assertThat(x() < 100).isTrue();", "assertThat(x() < 50).isTrue();"),
-         ("assert x() < 100;", "assert x() <= 50;")],
-        ids=["assert_false", "assertj_is_true", "java_assert"],
+         ("assert x() < 100;", "assert x() <= 50;"),
+         ("assertEquals(true, x() < 100);", "assertEquals(true, x() < 50);")],
+        ids=["assert_false", "assertj_is_true", "java_assert", "assert_equals_true"],
     )  # fmt: skip
     def test_a_tightened_bound_passes(self, tmp_path, old, new):
         before, after = (with_imports(body_of(s), self.HAMCREST) for s in (old, new))
         assert codes(before, after, tmp_path) == set()
+
+
+class TestConstantLikeSides:
+    """Only an upper case name, qualified or not, is read as the constant side of a comparison;
+    a qualified instance field is a subject."""
+
+    def test_a_qualified_instance_field_subject(self, tmp_path):
+        before = body_of("assertTrue(result.count < max());")
+        after = body_of("assertTrue(result.count < max() + 100);")
+        assert codes(before, after, tmp_path) == {TOLERANCE}
+
+    def test_a_long_qualified_chain_is_read_in_linear_time(self):
+        import time
+
+        from rootflake.gate.checker.assertions import _unqualified_matcher
+
+        chain = " . ".join(f"a{i}" for i in range(20000))
+        started = time.monotonic()
+        assert _unqualified_matcher(f"{chain} . foo ( true )") == f"{chain} . foo ( true )"
+        assert _unqualified_matcher("org . hamcrest . Matchers . is ( true )") == "is ( true )"
+        assert time.monotonic() - started < 1

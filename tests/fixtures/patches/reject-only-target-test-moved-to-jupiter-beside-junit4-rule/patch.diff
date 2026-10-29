@@ -1,0 +1,13 @@
+diff --git a/google-cloud-firestore/src/test/java/com/google/cloud/firestore/WatchTest.java b/google-cloud-firestore/src/test/java/com/google/cloud/firestore/WatchTest.java
+index d875c64..8a4ebb7 100644
+--- a/google-cloud-firestore/src/test/java/com/google/cloud/firestore/WatchTest.java
++++ b/google-cloud-firestore/src/test/java/com/google/cloud/firestore/WatchTest.java
+@@ -207,7 +207,7 @@ public class WatchTest {
+                 });
+   }
+ 
+-  @Test
++  @org.junit.jupiter.api.Test
+   public void documentWatchChange() throws InterruptedException {
+     addDocumentListener();
+ 

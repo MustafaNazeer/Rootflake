@@ -432,56 +432,137 @@ _ENGINES = {
     "org.junit.jupiter.api.Test": "jupiter",
     "org.testng.annotations.Test": "testng",
 }
-# Members only one engine runs: JUnit 4 rules and lifecycle methods, Jupiter lifecycle methods
-# and extensions, TestNG configuration methods.
-_ENGINE_MEMBERS = {
-    "junit4": frozenset(["Rule", "ClassRule", "Before", "After", "BeforeClass", "AfterClass"]),
-    "jupiter": frozenset(["BeforeEach", "AfterEach", "BeforeAll", "AfterAll", "RegisterExtension",
-                          "ExtendWith"]),
-    "testng": frozenset(["BeforeMethod", "AfterMethod", "BeforeTest", "AfterTest",
-                         "BeforeSuite", "AfterSuite", "BeforeGroups", "AfterGroups"]),
+# Members only one engine runs: JUnit 4 rules and lifecycle methods, Jupiter lifecycle methods,
+# extensions and timeouts, TestNG configuration methods.
+_MEMBER_ENGINES = {
+    **{f"org.junit.{n}": "junit4"
+       for n in ("Rule", "ClassRule", "Before", "After", "BeforeClass", "AfterClass")},
+    **{f"org.junit.jupiter.api.{n}": "jupiter"
+       for n in ("BeforeEach", "AfterEach", "BeforeAll", "AfterAll", "Timeout")},
+    "org.junit.jupiter.api.extension.RegisterExtension": "jupiter",
+    "org.junit.jupiter.api.extension.ExtendWith": "jupiter",
+    **{f"org.testng.annotations.{w}{n}": "testng"
+       for w in ("Before", "After") for n in ("Method", "Class", "Test", "Suite", "Groups")},
 }  # fmt: skip
-_RULE_SUPPORT = frozenset(["EnableRuleMigrationSupport", "EnableJUnit4MigrationSupport"])
+_RULE_SUPPORT = frozenset([
+    "org.junit.jupiter.migrationsupport.rules.EnableRuleMigrationSupport",
+    "org.junit.jupiter.migrationsupport.EnableJUnit4MigrationSupport",
+])  # fmt: skip
+# The rule types migration support honours, subclasses included; @ClassRule is never read.
+_SUPPORTED_RULES = frozenset(
+    f"org.junit.rules.{n}"
+    for n in ("Verifier", "ErrorCollector", "ExternalResource", "TemporaryFolder",
+              "ExpectedException")
+)  # fmt: skip
 
 
-def _on_demand(unit: CompilationUnit, name: str) -> str | None:
-    """The engine `Test` an on demand import supplies when it is the only engine package
-    imported so."""
-    if name != "Test":
-        return None
-    found = [f"{i.name}.Test" for i in unit.imports
-             if i.wildcard and not i.static and f"{i.name}.Test" in _ENGINES]  # fmt: skip
-    return found[0] if len(found) == 1 else None
+def _named(program: Program, path: str, name: str, index: int, table, header: bool = False):
+    """The entries of table that name can stand for at index: its resolved name, or what a
+    single on demand import supplies. A type declared in a read file stands for none."""
+    binding = program.resolve_type(path, name, index, header)
+    if binding.kind == "declared":
+        return set()
+    if binding.fqn:
+        return {binding.fqn} & set(table)
+    last = name.rsplit(".", 1)[-1]
+    return {f"{i.name}.{last}" for i in program.units[path].imports
+            if i.wildcard and not i.static} & set(table)  # fmt: skip
 
 
-def _engines(program: Program, path: str, decl: TypeDecl) -> set[str]:
-    """The engines the class's test methods are written for, by what `@Test` resolves to."""
-    out = set()
+def _test_engine(program: Program, path: str, annotation: Annotation) -> str | None:
+    if program.resolve_type(path, annotation.name, annotation.start).kind == "declared":
+        return None  # a local Test type is Decision 6's test_removed, reported there
+    found = _named(program, path, annotation.name, annotation.start, _ENGINES)
+    return _ENGINES[found.pop()] if len(found) == 1 else "unknown"
+
+
+def _method_engines(program: Program, path: str, decl: TypeDecl) -> dict[str, str]:
+    """The engine each test method of decl runs under, keyed by name and parameter types. A
+    TestNG `@Test` on the class makes its public methods tests."""
+    whole = None
+    for annotation in decl.annotations:
+        if simple(annotation) == "Test" and _test_engine(program, path, annotation) == "testng":
+            whole = "testng"
+    out = {}
     for method in decl.methods:
-        for annotation in method.annotations:
-            if simple(annotation) == "Test":
-                binding = program.resolve_type(path, annotation.name, annotation.start)
-                if binding.kind == "declared":
-                    continue  # a local Test type is Decision 6's test_removed, reported there
-                fqn = binding.fqn or _on_demand(program.units[path], annotation.name)
-                out.add(_ENGINES.get(fqn or "", "unknown"))
+        key = f"{method.name}({','.join(p.type for p in method.params)})"
+        engine = None
+        tests = [a for a in method.annotations if simple(a) == "Test"]
+        if tests:
+            engine = _test_engine(program, path, tests[0])
+        elif whole and "public" in method.modifiers and not method.is_constructor:
+            configured = {simple(a) for a in method.annotations}
+            if not configured & {k.rsplit(".", 1)[-1] for k in _MEMBER_ENGINES}:
+                engine = whole
+        if engine is not None:
+            out[key] = engine
     return out
 
 
-def _member_annotations(program: Program, path: str, decl: TypeDecl) -> set[str]:
-    owners = [(path, decl), *program.supertypes(path, decl)]
-    names = set()
-    for _, owner in owners:
-        names |= {simple(a) for a in owner.annotations}
-        names |= {simple(a) for f in owner.fields for a in f.annotations}
-        names |= {simple(a) for m in owner.methods for a in m.annotations}
-    return names
+def _member_engines(program: Program, path: str, annotation: Annotation) -> set[str]:
+    """The engines a member annotation belongs to; one that names no type a read file or an
+    import supplies counts for every engine with that simple name."""
+    found = _named(program, path, annotation.name, annotation.start, _MEMBER_ENGINES)
+    binding = program.resolve_type(path, annotation.name, annotation.start)
+    if not found and binding.kind == "unresolved":
+        found = {k for k in _MEMBER_ENGINES if k.rsplit(".", 1)[-1] == simple(annotation)}
+    return {_MEMBER_ENGINES[k] for k in found}
+
+
+def _supported_rule(program: Program, path: str, type_text: str | None, index: int) -> bool:
+    """Whether a rule of this declared type is honoured by Jupiter's migration support."""
+    if not type_text:
+        return False
+    name = type_text.split("<", 1)[0].strip()
+    if _named(program, path, name, index, _SUPPORTED_RULES):
+        return True
+    binding = program.resolve_type(path, name, index)
+    if binding.kind != "declared" or not isinstance(binding.decl, TypeDecl):
+        return False
+    for owner_path, owner in [(binding.path, binding.decl),
+                              *program.supertypes(binding.path, binding.decl)]:  # fmt: skip
+        for parent in owner.extends:
+            if _named(program, owner_path, parent, owner.start, _SUPPORTED_RULES, header=True):
+                return True
+    return False
+
+
+def _members(program: Program, path: str, decl: TypeDecl):
+    """Each engine bound member annotation of decl and its read supertypes, with whether it is
+    a `@Rule` of a type migration support honours."""
+    for owner_path, owner in [(path, decl), *program.supertypes(path, decl)]:
+        placed = [(a, None, None) for a in owner.annotations]
+        placed += [(a, f.type, f.start) for f in owner.fields for a in f.annotations]
+        placed += [(a, m.return_type, m.start) for m in owner.methods for a in m.annotations]
+        for annotation, type_text, index in placed:
+            engines = _member_engines(program, owner_path, annotation)
+            if engines:
+                rule = _named(program, owner_path, annotation.name, annotation.start,
+                              _MEMBER_ENGINES) == {"org.junit.Rule"}  # fmt: skip
+                kept = rule and _supported_rule(program, owner_path, type_text, index or 0)
+                yield engines, kept
+
+
+def _unread_supertype(program: Program, path: str, decl: TypeDecl) -> bool:
+    return any(
+        program.resolve_type(owner_path, name, owner.start, header=True).kind != "declared"
+        for owner_path, owner in [(path, decl), *program.supertypes(path, decl)]
+        for name in (*owner.extends, *owner.implements)
+    )
+
+
+def _rule_support(program: Program, path: str, decl: TypeDecl) -> bool:
+    return any(
+        _named(program, owner_path, a.name, a.start, _RULE_SUPPORT)
+        for owner_path, owner in [(path, decl), *program.supertypes(path, decl)]
+        for a in owner.annotations
+    )
 
 
 def _engine_switches(change: FileChange, ctx: Context) -> Iterator[Finding]:
-    """A class whose tests move to another engine while it keeps members only the old engine
+    """A test method moved to another engine while its class keeps members only the old engine
     runs: a JUnit 4 rule or `@Before` under Jupiter, a Jupiter `@AfterEach` under JUnit 4. The
-    checks those members make are then never run."""
+    checks those members make are then never run for it."""
     if change.before is None:
         return
     before = _types(ctx.before, change.path)
@@ -489,16 +570,26 @@ def _engine_switches(change: FileChange, ctx: Context) -> Iterator[Finding]:
         old = before.get(fqn)
         if old is None:
             continue
-        old_engines = _engines(ctx.before, change.path, old) - {"unknown"}
-        new_engines = _engines(ctx.after, change.path, decl)
-        if not old_engines or new_engines <= old_engines:
+        old_engines = _method_engines(ctx.before, change.path, old)
+        new_engines = _method_engines(ctx.after, change.path, decl)
+        moves = {
+            (was, new_engines[key])
+            for key, was in old_engines.items()
+            if was != "unknown" and new_engines.get(key, was) != was
+        }
+        if not moves:
             continue
-        members = _member_annotations(ctx.after, change.path, decl)
-        dead = set().union(*(_ENGINE_MEMBERS[e] for e in old_engines - new_engines))
-        if members & _RULE_SUPPORT:
-            dead -= {"Rule", "ClassRule"}
-        if members & dead:
+        if _unread_supertype(ctx.after, change.path, decl):
             yield Finding("weaken_assertion/assertion_rebound", change.path, decl.line)
+            continue  # an unread supertype may carry any member the old engine runs
+        left = {was for was, _ in moves}
+        support = _rule_support(ctx.after, change.path, decl) and all(
+            now == "jupiter" for was, now in moves if was == "junit4"
+        )
+        for engines, kept in _members(ctx.after, change.path, decl):
+            if engines & left and not (support and kept):
+                yield Finding("weaken_assertion/assertion_rebound", change.path, decl.line)
+                break
 
 
 def _annotations(change: FileChange, ctx: Context) -> Iterator[Finding]:

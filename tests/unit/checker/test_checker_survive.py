@@ -565,10 +565,11 @@ class TestEngineSwitches:
     def test_rule_migration_support_keeps_rules_alive(self, tmp_path):
         new_imports = (
             self.J5
+            + "\nimport org.junit.rules.ErrorCollector;"
             + "\nimport org.junit.jupiter.migrationsupport.rules.EnableRuleMigrationSupport;"
         )
         body = f"{self.RULE}\n{self.TESTED}"
-        old = cls(body, imports=self.J4)
+        old = cls(body, imports=self.J4 + "\nimport org.junit.rules.ErrorCollector;")
         new = cls(body, header="@EnableRuleMigrationSupport", imports=new_imports)
         assert codes(old, new, tmp_path) == set()
 
@@ -590,3 +591,107 @@ class TestEngineSwitches:
         body = f"{self.RULE}\n{self.TESTED}"
         changed = body.replace("is(1)", "is(2)")
         assert codes(cls(body, imports=imports), cls(changed, imports=imports), tmp_path) == set()
+
+    def test_only_the_target_moved_to_jupiter(self, tmp_path):
+        imports = self.J4 + "\nimport org.junit.rules.ErrorCollector;"
+        body = f"{self.RULE}\n{self.BEFORE}\n{OTHER}\n{self.TESTED}"
+        moved = body.replace(
+            "@Test public void testFoo", "@org.junit.jupiter.api.Test public void testFoo"
+        )
+        assert codes(cls(body, imports=imports), cls(moved, imports=imports), tmp_path) == {
+            "weaken_assertion/assertion_rebound"
+        }
+
+    @pytest.mark.parametrize(
+        "rule",
+        [
+            "@Rule public Timeout timeout = Timeout.seconds(5);",
+            "@ClassRule public static ErrorCollector shared = new ErrorCollector();",
+            "@ClassRule public static Timeout timeout = Timeout.seconds(5);",
+        ],
+        ids=["timeout-rule", "class-rule-collector", "class-rule-timeout"],
+    )
+    def test_migration_support_honours_only_its_rule_types(self, tmp_path, rule):
+        old_imports = (
+            "import org.junit.Test;\nimport org.junit.Rule;\nimport org.junit.ClassRule;\n"
+            "import org.junit.rules.*;"
+        )
+        new_imports = old_imports.replace("org.junit.Test;", "org.junit.jupiter.api.Test;") + (
+            "\nimport org.junit.jupiter.migrationsupport.rules.EnableRuleMigrationSupport;"
+        )
+        body = f"{rule}\n{TEST}"
+        old = cls(body, imports=old_imports)
+        new = cls(body, header="@EnableRuleMigrationSupport", imports=new_imports)
+        assert codes(old, new, tmp_path) == {"weaken_assertion/assertion_rebound"}
+
+    def test_migration_support_keeps_a_read_external_resource_subclass(self, tmp_path):
+        old_imports = (
+            "import org.junit.Test;\nimport org.junit.Rule;\n"
+            "import org.junit.rules.ExternalResource;"
+        )
+        new_imports = old_imports.replace("org.junit.Test;", "org.junit.jupiter.api.Test;") + (
+            "\nimport org.junit.jupiter.migrationsupport.rules.EnableRuleMigrationSupport;"
+        )
+        body = (
+            "static class Server extends ExternalResource {}\n"
+            f"@Rule public Server server = new Server();\n{TEST}"
+        )
+        old = cls(body, imports=old_imports)
+        new = cls(body, header="@EnableRuleMigrationSupport", imports=new_imports)
+        assert codes(old, new, tmp_path) == set()
+
+    def test_unresolved_migration_support_does_not_keep_rules(self, tmp_path):
+        body = f"{self.RULE}\n{self.TESTED}"
+        old = cls(body, imports=self.J4)
+        new = cls(body, header="@EnableRuleMigrationSupport", imports=self.J5)
+        assert codes(old, new, tmp_path) == {"weaken_assertion/assertion_rebound"}
+
+    @pytest.mark.parametrize("to", ["org.junit.jupiter.api.Test", "org.junit.Test"])
+    def test_testng_after_class_left_dead(self, tmp_path, to):
+        old = "import org.testng.annotations.Test;\nimport org.testng.annotations.AfterClass;"
+        new = old.replace("org.testng.annotations.Test", to)
+        body = f"@AfterClass public void noLeaks() {{ assertEquals(0, open()); }}\n{TEST}"
+        assert codes(cls(body, imports=old), cls(body, imports=new), tmp_path) == {
+            "weaken_assertion/assertion_rebound"
+        }
+
+    @pytest.mark.parametrize("where", ["method", "class"])
+    def test_a_jupiter_timeout_left_dead(self, tmp_path, where):
+        old = "import org.junit.jupiter.api.Test;\nimport org.junit.jupiter.api.Timeout;"
+        new = old.replace("org.junit.jupiter.api.Test", "org.junit.Test")
+        body = TEST.replace("@Test", "@Timeout(5) @Test") if where == "method" else TEST
+        header = "@Timeout(5)" if where == "class" else ""
+        assert codes(
+            cls(body, header=header, imports=old), cls(body, header=header, imports=new), tmp_path
+        ) == {"weaken_assertion/assertion_rebound"}
+
+    def test_a_testng_class_level_test_moved_to_jupiter(self, tmp_path):
+        old_imports = (
+            "import org.testng.annotations.Test;\nimport org.testng.annotations.AfterMethod;"
+        )
+        new_imports = old_imports + "\nimport org.junit.jupiter.api.Test;"
+        new_imports = new_imports.replace("import org.testng.annotations.Test;\n", "")
+        after = "@AfterMethod public void verify() { check(); }"
+        old = cls(
+            f"{after}\npublic void testFoo() {{ assertEquals(1, f()); }}", "@Test", old_imports
+        )
+        new = cls(f"{after}\n{TEST}", imports=new_imports)
+        assert codes(old, new, tmp_path) == {"weaken_assertion/assertion_rebound"}
+
+    def test_an_unchanged_mixed_class_passes(self, tmp_path):
+        imports = self.J4 + "\nimport org.junit.rules.ErrorCollector;"
+        body = (
+            f"{self.RULE}\n{self.TESTED}\n"
+            "@org.junit.jupiter.api.Test public void testBar() { assertEquals(2, g()); }"
+        )
+        changed = body + "\nvoid helper() {}"
+        assert codes(cls(body, imports=imports), cls(changed, imports=imports), tmp_path) == set()
+
+    def test_a_switch_under_an_unread_supertype(self, tmp_path):
+        old = (
+            "package a;\nimport org.junit.Test;\npublic class FooTest extends AbstractIT {\n"
+            + TEST
+            + "\n}\n"
+        )
+        new = old.replace("org.junit.Test", "org.junit.jupiter.api.Test")
+        assert codes(old, new, tmp_path) == {"weaken_assertion/assertion_rebound"}

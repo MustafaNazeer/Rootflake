@@ -1,0 +1,30 @@
+{
+  "id": "reject-timeout-rule-left-dead-under-rule-migration-support",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "timeout_rule_left_dead_under_rule_migration_support",
+  "target": {
+    "class": "com.google.cloud.firestore.WatchTest",
+    "method": "documentWatchChange"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/assertion_rebound"
+  ],
+  "disputed": false,
+  "notes": "Moves every test in WatchTest to Jupiter, replaces @Before and @After with @BeforeEach and @AfterEach, and adds @EnableRuleMigrationSupport, but keeps @Rule public Timeout timeout. Jupiter's rule migration support honours only Verifier, ExternalResource and ExpectedException rules and their subclasses (docs/source/test-library-semantics.md), so the one second Timeout no longer bounds any test, while every assertion line is unchanged. This must be rejected with weaken_assertion/assertion_rebound under ADR 0007 Decision 6. The @RunWith(MockitoJUnitRunner.class) left beside it is dead as well, which Decision 6 does not judge. The target is the first test in the class. Adapted: no merged change was found that moves a test to another engine this way. The hunk is hand made on the pre image of WatchTest.java at the merge base of googleapis/java-firestore PR 2273, the pre image of reject-comment-out-assertion; every context and removed line is the pre image's own. Not from IDoFT: the class com.google.cloud.firestore.WatchTest does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/googleapis/java-firestore",
+    "commit": "eb936d66bc771a4389b5cd222b55a151b40c405f",
+    "pr": "https://github.com/googleapis/java-firestore/pull/2273",
+    "base": "05188e3e779968e67861fcd69d64ae17cfb6cd0b",
+    "path": "google-cloud-firestore/src/test/java/com/google/cloud/firestore/WatchTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-14"
+  }
+}
