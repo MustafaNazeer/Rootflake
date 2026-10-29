@@ -18,7 +18,7 @@ from collections.abc import Iterator
 from rootflake.gate.checker.assertions import _close, _declarators, _text, is_assertion_name
 from rootflake.gate.checker.calls import Call, ExpansionBudget, calls_in, follow_for_scan, reach
 from rootflake.gate.checker.model import Context, FileChange, Finding
-from rootflake.gate.checker.poll import initializer_spans
+from rootflake.gate.checker.poll import _CLOCK_CALLS, _CLOCK_OWNERS, initializer_spans
 from rootflake.gate.checker.scope import Program
 from rootflake.gate.checker.syntax import Block, CompilationUnit, Field, Lambda, Method, Statement
 from rootflake.gate.checker.timing import (
@@ -36,6 +36,7 @@ from rootflake.gate.checker.timing import (
     _member_key,
     _mode_spans,
     _site,
+    _Whole,
     duration_ms,
     sleep_form,
 )
@@ -48,10 +49,6 @@ _NAME_WORDS = (
 )  # fmt: skip
 _TRIES = frozenset(["tries", "maxtries", "numtries", "ntries"])
 _UNIT_WORDS = ("nanos", "micros", "millis", "seconds", "minutes", "hours")
-_CLOCK_CALLS = frozenset(["currentTimeMillis", "nanoTime"])
-_CLOCK_OWNERS = frozenset([
-    "Instant", "LocalDateTime", "LocalTime", "ZonedDateTime", "OffsetDateTime", "Clock", "clock",
-])  # fmt: skip
 
 TIMING, NAMED, CONVERSION, LOOP = "timing", "named", "conversion", "loop"
 _ALL = frozenset([TIMING, NAMED, CONVERSION, LOOP])
@@ -244,11 +241,6 @@ def bound_spans(unit: CompilationUnit, loop: Statement) -> list[tuple[int, int]]
             if node.blocks and _leaves(unit, node.blocks[0]):
                 spans.append((node.header.start, node.header.end))
     return spans
-
-
-class _Whole:
-    def __init__(self, unit: CompilationUnit):
-        self.start, self.end = 0, len(unit.tokens)
 
 
 # -- following a value ----------------------------------------------------------------------

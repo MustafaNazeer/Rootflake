@@ -50,7 +50,7 @@ _DURATION_FACTORIES = {
     "ofNanos": 1e-6, "ofMillis": 1.0, "ofSeconds": 1e3, "ofMinutes": 6e4, "ofHours": 3.6e6,
     "ofDays": 8.64e7,
 }  # fmt: skip
-_LOOPS = frozenset(["for", "while", "do"])
+_LOOPS = poll.LOOPS
 _AWAITILITY_ROOTS = frozenset(["await", "waitAtMost", "with", "given"])
 _AWAITILITY_BOUNDS = frozenset(["atMost", "timeout", "waitAtMost"])
 _WAIT_WORDS = ("wait", "sleep", "timeout", "poll", "within", "until", "atmost", "delay")
@@ -259,8 +259,8 @@ def _awaitility_root(unit: CompilationUnit, call: Call) -> bool:
 # -- the bounds of one file ---------------------------------------------------------------
 
 
-def _value(text: str, line: int, unbounded: bool = False) -> Bound:
-    return Bound(None, unbounded, text, line)
+def _value(text: str, line: int) -> Bound:
+    return Bound(None, False, text, line)
 
 
 def _argument_bounds(args: tuple[str, ...], line: int) -> tuple[list[Bound], set[int]]:
