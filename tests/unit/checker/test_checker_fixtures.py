@@ -47,6 +47,14 @@ def trees(fixture: Path, tmp_path: Path) -> tuple[Path, Path]:
         shutil.copytree(fixture / "before", pristine)
     else:
         pristine.mkdir(parents=True)
+    patch = (fixture / "patch.diff").read_text(encoding="utf-8")
+    sources = [str(p.relative_to(pristine)) for p in pristine.rglob("*.java")]
+    for path in [*checked_paths(patch), *sources]:
+        parts = path.split("/")
+        if "src" in parts:
+            module = pristine.joinpath(*parts[: parts.index("src")])
+            module.mkdir(parents=True, exist_ok=True)
+            (module / "pom.xml").touch()  # a stub, so the module is a real Maven module
     shutil.copytree(pristine, workspace)
     subprocess.run(
         [

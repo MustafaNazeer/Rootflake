@@ -423,6 +423,18 @@ def _path_problems(
         yield _pristine_case_collision(path, pristine)
 
 
+def existing_java_problem(path: str, pristine: Path) -> Rejection | None:
+    """Why path is not a `.java` file a patch could modify under rules 2 to 5, or None. The
+    shortcut checker asks this before it reads a pristine file a patch only references (ADR 0007
+    Decision 2); no override applies to such a read."""
+    if not path.endswith(".java"):
+        return Rejection("outside_allowlist", path)
+    for problem in _path_problems(_Section(path, False, []), pristine, False, False):
+        if problem is not None:
+            return problem
+    return None
+
+
 def _pristine_problems(path: str, pristine: Path) -> Iterator[Rejection | None]:
     yield _size(path, os.lstat(pristine / path).st_size, _MAX_PRISTINE_BYTES)
 

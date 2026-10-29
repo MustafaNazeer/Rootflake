@@ -9,12 +9,12 @@ import re
 from collections.abc import Sequence
 from pathlib import Path
 
-from rootflake.gate.checker import assertions, flow, survive, timing
-from rootflake.gate.checker.files import MAX_FILES, CheckerError, read_side
+from rootflake.gate.checker import assertions, flow, retries, survive, timing
+from rootflake.gate.checker.files import MAX_FILES, CheckerError, extension_candidates, read_side
 from rootflake.gate.checker.lexer import Unparsable, tokenize
 from rootflake.gate.checker.model import CheckResult, Context, FileChange, Finding, Target
 from rootflake.gate.checker.syntax import parse
-from rootflake.gate.validator import path_syntax
+from rootflake.gate.validator import existing_java_problem, path_syntax
 
 __all__ = [
     "CheckResult",
@@ -25,7 +25,9 @@ __all__ = [
     "checked_target",
     "target_paths",
 ]
-RULES = (survive, assertions, timing, flow)
+RULES = (survive, assertions, timing, flow, retries)
+_IDENT = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
+_REFUSED = frozenset(["symlink", "not_regular", "mode"])
 _ROOTS = (["src", "test", "java"], ["src", "main", "java"])
 _CLASS = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*")
 _NESTED = re.compile(r"(\$[A-Za-z0-9_]+)*")
@@ -73,11 +75,51 @@ def target_paths(paths: Sequence[str], target: Target | None) -> list[str]:
     return sorted(found - set(paths))
 
 
-def _judge(
-    changes: list[FileChange], target: Target | None, overridden: Sequence[str]
-) -> list[Finding]:
-    context = Context(changes, target, overridden)
+def _judge(context: Context) -> list[Finding]:
     return [finding for rule in RULES for finding in rule.findings(context)]
+
+
+def _extensions(context: Context, pristine: Path, room: int) -> list[Finding]:
+    """Read the one pristine file that may declare each newly referenced extension type
+    (ADR 0007 Decision 2). A type that cannot be resolved is left to be flagged; a read that is
+    needed but refused, or past the file bound, is a reject on the referencing path."""
+    read: set[str] = {c.path for c in context.changes}
+    for path, fqn in retries.requests(context):
+        module = _module(path)
+        if module is None or not all(_IDENT.fullmatch(part) for part in fqn.split(".")):
+            continue
+        present = []
+        for candidate in extension_candidates(module, fqn):
+            problem = existing_java_problem(candidate, pristine)
+            if problem is None:
+                present.append(candidate)
+            elif problem.code in _REFUSED:
+                return [Finding("checker/checker_error", path)]
+        if len(present) > 1:
+            context.ambiguous.add(fqn)  # both a test and a main file: flagged, not guessed
+            continue
+        if not present or present[0] in read:
+            continue
+        if room <= 0:
+            return [Finding("checker/checker_error", path)]
+        room -= 1
+        read.add(present[0])
+        try:
+            content = read_side(pristine, present[0])
+        except CheckerError:
+            return [Finding("checker/checker_error", path)]
+        if content is None:
+            continue
+        try:
+            unit = parse(tokenize(content))
+        except Unparsable:
+            return [Finding("checker/unparsable", path)]
+        package, _, name = fqn.rpartition(".")
+        if unit.package != (package or None) or not any(t.name == name for t in unit.types):
+            context.ambiguous.add(fqn)
+            continue
+        context.extensions[present[0]] = unit
+    return []
 
 
 def _read(paths: Sequence[str], pristine: Path, workspace: Path):
@@ -139,7 +181,11 @@ def check(
         findings, changes = _read([*paths, *extra], pristine, workspace)
         if any(f.code.startswith("checker/") for f in findings):
             return CheckResult(tuple(findings))
-        found = findings + _judge(changes, target, overridden)
+        context = Context(changes, target, overridden)
+        refused = _extensions(context, pristine, MAX_FILES - len(paths) - len(extra))
+        if refused:
+            return CheckResult(tuple(refused))
+        found = findings + _judge(context)
         if any(not finding.is_flag for finding in found):
             found = [finding for finding in found if not finding.is_flag]  # a reject beats a flag
         return CheckResult(tuple(found))

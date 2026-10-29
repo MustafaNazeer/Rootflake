@@ -6,6 +6,7 @@ from rootflake.gate.checker.check import Target, check
 
 PATH = "src/test/java/a/FooTest.java"
 TARGET = Target("a.FooTest", "testFoo")
+PARAMS = "import org.junit.jupiter.params.*;\nimport org.junit.jupiter.params.provider.*;"
 
 
 def codes(before: str | None, after: str | None, tmp_path: Path, target=TARGET) -> set[str]:
@@ -49,7 +50,8 @@ class TestRemoval:
         }
 
     def test_a_changed_test_annotation_on_the_target(self, tmp_path):
-        after = cls(TEST.replace("@Test", "@RepeatedTest(3)"))
+        imports = "import org.junit.Test;\nimport org.junit.jupiter.api.RepeatedTest;"
+        after = cls(TEST.replace("@Test", "@RepeatedTest(3)"), imports=imports)
         assert codes(cls(TEST), after, tmp_path) == {"disable/test_removed"}
 
     def test_a_test_annotation_replaced_by_a_retry_annotation_is_not_a_removal(self, tmp_path):
@@ -95,7 +97,9 @@ class TestDisabling:
          "@BadApple(bugUrl = \"x\")"],
     )  # fmt: skip
     def test_an_added_disabling_annotation_on_a_method(self, tmp_path, annotation):
-        after = cls(f"{annotation} " + TEST)
+        after = cls(
+            f"{annotation} " + TEST, imports="import org.junit.Test;\nimport org.junit.Ignore;"
+        )
         assert codes(cls(TEST), after, tmp_path) == {"disable/test_disabled"}
 
     def test_an_added_disabling_annotation_on_a_class(self, tmp_path):
@@ -132,7 +136,8 @@ class TestOrderParallelismTags:
         assert codes(cls(TEST), cls(TEST, header=header), tmp_path) == {code}
 
     def test_concurrent_execution_is_not_disabling_parallelism(self, tmp_path):
-        after = cls(TEST, header="@Execution(ExecutionMode.CONCURRENT)")
+        imports = "import org.junit.Test;\nimport org.junit.jupiter.api.parallel.*;"
+        after = cls(TEST, header="@Execution(ExecutionMode.CONCURRENT)", imports=imports)
         assert codes(cls(TEST), after, tmp_path) == set()
 
     def test_a_removed_tag(self, tmp_path):
@@ -281,7 +286,8 @@ class TestDomainRulings:
             "@TestFactory Stream<DynamicTest> zones() "
             '{ return Stream.of(dynamicTest("utc", () -> {})); }'
         )
-        assert codes(cls(TEST), cls(TEST + added), tmp_path) == set()
+        imports = "import org.junit.Test;\nimport org.junit.jupiter.api.TestFactory;"
+        assert codes(cls(TEST), cls(TEST + added, imports=imports), tmp_path) == set()
 
     def test_a_parameter_type_change_keeps_the_test(self, tmp_path):
         before = cls("@ParameterizedTest public void testFoo(String z) { assertEquals(1, f(z)); }")
@@ -384,7 +390,8 @@ class TestDomainRulings:
 
     def test_a_trailing_comma_does_not_count_a_case(self, tmp_path):
         template = cls(
-            "@ParameterizedTest @ValueSource(ints = ROWS) public void testFoo(int n) { f(n); }"
+            "@ParameterizedTest @ValueSource(ints = ROWS) public void testFoo(int n) { f(n); }",
+            imports=PARAMS,
         )
         before = template.replace("ROWS", "{1, 2}")
         after = template.replace("ROWS", "{1, 2,}")

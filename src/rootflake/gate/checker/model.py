@@ -55,6 +55,10 @@ class Context:
     target: Target | None
     overridden: Sequence[str] = ()
     budget: ExpansionBudget = field(default_factory=ExpansionBudget)
+    # Pristine files read to resolve a newly referenced extension type (Decision 2), and the
+    # top level names whose file could not be told apart or did not match.
+    extensions: dict[str, CompilationUnit] = field(default_factory=dict)
+    ambiguous: set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         self.before = Program({c.path: c.before for c in self.changes if c.before is not None})
@@ -71,3 +75,16 @@ class Context:
             if is_test_code(c.path, c.after)
             or (c.before is not None and is_test_code(c.path, c.before))
         }
+        self._extended: Program | None = None
+
+    @property
+    def extended(self) -> Program:
+        """The patched files together with the pristine extension files."""
+        if self._extended is None:
+            units = {c.path: c.after for c in self.changes}
+            self._extended = Program({**self.extensions, **units})
+        return self._extended
+
+    @property
+    def pristine_types(self) -> frozenset[str]:
+        return frozenset(Program(self.extensions).types_by_fqn) if self.extensions else frozenset()

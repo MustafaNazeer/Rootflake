@@ -71,3 +71,11 @@ def read_side(root: Path, path: str) -> str | None:
         return data.decode("utf-8")
     except UnicodeDecodeError:
         raise CheckerError(f"{path}: not UTF-8") from None
+
+
+def extension_candidates(module: str, fqn: str) -> list[str]:
+    """Where a top level type may be declared in its referencing file's module, test code
+    first (ADR 0007 Decision 2)."""
+    prefix = f"{module}/" if module else ""
+    rel = fqn.replace(".", "/") + ".java"
+    return [f"{prefix}src/test/java/{rel}", f"{prefix}src/main/java/{rel}"]

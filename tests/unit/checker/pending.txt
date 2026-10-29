@@ -12,32 +12,22 @@ reject-assume-no-exception-in-catch
 reject-catch-assertion-error-empty
 reject-catch-exception-return-early
 reject-catch-throwable-and-print
-reject-composed-annotation-retrying-test
-reject-existing-retry-rule-reused
-reject-http-client-retry-in-test-rule
-reject-invocation-interceptor-retry
-reject-junit-pioneer-retrying-test
 reject-junit4-expected-exception-added
 reject-junit4-expected-exception-rule-added
-reject-junit4-retry-rule-with-annotation
-reject-junit4-retry-rule
 reject-junit5-exception-handler-aborts-failures
 reject-nod-sleep-replaced-by-await
-reject-pristine-rule-retry-supertype
 reject-production-helper-swallows-test-lambda
-reject-rerunner-jupiter-repeated-if-exceptions
 reject-retry-loop-swallows-throwable
-reject-testng-invocation-count-success-percentage
-reject-testng-retry-analyzer
-reject-testng-retry-transformer
 reject-try-fail-always-throwing-expression-hides-body
 reject-try-fail-catch-comparison-failure
 reject-try-fail-guarded-return-before-fail
-reject-wildcard-imported-record-annotation
 # Accept fixtures waiting on Task 7b (kind 2 and kind 3 matches); remove when 7b lands.
 accept-assertion-moved-into-await-condition
 # Fixtures for the Decision 6 forms adopted 2026-10-23; remove each as its rule lands.
 reject-existing-return-moved-earlier
+# Waits on a ruling: Decision 8 step 4 flags every newly added annotation of an unread type,
+# here Spring's @Configuration and @Bean on a nested class that runs no tests.
+accept-spring-order-on-new-test-bean
 # Known false rejects kept as the measured cost of a rule (ADR 0007); these stay until the rule changes.
 accept-conjunction-split-into-separate-assertions
 accept-production-jitter-constant-tightened-test-untouched
