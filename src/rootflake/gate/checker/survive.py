@@ -544,11 +544,14 @@ def _members(program: Program, path: str, decl: TypeDecl):
 
 
 def _unread_supertype(program: Program, path: str, decl: TypeDecl) -> bool:
-    return any(
-        program.resolve_type(owner_path, name, owner.start, header=True).kind != "declared"
-        for owner_path, owner in [(path, decl), *program.supertypes(path, decl)]
-        for name in (*owner.extends, *owner.implements)
-    )
+    """Whether decl or a read supertype extends or implements a type no read file declares;
+    a JDK type carries no test engine member."""
+    for owner_path, owner in [(path, decl), *program.supertypes(path, decl)]:
+        for name in (*owner.extends, *owner.implements):
+            binding = program.resolve_type(owner_path, name, owner.start, header=True)
+            if binding.kind != "declared" and not (binding.fqn or "").startswith("java."):
+                return True
+    return False
 
 
 def _rule_support(program: Program, path: str, decl: TypeDecl) -> bool:

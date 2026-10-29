@@ -695,3 +695,11 @@ class TestEngineSwitches:
         )
         new = old.replace("org.junit.Test", "org.junit.jupiter.api.Test")
         assert codes(old, new, tmp_path) == {"weaken_assertion/assertion_rebound"}
+
+    def test_a_jdk_interface_is_not_an_unread_supertype(self, tmp_path):
+        old = (
+            "package a;\nimport org.junit.Test;\nimport java.io.Serializable;\n"
+            "public class FooTest implements Serializable {\n" + TEST + "\n}\n"
+        )
+        new = old.replace("org.junit.Test", "org.junit.jupiter.api.Test")
+        assert codes(old, new, tmp_path) == set()
