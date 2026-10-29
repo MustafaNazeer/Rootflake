@@ -2633,3 +2633,42 @@ class TestTightenedBoundsBehindConstants:
         before = body_of(statement, "  static final int LIMIT = 100;")
         after = body_of(statement.replace("y()", "z()"), "  static final int LIMIT = 50;")
         assert TOLERANCE in codes(before, after, tmp_path)
+
+
+class TestConditionsAndSubjectsThroughOnceAssignedLocals:
+    REMOVED = "weaken_assertion/assertion_removed"
+    LOOP = 'for (File file : files()) { if (!file.getName().startsWith("t-")) { fail("x"); } }'
+
+    def test_a_guard_rewritten_through_a_local_holding_the_old_condition_is_kept(self, tmp_path):
+        after = (
+            "for (File file : files()) { final String n = file.getName();"
+            ' if (!n.startsWith("t-")) { fail("x "); } }'
+        )
+        assert self.REMOVED not in codes(body_of(self.LOOP), body_of(after), tmp_path)
+
+    def test_a_guard_rewritten_through_a_local_holding_something_else_is_removed(self, tmp_path):
+        after = (
+            "for (File file : files()) { final String n = file.getParent();"
+            ' if (!n.startsWith("t-")) { fail("x "); } }'
+        )
+        assert self.REMOVED in codes(body_of(self.LOOP), body_of(after), tmp_path)
+
+    def test_a_guard_through_a_local_assigned_twice_is_not_read(self, tmp_path):
+        after = (
+            "for (File file : files()) { String n = file.getName(); n = other();"
+            ' if (!n.startsWith("t-")) { fail("x "); } }'
+        )
+        assert self.REMOVED in codes(body_of(self.LOOP), body_of(after), tmp_path)
+
+    def test_a_bounded_subject_read_through_require_non_null_is_kept(self, tmp_path):
+        before = "File dir = dir(); assertTrue(dir.listFiles().length > 0);"
+        after = (
+            "File dir = dir(); File[] fs = Objects.requireNonNull(dir.listFiles());"
+            " assertTrue(fs.length > 0);"
+        )
+        assert self.REMOVED not in codes(body_of(before), body_of(after), tmp_path)
+
+    def test_a_bounded_subject_read_through_a_local_of_another_value_is_removed(self, tmp_path):
+        before = "File dir = dir(); assertTrue(dir.listFiles().length > 0);"
+        after = "File dir = dir(); File[] fs = other(); assertTrue(fs.length > 0);"
+        assert self.REMOVED in codes(body_of(before), body_of(after), tmp_path)

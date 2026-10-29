@@ -82,6 +82,8 @@ class Assertion:
     # ("value", name, number) for a name bound only to a numeric literal, ("set", name) for a
     # name declared with a Set type, from the file and method the assertion sits in.
     facts: frozenset = frozenset()
+    # The guard with each local the method assigns once read as its value, when it differs.
+    read_guard: tuple[str, ...] = ()
 
 
 def _text(unit: CompilationUnit, start: int, end: int) -> str:
@@ -133,12 +135,28 @@ def _split_arguments(unit: CompilationUnit, open_paren: int, close: int) -> tupl
 
 
 def _guard(
-    unit: CompilationUnit, body: Block, index: int, declared: frozenset[str] = frozenset()
+    unit: CompilationUnit,
+    body: Block,
+    index: int,
+    declared: frozenset[str] = frozenset(),
+    read: bool = False,
 ) -> tuple[str, ...]:
-    """The conditions between the method body and the token at index, outermost first."""
+    """The conditions between the method body and the token at index, outermost first. With
+    read, each local the method assigns once is read as its value."""
     guard = []
     path = path_to(unit, index)
     inside = False
+    values: dict[str, str] | None = None
+
+    def header(node: Statement) -> str:
+        nonlocal values
+        if not read:
+            return _text(unit, node.header.start, node.header.end)
+        if values is None:
+            values = _single_locals(unit, body)
+        words = _text(unit, node.header.start, node.header.end).split(" ")
+        return " ".join(values.get(w, w) for w in words)
+
     for depth, node in enumerate(path):
         if node is body:
             inside = True
@@ -149,11 +167,11 @@ def _guard(
             child = path[depth + 1] if depth + 1 < len(path) else None
             if node.kind == "if":
                 branch = "else" if len(node.blocks) > 1 and child is node.blocks[1] else "then"
-                guard.append(f"if {_text(unit, node.header.start, node.header.end)} {branch}")
+                guard.append(f"if {header(node)} {branch}")
             elif node.kind in _LOOPS:
-                guard.append(f"loop {_text(unit, node.header.start, node.header.end)}")
+                guard.append(f"loop {header(node)}")
             elif node.kind == "switch":
-                guard.append(f"switch {_text(unit, node.header.start, node.header.end)}")
+                guard.append(f"switch {header(node)}")
             elif node.kind == "try" and node.blocks and child is node.blocks[0]:
                 if any(not _rethrows(unit, c) for c in node.catches):
                     guard.append("try swallowing")
@@ -164,6 +182,40 @@ def _guard(
         elif isinstance(node, TypeDecl):
             guard.append("class")
     return tuple(guard)
+
+
+def _single_locals(unit: CompilationUnit, body: Block) -> dict[str, str]:
+    """Each local the method declares once, with one declarator, assigned only by its
+    initializer, mapped to that value, so a condition written through `final String n =
+    file.getName();` reads the same as one written with `file.getName()`. A value with an
+    operator outside its brackets is bracketed, so substitution keeps its precedence."""
+    tokens = unit.tokens
+    declared: Counter = Counter()
+    found: dict[str, str] = {}
+    for node in walk(body):
+        if not isinstance(node, Statement) or node.kind != "local_var":
+            continue
+        names = _declarators(tokens, node.start, node.end - 1)
+        for k in names:
+            declared[tokens[k].text] += 1
+        if len(names) == 1 and tokens[names[0] + 1].text == "=":
+            k = names[0]
+            found[tokens[k].text] = _non_null(_bracketed(tokens[k + 2 : node.end - 1]))
+    counts = _assignment_counts(tokens, body.start, body.end)
+    return {n: v for n, v in found.items() if declared[n] == 1 and counts.get(n) == 1 and v}
+
+
+def _bracketed(tokens) -> str:
+    depth, plain = 0, True
+    for token in tokens:
+        if token.text in ("(", "[", "{"):
+            depth += 1
+        elif token.text in (")", "]", "}"):
+            depth -= 1
+        elif depth == 0 and token.kind == "op" and token.text != ".":
+            plain = False
+    text = " ".join(t.text for t in tokens)
+    return text if plain else f"( {text} )"
 
 
 WAIT_CONDITIONS = frozenset(["until", "untilAsserted", "untilAtomic", "untilAccumulated"])
@@ -555,6 +607,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             ),
             arguments=_split_arguments(unit, call.start + 1, _close(unit, call.start + 1)),
             guard=_guard(unit, body, call.start, declared),
+            read_guard=_guard(unit, body, call.start, declared, True),
             exits_before=frozenset(text for at, text in exits if at < call.start),
             credited=credited,
             line=unit.tokens[call.start].line,
@@ -1705,6 +1758,7 @@ def _with_helpers(
                     found.text, found.signature, found.arguments, guard + found.guard,
                     exits | found.exits_before, found.credited, found.line, found.start,
                     False, origin, found.subject, found.facts,
+                    guard + found.read_guard if found.read_guard else (),
                 )
             )  # fmt: skip
     return out
@@ -1714,7 +1768,7 @@ def _as_scanned(assertion: Assertion) -> Assertion:
     return Assertion(
         assertion.text, assertion.signature, assertion.arguments, assertion.guard,
         assertion.exits_before, False, assertion.line, assertion.start, True, assertion.origin,
-        assertion.subject, assertion.facts,
+        assertion.subject, assertion.facts, assertion.read_guard,
     )  # fmt: skip
 
 
@@ -2830,8 +2884,38 @@ def _helpers_kept(old: Assertion, new: Assertion) -> bool:
 
 def _drops_bounded_subject(old: Assertion, new: Assertion) -> bool:
     """Old bounds a subject that new does not bound at all: new checks something else, so the
-    two are not one assertion changed, and old is left to be judged removed."""
-    return not set(_bounds(old)) <= set(_bounds(new))
+    two are not one assertion changed, and old is left to be judged removed. A new subject
+    that starts with a local assigned once is also read with that local's value, so
+    `files.length` with `files = Objects.requireNonNull(dir.listFiles())` bounds
+    `dir.listFiles().length`."""
+    subjects = set(_bounds(new))
+    for subject in list(subjects):
+        name, _, rest = subject.partition(" ")
+        value = _resolved_argument(new, name)
+        if value != name:
+            subjects.add(f"{_non_null(value)} {rest}".strip())
+    return not set(_bounds(old)) <= subjects
+
+
+_NON_NULL = ("Objects . requireNonNull ( ", "requireNonNull ( ")
+
+
+def _non_null(text: str) -> str:
+    """The checked value of `Objects.requireNonNull(x, ...)`, which returns x unchanged."""
+    for head in _NON_NULL:
+        if not text.startswith(head) or not text.endswith(" )"):
+            continue
+        words, depth, out = text[len(head) : -2].split(" "), 0, []
+        for word in words:
+            if word in ("(", "[", "{"):
+                depth += 1
+            elif word in (")", "]", "}"):
+                depth -= 1
+            elif word == "," and depth == 0:
+                break
+            out.append(word)
+        return " ".join(out)
+    return text
 
 
 def _set_converted(old: Assertion, new: Assertion) -> bool:
@@ -2923,8 +3007,16 @@ def _names(a: Assertion) -> set[str]:
 
 
 def _guard_ok(old: Assertion, new: Assertion) -> bool:
-    guard = tuple(g for g in new.guard if g != "wait")
-    return _is_subsequence(guard, old.guard) and new.exits_before <= old.exits_before
+    """New runs under no condition old did not, read as written or with the locals each side
+    assigns once read as their values, so a condition rewritten through such a local holds."""
+
+    def within(new_guard: tuple[str, ...], old_guard: tuple[str, ...]) -> bool:
+        return _is_subsequence(tuple(g for g in new_guard if g != "wait"), old_guard)
+
+    held = within(new.guard, old.guard) or bool(
+        new.read_guard and old.read_guard and within(new.read_guard, old.read_guard)
+    )
+    return held and new.exits_before <= old.exits_before
 
 
 def _match(
