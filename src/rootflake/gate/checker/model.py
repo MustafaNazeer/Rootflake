@@ -60,6 +60,7 @@ class Context:
     extensions: dict[str, CompilationUnit] = field(default_factory=dict)
     ambiguous: set[str] = field(default_factory=set)
     absent: set[str] = field(default_factory=set)  # every candidate checked and not there
+    paths: Sequence[str] = ()  # every path the patch validator approved, Java or not
 
     def __post_init__(self) -> None:
         self.before = Program({c.path: c.before for c in self.changes if c.before is not None})

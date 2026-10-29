@@ -139,7 +139,9 @@ class TestCheckBounds:
             Finding("checker/checker_error", None),
         )
 
-    def test_non_java_paths_are_not_parsed(self, tmp_path):
+    def test_non_java_paths_are_not_parsed_only_flagged(self, tmp_path):
         pristine, workspace = self.trees(tmp_path)
         write(workspace, "src/test/resources/data.bin", b"\xff\xfe")
-        assert check(["src/test/resources/data.bin"], pristine, workspace, TARGET).findings == ()
+        assert check(["src/test/resources/data.bin"], pristine, workspace, TARGET).findings == (
+            Finding("flag/test_resource_changed", "src/test/resources/data.bin"),
+        )

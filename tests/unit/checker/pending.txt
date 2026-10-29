@@ -2,11 +2,6 @@
 # remove a line once its fixture passes. The checker is done when only the known false
 # rejects under the last heading remain.
 accept-id-look-up-column-index
-accept-production-scheduled-retry
-accept-production-sleep-moved-into-new-method
-accept-production-sleep-not-reached-from-test
-accept-test-resource-lighter-workload
-accept-tzd-default-zone-set-and-restored
 reject-nod-sleep-replaced-by-await
 # Accept fixtures waiting on Task 7b (kind 2 and kind 3 matches); remove when 7b lands.
 accept-assertion-moved-into-await-condition

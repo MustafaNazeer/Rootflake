@@ -24,7 +24,7 @@ from rootflake.gate.checker.assertions import (
 from rootflake.gate.checker.calls import Call, calls_in, follow_for_scan, reach
 from rootflake.gate.checker.model import Context, FileChange, Finding
 from rootflake.gate.checker.poll import initializer_spans
-from rootflake.gate.checker.retries import Site, added, member_key, resolve
+from rootflake.gate.checker.retries import Site, _library_wildcards, added, member_key, resolve
 from rootflake.gate.checker.scope import Program, is_library
 from rootflake.gate.checker.survive import loop_key
 from rootflake.gate.checker.syntax import (
@@ -238,9 +238,31 @@ def _swallows(program: Program, path: str, catch: Catch) -> bool:
         return False
     if last.kind == "expression":
         calls = [c for c in calls_in(unit, last) if not c.reference]
-        if calls and calls[0].name == "fail" and calls[0].receiver_at is None:
-            return not _library_name(program, unit, "fail")
+        if calls and calls[0].name == "fail":
+            if calls[0].receiver_at is None:
+                return not _library_name(program, unit, "fail")
+            return not _library_receiver(program, path, calls[0])
     return True
+
+
+def _library_receiver(program: Program, path: str, call: Call) -> bool:
+    """Whether a qualified call's receiver, read with any package before it, resolves to a
+    test library type, as `Assert.fail` and `org.junit.Assert.fail` do."""
+    tokens, j = program.units[path].tokens, call.receiver_at
+    parts = [tokens[j].text]
+    while j >= 2 and tokens[j - 1].text == "." and tokens[j - 2].kind == "ident":
+        parts.insert(0, tokens[j - 2].text)
+        j -= 2
+    binding = program.resolve_type(path, ".".join(parts), j)
+    if binding.kind == "library":
+        return True
+    unit = program.units[path]
+    return (
+        binding.kind == "unresolved"
+        and len(parts) == 1
+        and _library_wildcards(unit)
+        and any(imp.wildcard and not imp.static and is_library(imp.name) for imp in unit.imports)
+    )  # the stricter reading of Decision 8: only library and JDK packages are on demand
 
 
 def _aborts(program: Program, path: str, name: str, index: int) -> bool:
@@ -685,9 +707,9 @@ def _expected_sites(program: Program, path: str) -> list[Site]:
 _EXPECTING = frozenset(["assertThrows", "assertThatThrownBy", "expectThrows", "assertThatCode"])
 
 
-def _expectations(program: Program, path: str, old: bool) -> Counter:
+def _expectations(program: Program, path: str) -> Counter:
     """Per member, the expect calls made on an ExpectedException rule field of the file, and
-    on the old side also the other expected exception checks they may replace."""
+    the other expected exception checks they may replace, counted the same on both sides."""
     unit = program.units[path]
     rules = {
         name for node in walk(unit) if isinstance(node, Field)
@@ -698,7 +720,7 @@ def _expectations(program: Program, path: str, old: bool) -> Counter:
         if call.reference:
             continue
         on_rule = call.receiver in rules and call.name in ("expect", "expectMessage", "expectCause")
-        if on_rule or (old and call.name in _EXPECTING):
+        if on_rule or call.name in _EXPECTING:
             out[member_key(program, unit, call.start)] += 1
     return out
 
@@ -706,8 +728,8 @@ def _expectations(program: Program, path: str, old: bool) -> Counter:
 def _expect_findings(ctx: Context, path: str) -> Iterator[Finding]:
     """An expect call on an ExpectedException rule a member newly makes, beyond the
     expectations it already had, turns a failure into the expected one."""
-    old = _expectations(ctx.before, path, True) if path in ctx.before.units else Counter()
-    new = _expectations(ctx.after, path, False)
+    old = _expectations(ctx.before, path) if path in ctx.before.units else Counter()
+    new = _expectations(ctx.after, path)
     unit = ctx.after.units[path]
     if not +(new - old):
         return

@@ -276,6 +276,49 @@ class TestExpectCallsOnAnExistingRule:
         after = cls(self.RULE + method(body.replace("compute();", "run();")), JUNIT4)
         assert EXPECTED not in codes(before, after, tmp_path)
 
+    def test_an_expect_added_beside_a_kept_assert_throws(self, tmp_path):
+        imports = JUNIT4 + "import static org.junit.jupiter.api.Assertions.assertThrows;\n"
+        body = "assertThrows(IllegalStateException.class, () -> close()); assertTrue(done());"
+        before = cls(self.RULE + method(body), imports)
+        after = cls(
+            self.RULE + method("thrown.expect(Throwable.class); " + body + " throw new Error();"),
+            imports,
+        )
+        assert EXPECTED in codes(before, after, tmp_path)
+
+    def test_an_assert_throws_converted_to_an_expect_is_not(self, tmp_path):
+        imports = JUNIT4 + "import static org.junit.jupiter.api.Assertions.assertThrows;\n"
+        before = cls(
+            self.RULE + method("assertThrows(IllegalStateException.class, () -> close());"),
+            imports,
+        )
+        after = cls(
+            self.RULE + method("thrown.expect(IllegalStateException.class); close();"), imports
+        )
+        assert EXPECTED not in codes(before, after, tmp_path)
+
+
+class TestQualifiedFailRethrows:
+    BEFORE = "service.process();"
+
+    def judge(self, fail: str, tmp_path, imports: str = JUNIT4) -> set[str]:
+        after = f"try {{ service.process(); }} catch (IOException e) {{ {fail}(e.getMessage()); }}"
+        return codes(cls(method(self.BEFORE), imports), cls(method(after), imports), tmp_path)
+
+    def test_assert_fail(self, tmp_path):
+        assert CATCH not in self.judge("Assert.fail", tmp_path)
+
+    def test_a_fully_qualified_fail(self, tmp_path):
+        assert CATCH not in self.judge("org.junit.Assert.fail", tmp_path)
+
+    def test_jupiter_assertions_fail(self, tmp_path):
+        imports = "import org.junit.jupiter.api.Test;\nimport org.junit.jupiter.api.Assertions;\n"
+        assert CATCH not in self.judge("Assertions.fail", tmp_path, imports)
+
+    def test_a_fail_on_a_project_class_swallows(self, tmp_path):
+        imports = JUNIT4 + "import a.util.Checks;\n"
+        assert CATCH in self.judge("Checks.fail", tmp_path, imports)
+
 
 class TestElementAndContainerWrites:
     def test_an_array_element_read_later(self, tmp_path):

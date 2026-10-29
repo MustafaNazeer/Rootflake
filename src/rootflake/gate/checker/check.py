@@ -9,7 +9,15 @@ import re
 from collections.abc import Sequence
 from pathlib import Path
 
-from rootflake.gate.checker import assertions, flow, retries, survive, swallow, timing
+from rootflake.gate.checker import (
+    assertions,
+    flow,
+    production,
+    retries,
+    survive,
+    swallow,
+    timing,
+)
 from rootflake.gate.checker.files import MAX_FILES, CheckerError, extension_candidates, read_side
 from rootflake.gate.checker.lexer import Unparsable, tokenize
 from rootflake.gate.checker.model import CheckResult, Context, FileChange, Finding, Target
@@ -25,7 +33,7 @@ __all__ = [
     "checked_target",
     "target_paths",
 ]
-RULES = (survive, assertions, timing, flow, retries, swallow)
+RULES = (survive, assertions, timing, flow, retries, swallow, production)
 _IDENT = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 _REFUSED = frozenset(["symlink", "not_regular", "mode"])
 _ROOTS = (["src", "test", "java"], ["src", "main", "java"])
@@ -187,7 +195,7 @@ def check(
         findings, changes = _read([*paths, *extra], pristine, workspace)
         if any(f.code.startswith("checker/") for f in findings):
             return CheckResult(tuple(findings))
-        context = Context(changes, target, overridden)
+        context = Context(changes, target, overridden, paths=tuple(paths))
         refused = _extensions(context, pristine, MAX_FILES - len(paths) - len(extra))
         if refused:
             return CheckResult(tuple(refused))
