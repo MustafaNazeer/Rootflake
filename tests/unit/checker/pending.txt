@@ -23,14 +23,10 @@ reject-junit4-retry-rule-with-annotation
 reject-junit4-retry-rule
 reject-junit5-exception-handler-aborts-failures
 reject-nod-sleep-replaced-by-await
-reject-poll-condition-reads-only-clock-field
-reject-poll-condition-reads-only-clock
-reject-poll-helper-asserts-different-state
 reject-pristine-rule-retry-supertype
 reject-production-helper-swallows-test-lambda
 reject-rerunner-jupiter-repeated-if-exceptions
 reject-retry-loop-swallows-throwable
-reject-silent-poll-helper-not-followed-by-assertion
 reject-testng-invocation-count-success-percentage
 reject-testng-retry-analyzer
 reject-testng-retry-transformer

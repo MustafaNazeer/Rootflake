@@ -417,15 +417,10 @@ class TestSleeps:
         after = cls(helper + method("f(); prepare(); assertTrue(ready());"))
         assert codes(before, after, tmp_path) == set()
 
-    def test_a_sleep_in_a_loop_is_left_to_the_poll_loop_rule(self, tmp_path):
-        assert (
-            judged(
-                "f(); assertTrue(ready());",
-                "f(); while (!ready()) { Thread.sleep(10); } assertTrue(ready());",
-                tmp_path,
-            )
-            == set()
-        )
+    def test_an_unbounded_loop_around_a_sleep_is_a_fixed_sleep(self, tmp_path):
+        before = "f(); assertTrue(ready());"
+        after = "f(); while (!ready()) { Thread.sleep(10); } assertTrue(ready());"
+        assert TIMING in judged(before, after, tmp_path)
 
     def test_string_join_is_not_a_sleep(self, tmp_path):
         assert judged('f(); assertEquals("a", g());',

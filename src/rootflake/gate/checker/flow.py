@@ -18,6 +18,7 @@ from collections.abc import Iterator
 from rootflake.gate.checker.assertions import _close, _declarators, _text, is_assertion_name
 from rootflake.gate.checker.calls import Call, calls_in, follow_for_scan, reach
 from rootflake.gate.checker.model import Context, FileChange, Finding
+from rootflake.gate.checker.poll import initializer_spans
 from rootflake.gate.checker.scope import Program
 from rootflake.gate.checker.syntax import Block, CompilationUnit, Field, Lambda, Method, Statement
 from rootflake.gate.checker.timing import (
@@ -236,26 +237,6 @@ def _block_end(nodes: list, statement: Statement) -> int:
     return statement.end
 
 
-def _initializer_spans(tokens, start: int, end: int) -> list[tuple[str, int, int]]:
-    """Each declarator of the declaration in tokens[start:end] with its initializer span."""
-    out = []
-    for at in _declarators(tokens, start, end):
-        if at + 1 >= end or tokens[at + 1].text != "=":
-            continue
-        depth, k = 0, at + 2
-        while k < end:
-            text = tokens[k].text if tokens[k].kind == "op" else ""
-            if text in ("(", "[", "{"):
-                depth += 1
-            elif text in (")", "]", "}"):
-                depth -= 1
-            elif depth == 0 and text in (",", ";"):
-                break
-            k += 1
-        out.append((tokens[at].text, at + 2, k))
-    return out
-
-
 def _local_declared(unit: CompilationUnit, method: Method | None, name: str) -> bool:
     if method is None or method.body is None:
         return False
@@ -297,7 +278,7 @@ def _contexts(program: Program, path: str, i: int, kinds: frozenset) -> Iterator
         if not isinstance(node, Statement):
             continue
         if node.kind == "local_var":
-            for name, s, e in _initializer_spans(tokens, node.start, node.end):
+            for name, s, e in initializer_spans(tokens, node.start, node.end):
                 if s <= i < e:
                     yield ("name", name, path, node.end, _block_end(nodes, node))
             return
@@ -405,7 +386,7 @@ def _declarations(unit: CompilationUnit) -> dict[tuple, tuple[str, int, int, boo
                 out[(member, name)] = (text, unit.tokens[span.start].line, span.start, True)
         elif isinstance(node, Statement) and node.kind == "local_var":
             member = _member_key(path_to(unit, node.start))
-            for name, s, e in _initializer_spans(unit.tokens, node.start, node.end):
+            for name, s, e in initializer_spans(unit.tokens, node.start, node.end):
                 order[(member, name)] += 1
                 key = (member, name, order[(member, name)])
                 out[key] = (_text(unit, s, e), unit.tokens[s].line, s, False)
@@ -499,7 +480,7 @@ def _elapsed(unit: CompilationUnit, call: Call) -> bool:
     names = {t.text for t in unit.tokens[call.end : close] if t.kind == "ident"}
     for node in walk(method.body):
         if isinstance(node, Statement) and node.kind == "local_var":
-            for name, s, e in _initializer_spans(unit.tokens, node.start, node.end):
+            for name, s, e in initializer_spans(unit.tokens, node.start, node.end):
                 if name in names and _clock_read(unit, s, e):
                     return True
     return False

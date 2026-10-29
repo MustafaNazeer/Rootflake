@@ -9,13 +9,15 @@ smallest of any extra calls are the newly added ones, judged as condition waits.
 A fixed sleep is added when its statement, with the statement that follows it, is not in the
 before image of its member, so a sleep moved within its method counts as added, and so is every
 sleep a newly added or moved call reaches through the helpers it may call. A sleep in a loop, or
-reached through a loop, is left to the hand written poll loop rule, which is not built yet.
+reached through one, is a fixed sleep unless the poll module finds the loop is a poll loop; a
+raised interval in an existing loop is widened either way.
 """
 
 from collections import Counter
 from collections.abc import Iterator
 from dataclasses import dataclass
 
+from rootflake.gate.checker import poll
 from rootflake.gate.checker.assertions import _close, _split_arguments, _text, is_assertion_name
 from rootflake.gate.checker.calls import Call, Reached, calls_in, follow_for_scan, reach
 from rootflake.gate.checker.model import Context, FileChange, Finding
@@ -174,10 +176,6 @@ def _statement(nodes: list) -> tuple[Statement | None, Block | None]:
         if isinstance(nodes[k], Statement) and isinstance(nodes[k - 1], Block):
             return nodes[k], nodes[k - 1]
     return None, None
-
-
-def _in_loop(nodes: list) -> bool:
-    return any(isinstance(n, Statement) and n.kind in _LOOPS for n in nodes)
 
 
 @dataclass(frozen=True)
@@ -529,30 +527,134 @@ def _over_limit(bound: Bound) -> bool:
 # -- sleeps -------------------------------------------------------------------------------
 
 
+def _innermost_loop(unit: CompilationUnit, index: int, method: Method) -> Statement | None:
+    for node in reversed(path_to(unit, index)):
+        if node is method:
+            return None
+        if isinstance(node, Statement) and node.kind in _LOOPS:
+            return node
+    return None
+
+
+def _method_at(unit: CompilationUnit, index: int) -> Method | None:
+    return next((n for n in reversed(path_to(unit, index)) if isinstance(n, Method)), None)
+
+
+def _following(unit: CompilationUnit, statement: Statement) -> Statement | None:
+    nodes = path_to(unit, statement.start)
+    for k in range(len(nodes) - 1, 0, -1):
+        if nodes[k] is statement and isinstance(nodes[k - 1], Block):
+            statements = nodes[k - 1].statements
+            at = next(i for i, s in enumerate(statements) if s is statement)
+            return statements[at + 1] if at + 1 < len(statements) else None
+    return None
+
+
+def _asserted_result(unit: CompilationUnit, call: Call) -> bool:
+    """Whether the call is an argument of an assertion, which checks what it returns."""
+    statement, _ = _statement(path_to(unit, call.start))
+    if statement is None:
+        return False
+    for outer in calls_in(unit, statement):
+        if outer.reference or not (is_assertion_name(outer.name) or outer.name == "fail"):
+            continue
+        if outer.end < call.start < _close(unit, outer.end):
+            return True
+    return False
+
+
+def _fixed_loop(
+    program: Program,
+    path: str,
+    method: Method,
+    loop: Statement,
+    sleep_at: int,
+    scope: poll.Scope,
+    check: tuple[CompilationUnit, Statement | None, Call | None],
+) -> bool:
+    """Whether a loop around a sleep is a fixed sleep rather than a poll loop. check is the
+    caller's file, the statement whose follower must assert a silent loop's exit condition,
+    and the call whose result may be asserted instead."""
+    found = poll.read_loop(program, path, method, loop, sleep_at, scope)
+    if not poll.qualifies(found):
+        return True
+    if found.asserts:
+        return False
+    unit, statement, call = check
+    if call is not None and _asserted_result(unit, call):
+        return False
+    if statement is None:
+        return False  # a silent loop in a helper is judged at each new call of it
+    after = _following(unit, statement)
+    exits = [poll.substitute(e, scope.mapping) for e in found.exits]
+    return after is None or not poll.asserts_condition(unit, after, exits)
+
+
+def _called(program: Program, method: Method) -> bool:
+    """Whether a read file calls a method of this name, so its loop is judged at each call."""
+    return any(
+        not c.reference and c.name == method.name
+        for unit in program.units.values()
+        for c in calls_in(unit, _Whole(unit))
+    )
+
+
 def _reaches_sleep(ctx: Context, path: str, call: Call) -> bool:
-    """Whether a call reaches a fixed sleep through the helpers it may call, outside any loop."""
+    """Whether a call reaches a fixed sleep through the helpers it may call: a sleep outside any
+    loop, or in a loop that is not a poll loop."""
     program = ctx.after
     roots = follow_for_scan(program, path, call)
     if not roots:
         return False
+    unit = program.units[path]
+    caller = _method_at(unit, call.start)
+    caller_defs = poll._local_definitions(unit, caller.body) if caller and caller.body else {}
+    statement, _ = _statement(path_to(unit, call.start))
+    mappings: dict[int, dict] = {}
+
+    def mapping(reached: Reached) -> dict:
+        if id(reached) not in mappings:
+            if reached.parent is None:
+                found = poll.call_mapping(unit, call, reached.method, {})
+            else:
+                outer = program.units[reached.parent.path]
+                found = poll.call_mapping(
+                    outer, reached.call, reached.method, mapping(reached.parent)
+                )
+            mappings[id(reached)] = found
+        return mappings[id(reached)]
+
     for reached in reach(program, roots, True, ctx.budget):
-        if reached.method.body is None or _through_loop(program, reached):
+        if reached.method.body is None:
             continue
-        unit = program.units[reached.path]
-        for inner in calls_in(unit, reached.method.body):
-            if _in_loop(path_to(unit, inner.start)):
+        inner_unit = program.units[reached.path]
+        for inner in calls_in(inner_unit, reached.method.body):
+            if inner.reference or not sleep_form(program, reached.path, inner):
                 continue
-            if sleep_form(program, reached.path, inner):
+            where, at, holder = reached, inner.start, reached
+            loop = _innermost_loop(inner_unit, at, reached.method)
+            while loop is None and where.parent is not None:
+                at, where = where.call.start, where.parent
+                loop = _innermost_loop(program.units[where.path], at, where.method)
+                holder = where
+            if loop is not None:
+                scope = poll.Scope(
+                    program,
+                    mapping(holder),
+                    poll._counters(program.units[holder.path], loop),
+                    poll._local_definitions(program.units[holder.path], holder.method.body),
+                    caller_defs,
+                )
+                if _fixed_loop(program, holder.path, holder.method, loop, at, scope,
+                               (unit, statement, call)):  # fmt: skip
+                    return True
+                continue
+            loop = _innermost_loop(unit, call.start, caller) if caller is not None else None
+            if loop is None:
                 return True
-    return False
-
-
-def _through_loop(program: Program, reached: Reached) -> bool:
-    while reached.parent is not None:
-        unit = program.units[reached.parent.path]
-        if reached.call is not None and _in_loop(path_to(unit, reached.call.start)):
-            return True
-        reached = reached.parent
+            scope = poll.Scope(program, {}, poll._counters(unit, loop), caller_defs, caller_defs)
+            if _fixed_loop(program, path, caller, loop, call.start, scope, (unit, loop, None)):
+                return True
     return False
 
 
@@ -560,15 +662,12 @@ def _sleep_findings(ctx: Context, change: FileChange, found: _Bounds) -> Iterato
     program, unit = ctx.after, change.after
     old_sites = _sites(change.before)
     new_sites = _sites(unit)
-    lowered = _lowered_sleeps(ctx, change)
+    lowered, old_keys = _lowered_sleeps(ctx, change)
     seen: set[int] = set()
     direct = {at for at, _ in found.sleeps}
     for call in calls_in(unit, _Whole(unit)):
         if call.reference or call.start in seen:
             continue
-        nodes = path_to(unit, call.start)
-        if _in_loop(nodes):
-            continue  # a poll interval or a fixed sleep: the poll loop rule decides
         site = _site(unit, call.start)
         if new_sites[site] <= old_sites[site]:
             continue
@@ -576,6 +675,15 @@ def _sleep_findings(ctx: Context, change: FileChange, found: _Bounds) -> Iterato
         if call.start in direct or sleep_form(program, change.path, call):
             if (site.member, site.following, line) in lowered:
                 continue
+            method = _method_at(unit, call.start)
+            loop = _innermost_loop(unit, call.start, method) if method is not None else None
+            key = (site.member, site.following, _masked(site.statement))
+            if loop is not None and key not in old_keys:
+                defs = poll._local_definitions(unit, method.body)
+                scope = poll.Scope(program, {}, poll._counters(unit, loop), defs, defs)
+                check = (unit, None if _called(program, method) else loop, None)
+                if not _fixed_loop(program, change.path, method, loop, call.start, scope, check):
+                    continue
             seen.add(call.start)
             yield Finding(CODE, change.path, line)
         elif _reaches_sleep(ctx, change.path, call):
@@ -583,11 +691,12 @@ def _sleep_findings(ctx: Context, change: FileChange, found: _Bounds) -> Iterato
             yield Finding(CODE, change.path, line)
 
 
-def _lowered_sleeps(ctx: Context, change: FileChange) -> set[tuple]:
-    """Sleeps whose statement changed only by a duration that went down."""
-    out = set()
+def _lowered_sleeps(ctx: Context, change: FileChange) -> tuple[set[tuple], set[tuple]]:
+    """Sleeps whose statement changed only by a duration that went down, and the sites of
+    every sleep in the before image with its literals masked."""
+    out: set[tuple] = set()
     if change.before is None:
-        return out
+        return out, set()
 
     def durations(program: Program, unit: CompilationUnit) -> dict:
         found = {}
@@ -604,6 +713,7 @@ def _lowered_sleeps(ctx: Context, change: FileChange) -> set[tuple]:
         return found
 
     old = durations(ctx.before, change.before)
+    old_keys = set(old)
     for key, items in durations(ctx.after, change.after).items():
         olds = old.get(key, [])
         if len(items) > len(olds) or not olds:
@@ -617,7 +727,7 @@ def _lowered_sleeps(ctx: Context, change: FileChange) -> set[tuple]:
         ):
             if ms is not None and ms <= limit:
                 out.add((key[0], key[1], line))
-    return out
+    return out, old_keys
 
 
 def _masked(text: str) -> str:
