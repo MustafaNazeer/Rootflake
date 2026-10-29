@@ -155,7 +155,10 @@ def _edges(program: Program, path: str, method: Method, budget: ExpansionBudget 
             budget.spend(method.line)
         unit, out = program.units[path], []
         if method.body is not None:
-            selves = _self_fields(unit)
+            key = ("production", "selves", path)
+            if key not in program.memo:
+                program.memo[key] = _self_fields(unit)
+            selves = program.memo[key]
             for call in calls_in(unit, method.body):
                 hands = not call.reference and _hands_on_itself(unit, call, selves)
                 plain = call.receiver in (None, "this")

@@ -137,6 +137,16 @@ class TestProductionRetry:
         assert RETRY not in found
         assert time.monotonic() - started < 20
 
+    def test_many_methods_with_quiet_catches_stay_fast(self, tmp_path):
+        bodies = "".join(
+            f'void m{i}() {{ try {{ w(); }} catch (Exception e) {{ LOG.warn("x", e); }} }}\n'
+            for i in range(3000)
+        )
+        started = time.monotonic()
+        found = production(bodies + "int x = 1;", bodies + "int x = 2;", tmp_path)
+        assert RETRY not in found
+        assert time.monotonic() - started < 6
+
     def test_a_rescheduling_method_that_already_was_one_is_not(self, tmp_path):
         before = (
             'void run() { try { connect(); } catch (Exception e) { LOG.warn("x", e); }'
