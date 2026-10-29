@@ -16,6 +16,7 @@ CONVERSIONS = {
     "toHours": 3.6e6, "toDays": 8.64e7,
 }  # fmt: skip
 _CASTS = frozenset(["int", "long", "short", "byte", "double", "float"])
+_INTEGRAL = frozenset(["int", "long", "short", "byte"])
 _UNIT_QUALIFIERS = ([], ["TimeUnit"], ["java", "util", "concurrent", "TimeUnit"])
 
 Lookup = Callable[[str], float | None]
@@ -28,6 +29,11 @@ def literal(word: str) -> float | None:
     try:
         if text[:2].lower() == "0x":
             return float(int(text[2:].rstrip("lL"), 16))
+        if text[:2].lower() == "0b":
+            return float(int(text[2:].rstrip("lL"), 2))
+        digits = text.rstrip("lL")
+        if len(digits) > 1 and digits[0] == "0" and digits.isdigit():
+            return float(int(digits, 8))  # Java reads a leading zero as octal
         return float(text.rstrip("lLdDfF"))
     except ValueError:
         return None
@@ -67,6 +73,8 @@ class _Folder:
                 divisor = self.unary()
                 if divisor == 0:
                     raise ValueError("division by zero")
+                if value == int(value) and divisor == int(divisor) and value % divisor:
+                    raise ValueError("integer or floating division")  # the types decide
                 value /= divisor
         return value
 
@@ -76,8 +84,10 @@ class _Folder:
             self.take()
             return -self.unary() if word == "-" else self.unary()
         if word == "(" and self.peek(1) in _CASTS and self.peek(2) == ")":
+            cast = self.peek(1)
             self.i += 3
-            return self.unary()
+            value = self.unary()
+            return float(int(value)) if cast in _INTEGRAL else value  # narrowing truncates
         return self.primary()
 
     def primary(self) -> float:
@@ -130,13 +140,17 @@ def constant_lookup(constants: dict[str, str]) -> Lookup:
     """A lookup through a file's fields declared once with an initializer, followed through
     each other and stopping at a cycle."""
     seen: set[str] = set()
+    memo: dict[str, float | None] = {}
 
     def lookup(name: str) -> float | None:
+        if name in memo:
+            return memo[name]
         if name in seen or name not in constants:
             return None
         seen.add(name)
         try:
-            return fold(constants[name], lookup)
+            memo[name] = fold(constants[name], lookup)
+            return memo[name]
         finally:
             seen.discard(name)
 

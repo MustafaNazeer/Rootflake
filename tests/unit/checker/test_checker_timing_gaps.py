@@ -1,4 +1,7 @@
+import pytest
 from test_checker_timing import TIMING, cls, codes, judged, method
+
+from rootflake.gate.checker.values import constant_lookup, fold
 
 POLL = "while (!ready() && System.currentTimeMillis() < deadline) { Thread.sleep(50); }"
 
@@ -189,3 +192,21 @@ class TestLoweredThroughConstants:
         before = cls(f"{field}\n{method('f(); Thread.sleep(200); g();')}")
         after = cls(f"{field}\n{method('f(); Thread.sleep(LONG); g();')}")
         assert TIMING in codes(before, after, tmp_path)
+
+
+class TestJavaFolding:
+    @pytest.mark.parametrize(
+        ("text", "value"),
+        [("010", 8), ("0b101", 5), ("( int ) 2.7", 2), ("( long ) ( 0.25 * 1000 )", 250),
+         ("( double ) 2.5", 2.5), ("10 / 2", 5), ("2.5 / 2", 1.25)],
+    )  # fmt: skip
+    def test_java_semantics(self, text, value):
+        assert fold(text) == value
+
+    def test_a_division_whose_types_decide_does_not_fold(self):
+        assert fold("5 / 2") is None
+
+    def test_a_doubling_chain_folds_quickly(self):
+        constants = {f"C{k}": f"C{k - 1} + C{k - 1}" for k in range(1, 60)}
+        constants["C0"] = "1"
+        assert constant_lookup(constants)("C59") == 2.0**59
