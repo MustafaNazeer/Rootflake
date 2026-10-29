@@ -150,7 +150,7 @@ def _returns(method: Method) -> int:
     )
 
 
-def _loop_exits(unit: CompilationUnit, method: Method, old_loops: Counter | None = None) -> int:
+def _loop_exits(unit: CompilationUnit, method: Method, old_loops: tuple | None = None) -> int:
     """`continue` statements, and `break` statements whose nearest breakable is a loop, outside
     nested lambdas and classes; each one can skip the cases after it. With old_loops, the loops
     of the before method, an exit that is the last statement of a loop the patch added skips no
@@ -185,18 +185,35 @@ def loop_key(unit: CompilationUnit, loop: Statement) -> tuple[str, str]:
         t.text for t in unit.tokens[header.start : header.end])  # fmt: skip
 
 
-def loops_of(unit: CompilationUnit, method: Method) -> Counter:
-    return Counter(
-        loop_key(unit, n)
-        for n in _outside_nested(method.body)
-        if isinstance(n, Statement) and n.kind in ("for", "while", "do")
-    )
+def loops_of(unit: CompilationUnit, method: Method) -> tuple[Counter, set[str]]:
+    """The loops of a method by kind and header text, and the text of every statement that sits
+    inside one of them."""
+    keys: Counter = Counter()
+    inside: set[str] = set()
+    for n in _outside_nested(method.body):
+        if isinstance(n, Statement) and n.kind in ("for", "while", "do"):
+            keys[loop_key(unit, n)] += 1
+            inside |= _statement_texts(unit, n)
+    return keys, inside
 
 
-def _added_and_trailing(unit: CompilationUnit, around: list, node: Statement, old: Counter) -> bool:
-    """Whether the loop an exit leaves is not in the before method, and on the way down to the
-    exit every block's statement on that way is the block's last."""
-    if old[loop_key(unit, around[0])]:
+def _statement_texts(unit: CompilationUnit, loop: Statement) -> set[str]:
+    return {
+        text(unit, n)
+        for block in loop.blocks
+        for n in walk(block)
+        if isinstance(n, Statement) and not n.blocks
+    }
+
+
+def _added_and_trailing(unit: CompilationUnit, around: list, node: Statement, old: tuple) -> bool:
+    """Whether the loop an exit leaves is one the patch added, and on the way down to the exit
+    every block's statement on that way is the block's last. A loop is added when no loop of
+    its kind and header text was in the before method and it holds no statement that sat
+    inside a loop there, so editing a loop's header does not make it new."""
+    keys, inside = old
+    loop = around[0]
+    if keys[loop_key(unit, loop)] or (_statement_texts(unit, loop) - {text(unit, node)}) & inside:
         return False
     chain = [*around[1:], node]
     for k, block in enumerate(chain[:-1]):

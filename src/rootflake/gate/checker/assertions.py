@@ -1188,7 +1188,11 @@ def _positioned_facts(program: Program, path: str, a: Assertion, body: Block, st
             found = _name_source(program, path, name, start)
         sources = [] if found is None else [found]
         if found is None or found[0][0] != "local":
-            sources.extend(_every_source(program, name))
+            every = _every_source(program, name)
+            receiver = _receiver_type(unit, i) if call and tokens[i - 1].text == "." else None
+            if receiver is not None:
+                every = [s for s in every if _may_dispatch(program, s, receiver)]
+            sources.extend(every)
         if sources:
             kind = "helper" if call else "deps"
             out.add((kind, name, _reached(program, sources, True, tokens[i].line)))
@@ -1226,10 +1230,14 @@ def _receiver_type(unit: CompilationUnit, member: int) -> str | None:
     for node in reversed(path_to(unit, j)):
         if isinstance(node, Lambda) and name in node.params:
             return None
+        if isinstance(node, TypeDecl):
+            return None  # a field of a nested or anonymous class can shadow an outer local
         if isinstance(node, Method):
             for p in node.params:
                 if p.name == name:
-                    return p.type if re.fullmatch(r"[A-Za-z_$][\w$]*", p.type) else None
+                    if not re.fullmatch(r"[A-Za-z_$][\w$]*", p.type):
+                        return None
+                    return None if _type_variable(unit, j, p.type) else p.type
         if isinstance(node, Block):
             for statement in node.statements:
                 if statement.start >= j:
@@ -1244,8 +1252,36 @@ def _receiver_type(unit: CompilationUnit, member: int) -> str | None:
                         return None
                     if at[0] >= 2 and tokens[at[0] - 2].text == ".":
                         return None
-                    return type_token.text
+                    return None if _type_variable(unit, j, type_token.text) else type_token.text
     return None
+
+
+def _type_variable(unit: CompilationUnit, index: int, name: str) -> bool:
+    """Whether a simple type name at index is a type parameter of an enclosing method or class,
+    which stands for any of its bounds' subtypes."""
+    tokens = unit.tokens
+    for node in path_to(unit, index):
+        if not isinstance(node, Method | TypeDecl) or not node.type_params:
+            continue
+        depth, k = 0, node.start
+        while k < len(tokens):
+            text = tokens[k].text
+            if text in ("(", "{"):
+                j = k - 1
+                while j > 0 and tokens[j - 1].text == "." and tokens[j - 2].kind == "ident":
+                    j -= 2
+                if text == "{" or tokens[j - 1].text != "@":
+                    break
+                k = _close(unit, k) + 1  # an annotation's arguments
+                continue
+            if text == "<":
+                depth += 1
+            elif text in (">", ">>", ">>>"):
+                depth -= len(text)
+            elif depth == 1 and tokens[k - 1].text in ("<", ",") and text == name:
+                return True
+            k += 1
+    return False
 
 
 def _may_dispatch(program: Program, source, receiver: str) -> bool:
