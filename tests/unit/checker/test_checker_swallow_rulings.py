@@ -246,7 +246,25 @@ class TestCopiesAndStoresThatDoNotCount:
 
 
 class TestCatchesInWorkerThreads:
-    AFTER = " assertEquals(1, svc.count());"
+    BEFORE = "assertEquals(1, svc.count());"
+
+    @pytest.mark.parametrize(
+        "worker",
+        [
+            "new Thread(() -> { try { b.await(); svc.run(); }"
+            " catch (InterruptedException | BrokenBarrierException e) { e.printStackTrace(); } })"
+            ".start();",
+            "Thread t = new Thread(() -> { try { b.await(); } catch (Exception e) { log(e); } });"
+            " t.start(); t.join();",
+            "ExecutorService pool = Executors.newSingleThreadExecutor();"
+            " pool.execute(() -> { try { b.await(); } catch (Exception e) { log(e); } });",
+            "new Thread(() -> { while (true) { try { svc.handle(queue.take()); }"
+            " catch (InterruptedException e) { break; } } }).start();",
+        ],
+    )
+    def test_new_work_in_a_started_worker_that_only_reports_is_accepted(self, worker, tmp_path):
+        found = judged(self.BEFORE, worker + " " + self.BEFORE, tmp_path)
+        assert not {c for c in found if c.startswith("swallow_failure/")}
 
     @pytest.mark.parametrize(
         ("before", "after"),
@@ -254,40 +272,29 @@ class TestCatchesInWorkerThreads:
             ("new Thread(() -> { svc.run(); }).start();",
              "new Thread(() -> { try { svc.run(); } catch (Exception e) { e.printStackTrace(); } })"
              ".start();"),
-            ("pool.execute(() -> { svc.run(); });",
-             "pool.execute(() -> { try { svc.run(); } catch (Exception e) { log.warn(e); } });"),
-            ("new Thread(() -> { while (true) { svc.handle(queue.take()); } }).start();",
-             "new Thread(() -> { while (true) { try { svc.handle(queue.take()); }"
-             " catch (InterruptedException e) { break; } } }).start();"),
+            ("", "new Thread(() -> { try { b.await(); } catch (Exception e) { log(e); } }).run();"),
+            ("", "Thread t = new Thread(() -> { try { b.await(); }"
+                 " catch (Exception e) { log(e); } }); t.run();"),
+            ("", "runner.execute(() -> { try { b.await(); } catch (Exception e) { log(e); } });"),
+            ("", "new Thread(() -> { try { b.await(); } catch (Exception e) { log(e); }"
+                 " svc.finish(); }).start();"),
+            ("", "pool.submit(() -> { try { b.await(); }"
+                 " catch (Exception e) { e.printStackTrace(); } return 1; }).get();"),
+            ("", "new Thread(() -> { try { b.await(); } catch (Exception e) { done.set(true); } })"
+                 ".start();"),
+            ("", "new Thread(() -> { try { b.await(); } catch (Exception e) { ok = true; } })"
+                 ".start();"),
         ],
     )  # fmt: skip
-    def test_a_catch_that_only_reports_in_a_worker_thread_is_accepted(
-        self, before, after, tmp_path
-    ):
-        found = judged(before + self.AFTER, after + self.AFTER, tmp_path)
-        assert not {c for c in found if c.startswith("swallow_failure/")}
+    def test_other_worker_shapes_are_still_judged(self, before, after, tmp_path):
+        assert CATCH in judged(before + " " + self.BEFORE, after + " " + self.BEFORE, tmp_path)
 
-    @pytest.mark.parametrize(
-        ("before", "after"),
-        [
-            ("pool.submit(() -> { svc.run(); return 1; }).get();",
-             "pool.submit(() -> { try { svc.run(); } catch (Exception e) { e.printStackTrace(); }"
-             " return 1; }).get();"),
-            ("new Thread(() -> { svc.run(); }).start();",
-             "new Thread(() -> { try { svc.run(); } catch (Exception e) { done.set(true); } })"
-             ".start();"),
-            ("new Thread(() -> { svc.run(); }).start();",
-             "new Thread(() -> { try { svc.run(); } catch (Exception e) { ok = true; } })"
-             ".start();"),
-            ("new Thread(() -> { svc.run(); }).start();",
-             "new Thread(() -> { try { svc.run(); } catch (Exception e) { latch.countDown(); } })"
-             ".start();"),
-        ],
-    )  # fmt: skip
-    def test_a_submitted_task_or_a_catch_that_sets_state_is_still_judged(
-        self, before, after, tmp_path
-    ):
-        assert CATCH in judged(before + self.AFTER, after + self.AFTER, tmp_path)
+    def test_a_worker_is_judged_when_a_read_file_installs_an_uncaught_handler(self, tmp_path):
+        worker = (
+            "Thread t = new Thread(() -> { try { b.await(); } catch (Exception e) { log(e); } });"
+            " t.setUncaughtExceptionHandler((th, e) -> err.set(e)); t.start(); t.join();"
+        )
+        assert CATCH in judged(self.BEFORE, worker + " " + self.BEFORE, tmp_path)
 
 
 class TestOtherEditsInTheSameMember:

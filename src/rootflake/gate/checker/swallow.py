@@ -571,7 +571,7 @@ def _try_findings(ctx: Context, change: FileChange) -> Iterator[Finding]:
     for statement, fresh, twin in _judged(ctx, change):
         if not any(_swallows(ctx.after, change.path, c) for c in statement.catches):
             continue
-        if _on_a_worker(unit, statement) and all(_only_reports(unit, c) for c in statement.catches):
+        if _quiet_worker_catch(ctx, change, statement):
             continue  # what a worker thread throws never fails the test (semantics note, 19)
         nodes = path_to(unit, statement.start)
         block = statement.blocks[0]
@@ -638,11 +638,54 @@ _REPORTS = _LOG_CALLS | frozenset(
 )
 
 
-def _on_a_worker(unit: CompilationUnit, statement: Statement) -> bool:
-    """Whether a statement sits in a lambda handed straight to `new Thread(...)` or to an
-    `execute(...)` call, whose exceptions go to the thread's uncaught exception handler or into
-    a future no one reads, and never fail the test. A lambda given to `submit` is not one: its
-    exception comes back from `get`."""
+_EXECUTORS = frozenset([
+    "Executor", "ExecutorService", "ScheduledExecutorService", "ThreadPoolExecutor",
+    "ScheduledThreadPoolExecutor", "ForkJoinPool",
+])  # fmt: skip
+_HANDLER_SETTERS = frozenset(["setUncaughtExceptionHandler", "setDefaultUncaughtExceptionHandler"])
+
+
+def _quiet_worker_catch(ctx: Context, change: FileChange, statement: Statement) -> bool:
+    """Whether a swallowing try sits in a worker thread where it can hide nothing: the lambda
+    runs on another thread (`_on_a_worker`), every catch only reports (`_only_reports`), the
+    try holds only code new to its member and makes no call a lost statement made, nothing
+    follows it in the lambda, and no read file installs an uncaught exception handler that a
+    test could check."""
+    unit = change.after
+    if not _on_a_worker(ctx.after, change.path, statement):
+        return False
+    if not all(_only_reports(unit, c) for c in statement.catches):
+        return False
+    lam = next(n for n in reversed(path_to(unit, statement.start)) if isinstance(n, Lambda))
+    if any(
+        isinstance(n, Statement) and n.start >= statement.end and n.start < lam.end
+        for n in walk(lam)
+    ):
+        return False
+    nodes = path_to(unit, statement.start)
+    key = tuple((kind, name) for kind, name, _ in _owner_key(unit, nodes))
+    block = statement.blocks[0]
+    if not _all_new(ctx, change, key, block) or _lost_reappears(ctx, change, nodes, block):
+        return False
+    return not _installs_handler(ctx.after)
+
+
+def _installs_handler(program: Program) -> bool:
+    memo = ("swallow/handlers",)
+    if memo not in program.memo:
+        program.memo[memo] = any(
+            t.text in _HANDLER_SETTERS for unit in program.units.values() for t in unit.tokens
+        )
+    return program.memo[memo]
+
+
+def _on_a_worker(program: Program, path: str, statement: Statement) -> bool:
+    """Whether a statement sits in a lambda handed straight to a `new Thread(...)` that is then
+    started, or to `execute` on a JDK executor, so it runs on another thread whose exceptions
+    go to its uncaught exception handler or into a future no one reads, and never fail the
+    test. A lambda given to `submit` is not one, since `get` hands its exception back; nor is a
+    thread that is run rather than started, or an `execute` a read file declares."""
+    unit = program.units[path]
     lam = next((n for n in reversed(path_to(unit, statement.start)) if isinstance(n, Lambda)), None)
     if lam is None:
         return False
@@ -653,16 +696,63 @@ def _on_a_worker(unit: CompilationUnit, statement: Statement) -> bool:
             depth += 1
         elif text in ("(", "[", "{"):
             if depth == 0:
-                if text != "(" or k == 0:
+                if text != "(" or k < 2:
                     return False
                 name = tokens[k - 1].text
-                if name == "Thread" and k >= 2 and tokens[k - 2].text == "new":
-                    return True
-                return name == "execute" and k >= 2 and tokens[k - 2].text == "."
+                if name == "Thread" and tokens[k - 2].text == "new":
+                    return _started(unit, k - 2, _close(unit, k))
+                if name == "execute" and tokens[k - 2].text == ".":
+                    return not program.methods_by_name.get("execute") and _an_executor(unit, k - 3)
+                return False
             depth -= 1
         elif text == "," and depth == 0:
             return False
     return False
+
+
+def _started(unit: CompilationUnit, new: int, close: int) -> bool:
+    """Whether the thread made at `new` is started and never run on the calling thread: the
+    expression is started directly, or the local it initializes is started and not run."""
+    tokens = unit.tokens
+    after = [t.text for t in tokens[close + 1 : close + 4]]
+    if after == [".", "start", "("]:
+        return True
+    if new < 2 or tokens[new - 1].text != "=" or tokens[new - 2].kind != "ident":
+        return False
+    name = tokens[new - 2].text
+    method = next((n for n in reversed(path_to(unit, new)) if isinstance(n, Method)), None)
+    if method is None or method.body is None:
+        return False
+    uses = [
+        tokens[k + 2].text
+        for k in range(method.body.start, method.body.end - 2)
+        if tokens[k].text == name and tokens[k + 1].text == "."
+        and (k == 0 or tokens[k - 1].text != ".")
+    ]  # fmt: skip
+    return "start" in uses and "run" not in uses
+
+
+def _an_executor(unit: CompilationUnit, receiver: int) -> bool:
+    """Whether the receiver at a token is a local or parameter declared as a JDK executor, or a
+    call to an `Executors.new...` factory."""
+    tokens = unit.tokens
+    if tokens[receiver].text == ")":
+        depth, k = 0, receiver
+        while k >= 0:
+            if tokens[k].text == ")":
+                depth += 1
+            elif tokens[k].text == "(":
+                depth -= 1
+                if depth == 0:
+                    break
+            k -= 1
+        return (
+            k >= 3
+            and tokens[k - 1].text.startswith("new")
+            and tokens[k - 2].text == "."
+            and tokens[k - 3].text == "Executors"
+        )
+    return _declared_type(unit, receiver) in _EXECUTORS
 
 
 def _only_reports(unit: CompilationUnit, catch: Catch) -> bool:
@@ -864,7 +954,7 @@ def _lost_reappears(ctx: Context, change: FileChange, nodes: list, block: Block)
     if pair is None:
         return False
     old, new = pair
-    gone = lost_calls(ctx.before, ctx.after, change.path, old.body, new.body)
+    gone = lost_calls(ctx, change.path, old.body, new.body)
     return bool(gone & {c.name for c in calls_in(change.after, block)})
 
 
@@ -948,9 +1038,9 @@ def _exit_sites(program: Program, path: str) -> list[Site]:
                 if any(isinstance(n, (Lambda, TypeDecl)) for n in below):
                     continue
                 if (
-                    _on_a_worker(unit, node)
+                    where == "catch"
+                    and _on_a_worker(program, path, node)
                     and all(_only_reports(unit, c) for c in node.catches)
-                    and where == "catch"
                 ):
                     continue
                 if inner.kind != "return" and any(

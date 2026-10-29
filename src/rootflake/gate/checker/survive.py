@@ -8,7 +8,7 @@ like Jupiter's.
 from collections import Counter
 from collections.abc import Iterator
 
-from rootflake.gate.checker.calls import calls_in
+from rootflake.gate.checker.calls import calls_in, follow_for_scan, reach
 from rootflake.gate.checker.model import Context, FileChange, Finding
 from rootflake.gate.checker.scope import Program
 from rootflake.gate.checker.syntax import (
@@ -156,23 +156,27 @@ def runs(program: Program, path: str, body: Block | None) -> dict[tuple, list[St
     return program.memo[memo]
 
 
-def lost_calls(
-    before: Program, after: Program, path: str, old: Block | None, new: Block | None
-) -> set[str]:
+def lost_calls(ctx: Context, path: str, old: Block | None, new: Block | None) -> set[str]:
     """The names of the calls made by the statements the old body ran that the new body no
-    longer runs in the same place, with the calls of each method of that name a read file
-    declares, one level down: what a rewritten, wrapped or inlined statement may still call."""
-    was, now = runs(before, path, old), runs(after, path, new)
+    longer runs in the same place, with the calls of every method those calls reach in the
+    files the checker reads, under the expansion budget: what a rewritten, wrapped or inlined
+    statement may still call."""
+    before = ctx.before
+    was, now = runs(before, path, old), runs(ctx.after, path, new)
     unit = before.units[path]
-    names: set[str] = set()
-    for key, nodes in was.items():
-        if len(now.get(key, ())) < len(nodes):
-            for node in nodes:
-                names |= {c.name for c in calls_in(unit, node)}
-    for name in list(names):
-        for where, method in before.methods_by_name.get(name, ()):
-            if method.body is not None:
-                names |= {c.name for c in calls_in(before.units[where], method.body)}
+    calls = [
+        call
+        for key, nodes in was.items()
+        if len(now.get(key, ())) < len(nodes)
+        for node in nodes
+        for call in calls_in(unit, node)
+    ]
+    names = {c.name for c in calls}
+    roots = [target for c in calls for target in follow_for_scan(before, path, c)]
+    for reached in reach(before, roots, True, ctx.budget):
+        if reached.method.body is not None:
+            inner = before.units[reached.path]
+            names |= {c.name for c in calls_in(inner, reached.method.body)}
     return names
 
 
@@ -311,7 +315,7 @@ def _old_loops(ctx: Context, path: str, method: Method, new: Method):
     make (`lost_calls`), so a rewritten or inlined statement cannot make an added loop read as
     holding only new code."""
     keys, inside, everywhere = loops_of(ctx.before.units[path], method)
-    gone = lost_calls(ctx.before, ctx.after, path, method.body, new.body)
+    gone = lost_calls(ctx, path, method.body, new.body)
     return keys, inside, everywhere, gone
 
 
