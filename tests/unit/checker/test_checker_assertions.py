@@ -2033,7 +2033,6 @@ class TestUnchangedRuleUnderAnOnDemandImport:
         "  @Test public void third() { thrown.expect(IllegalStateException.class); g(); }"
     )
 
-    @pytest.mark.xfail(strict=True, reason="unchanged bare rule fields are not yet trusted")
     def test_a_benign_change_elsewhere_passes(self, tmp_path):
         before = with_imports(body_of("int v = f(); Assert.assertEquals(1, v);", self.FIELDS),
                               self.IMPORTS)  # fmt: skip

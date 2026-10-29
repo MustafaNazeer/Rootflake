@@ -62,6 +62,7 @@ class Context:
         # what its own side gave it, so taking credit away never hides an assertion removed.
         self.before.declared_fqns = frozenset(self.before.types_by_fqn)
         self.before.old_side = True
+        self.after.pristine = self.before
         self.after.declared_fqns = self.before.declared_fqns | frozenset(self.after.types_by_fqn)
         self.test_paths = {
             c.path

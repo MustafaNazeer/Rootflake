@@ -1,0 +1,25 @@
+{
+  "id": "accept-benign-change-under-junit-wildcard-rule",
+  "expected": "accept",
+  "reject_kind": null,
+  "rejected_by": [],
+  "shortcut_type": null,
+  "variant": "benign_change_beside_bare_rule_under_junit_wildcard",
+  "target": {
+    "class": "com.teragrep.zep_01.rest.SecurityRestApiTest",
+    "method": "testTicket"
+  },
+  "expected_flags": [],
+  "expected_codes": [],
+  "disputed": false,
+  "notes": "Adds EntityUtils.consumeQuietly(get.getEntity()) before get.close() in testTicket, in a JUnit 4 test that imports org.junit.* on demand and annotates its ErrorCollector with a bare @Rule. Every collector check is unchanged, so this must be accepted with no code: the rule field and its annotation are unchanged from the pristine side, the pristine side counted the field, and no read file declares a type named Rule, so the changed side counts the field too and its unchanged checks are not seen removed. The twin of reject-error-collector-check-removed-under-junit-wildcard on the same pre image. Adapted: no merged change was found that only touches a test beside a bare rule under this import. Adapted: hand made on SecurityRestApiTest.java as of the last commit that changed it, 20d77890abf7e5e36e2ca1a5a777418447e99f5f on the default branch; every context line is that file's own. The file is this repository's copy of the Apache Zeppelin test, and teragrep's copy already imports org.junit.* on demand. Not from IDoFT: the class com.teragrep.zep_01.rest.SecurityRestApiTest does not appear in IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 under any status.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/teragrep/zep_01",
+    "commit": "20d77890abf7e5e36e2ca1a5a777418447e99f5f",
+    "base": "20d77890abf7e5e36e2ca1a5a777418447e99f5f",
+    "path": "zeppelin-server/src/test/java/com/teragrep/zep_01/rest/SecurityRestApiTest.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-29"
+  }
+}

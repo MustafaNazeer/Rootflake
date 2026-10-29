@@ -100,6 +100,7 @@ class Program:
         # The types a library name must not be, set by the context once both sides are read.
         self.declared_fqns: frozenset[str] = frozenset()
         self.old_side = False  # the pristine side, where giving credit can only fail closed
+        self.pristine: Program | None = None  # the old side, set on the new side only
         for path, unit in units.items():
             prefix = f"{unit.package}." if unit.package else ""
             pending = [(decl, prefix + decl.name) for decl in unit.types]

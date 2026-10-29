@@ -702,8 +702,9 @@ _NEEDS_RULE = frozenset(["ExpectedException", "ErrorCollector"])
 def _is_rule(program: Program, path: str, field) -> bool:
     """A field annotated with org.junit.Rule or org.junit.ClassRule. On the old side a bare
     Rule or ClassRule that nothing else names also counts under `import org.junit.*;`, so the
-    checks of a rule field are seen removed; the new side needs the name resolved."""
-    on_demand = program.old_side and any(
+    checks of a rule field are seen removed. The new side counts such a field only when it is
+    unchanged from one the old side counted and no read file declares a type of that name."""
+    on_demand = any(
         imp.wildcard and not imp.static and imp.name == "org.junit"
         for imp in program.units[path].imports
     )
@@ -712,7 +713,29 @@ def _is_rule(program: Program, path: str, field) -> bool:
         if binding.kind == "library" and binding.fqn in ("org.junit.Rule", "org.junit.ClassRule"):
             return True
         if on_demand and binding.kind == "unresolved" and annotation.name in ("Rule", "ClassRule"):
-            return True
+            if program.old_side or _unchanged_bare_rule(program, path, field, annotation.name):
+                return True
+    return False
+
+
+def _unchanged_bare_rule(program: Program, path: str, field, name: str) -> bool:
+    pristine = program.pristine
+    if pristine is None or path not in pristine.units:
+        return False
+    for side in (program, pristine):
+        if any(decl.name == name for unit_path in side.units for decl in side.all_types(unit_path)):
+            return False
+    unit, old_unit = program.units[path], pristine.units[path]
+    owner = next(d for d in program.all_types(path) if any(f is field for f in d.fields))
+    fqn = program.fqn[id(owner)]
+    for old_decl in pristine.all_types(path):
+        if pristine.fqn[id(old_decl)] != fqn:
+            continue
+        for old_field in old_decl.fields:
+            if old_field.names == field.names and _text(
+                old_unit, old_field.start, old_field.end
+            ) == _text(unit, field.start, field.end):
+                return _is_rule(pristine, path, old_field)
     return False
 
 

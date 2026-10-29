@@ -94,4 +94,4 @@ def test_every_pending_id_is_a_checker_fixture():
 
 
 def test_the_checker_fixture_set_is_complete():
-    assert len(checker_fixtures()) == 211
+    assert len(checker_fixtures()) == 212
