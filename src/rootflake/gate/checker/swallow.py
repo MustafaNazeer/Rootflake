@@ -752,7 +752,45 @@ def _an_executor(unit: CompilationUnit, receiver: int) -> bool:
             and tokens[k - 2].text == "."
             and tokens[k - 3].text == "Executors"
         )
-    return _declared_type(unit, receiver) in _EXECUTORS
+    if tokens[receiver].kind != "ident":
+        return False
+    if receiver >= 2 and tokens[receiver - 1].text == "." and tokens[receiver - 2].text == "this":
+        return _field_type(unit, receiver) in _EXECUTORS
+    declared = _declared_type(unit, receiver)
+    if declared is None and not _declared_in_method(unit, receiver):
+        declared = _field_type(unit, receiver)
+    return declared in _EXECUTORS
+
+
+def _declared_in_method(unit: CompilationUnit, at: int) -> bool:
+    """Whether the name at a token is declared anywhere in its method as a local, a parameter
+    or a lambda parameter, so a field of that name is shadowed somewhere."""
+    tokens, name = unit.tokens, unit.tokens[at].text
+    method = next((n for n in reversed(path_to(unit, at)) if isinstance(n, Method)), None)
+    if method is None:
+        return True
+    if any(p.name == name for p in method.params):
+        return True
+    if method.body is None:
+        return False
+    return any(
+        tokens[k].text == name
+        and (tokens[k - 1].kind == "ident" or tokens[k - 1].text in (">", "]", "(", ","))
+        and tokens[k + 1].text in ("=", ";", ",", ")", ":", "->")
+        for k in range(method.body.start + 1, method.body.end - 1)
+    )
+
+
+def _field_type(unit: CompilationUnit, at: int) -> str | None:
+    """The simple declared type of the field named at a token in its enclosing class."""
+    name = unit.tokens[at].text
+    owner = next((n for n in reversed(path_to(unit, at)) if isinstance(n, TypeDecl)), None)
+    if owner is None:
+        return None
+    for field_ in owner.fields:
+        if name in field_.names:
+            return _simple(field_.type.split("<", 1)[0])
+    return None
 
 
 def _only_reports(unit: CompilationUnit, catch: Catch) -> bool:

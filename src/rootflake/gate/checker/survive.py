@@ -162,6 +162,10 @@ def lost_calls(ctx: Context, path: str, old: Block | None, new: Block | None) ->
     files the checker reads, under the expansion budget: what a rewritten, wrapped or inlined
     statement may still call."""
     before = ctx.before
+    memo = ("survive/lost_calls", path, None if old is None else old.start,
+            None if new is None else new.start)  # fmt: skip
+    if memo in before.memo:
+        return before.memo[memo]
     was, now = runs(before, path, old), runs(ctx.after, path, new)
     unit = before.units[path]
     calls = [
@@ -172,11 +176,14 @@ def lost_calls(ctx: Context, path: str, old: Block | None, new: Block | None) ->
         for call in calls_in(unit, node)
     ]
     names = {c.name for c in calls}
-    roots = [target for c in calls for target in follow_for_scan(before, path, c)]
+    roots = list(
+        {id(m): (p, m) for c in calls for p, m in follow_for_scan(before, path, c)}.values()
+    )
     for reached in reach(before, roots, True, ctx.budget):
         if reached.method.body is not None:
             inner = before.units[reached.path]
             names |= {c.name for c in calls_in(inner, reached.method.body)}
+    before.memo[memo] = names
     return names
 
 

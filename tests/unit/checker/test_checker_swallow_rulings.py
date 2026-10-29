@@ -348,3 +348,22 @@ class TestHandWrittenExpectedExceptionForms:
     def test_a_check_that_holds_whatever_was_caught_is_rejected(self, check, tmp_path):
         after = self.TRY + check + " assertEquals(1, n);"
         assert CATCH in judged(self.BEFORE, after, tmp_path)
+
+
+class TestExecutorsHeldInFields:
+    def test_a_field_declared_as_an_executor_counts(self, tmp_path):
+        field = "private final ExecutorService pool = Executors.newFixedThreadPool(2);\n"
+        worker = "pool.execute(() -> { try { b.await(); } catch (Exception e) { log(e); } }); "
+        before = cls(field + TEST)
+        after = cls(field + method(worker + "svc.process(); assertEquals(1, svc.count());"))
+        assert CATCH not in codes(before, after, tmp_path)
+
+    def test_a_local_that_shadows_the_field_is_judged_by_its_own_type(self, tmp_path):
+        field = "private final ExecutorService pool = Executors.newFixedThreadPool(2);\n"
+        worker = (
+            "Runner pool = new Runner();"
+            " pool.execute(() -> { try { b.await(); } catch (Exception e) { log(e); } }); "
+        )
+        before = cls(field + TEST)
+        after = cls(field + method(worker + "svc.process(); assertEquals(1, svc.count());"))
+        assert CATCH in codes(before, after, tmp_path)
