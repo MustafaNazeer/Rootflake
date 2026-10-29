@@ -1,0 +1,29 @@
+{
+  "id": "reject-production-jitter-constant-widened-behind-unchanged-bound",
+  "expected": "reject",
+  "reject_kind": "shortcut",
+  "rejected_by": [
+    "shortcut_checker"
+  ],
+  "shortcut_type": "weaken_assertion",
+  "variant": "production_constant_widened_behind_unchanged_bound",
+  "target": {
+    "class": "com.google.cloud.firestore.BulkWriterTest",
+    "method": "failsWritesAfterAllRetryAttemptsFail"
+  },
+  "expected_flags": [],
+  "expected_codes": [
+    "weaken_assertion/tolerance_widened"
+  ],
+  "disputed": false,
+  "notes": "Raises the production constant BulkWriter.DEFAULT_JITTER_FACTOR from 0.3 to 1.0 and adds only a comment to BulkWriterTest. The test's assertions are unchanged, but they read the constant as their bounds, assertTrue(delay >= (1 - BulkWriter.DEFAULT_JITTER_FACTOR) * expected) and its upper twin, so the lower bound drops to zero and the upper bound doubles. Rejected as tolerance_widened: a bound written the same way holds only while every name in it keeps its assignments, and a name qualified by a type in another read file is followed into that file, production code included. Adapted: no merged change was found that widens a production constant behind an unchanged test bound. Hand made on the pre image of reject-junit4-ignore-bare: BulkWriterTest.java is that fixture's before file, and BulkWriter.java is google-cloud-firestore/src/main/java/com/google/cloud/firestore/BulkWriter.java at the same source.base; every context and removed line is those files' own, and the new constant value and the comment are written by hand. The test file carries the comment so the checker reads it, since the checker reads only the files a patch touches. IDoFT pr-data.csv at commit 4903dc9233eead4e4191c66f9ed0b14eea091052 has no Accepted row for this class; the overlap of the pre image is listed under reject-junit4-ignore-bare.",
+  "derivation": "adapted",
+  "source": {
+    "repo": "https://github.com/googleapis/java-firestore",
+    "commit": "05188e3e779968e67861fcd69d64ae17cfb6cd0b",
+    "base": "05188e3e779968e67861fcd69d64ae17cfb6cd0b",
+    "path": "google-cloud-firestore/src/main/java/com/google/cloud/firestore/BulkWriter.java",
+    "license": "Apache-2.0",
+    "fetched": "2026-10-29"
+  }
+}

@@ -9,7 +9,7 @@ or be matched by an added assertion that keeps its strength; otherwise it was re
 
 import json
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from rootflake.gate.checker.calls import Call, ExpansionBudget, calls_in, reach
@@ -442,6 +442,18 @@ def roots_of(arguments: tuple[str, ...]) -> set[str]:
     return out
 
 
+def _subject(unit: CompilationUnit, call: Call, definitions: dict[str, set[str]]) -> frozenset:
+    """The roots an assertion reads, with each local in scope at the call replaced by what
+    defines it; a field read beside an out of scope local of the same name stays itself."""
+    roots = roots_of(_split_arguments(unit, call.start + 1, _close(unit, call.start + 1)))
+    scoped = {
+        name: found
+        for name, found in definitions.items()
+        if name not in roots or _shadowed(unit, call.start, name)
+    }
+    return _followed(roots, scoped)
+
+
 def _followed(ids: set[str], definitions: dict[str, set[str]]) -> frozenset[str]:
     """Identifiers with locals replaced by what defines them, so a local set only from
     literals stands for no identifier at all."""
@@ -531,27 +543,29 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                 or _library_receiver(program, path, unit, call)
             )
         )
+        assertion = Assertion(
+            text=_text(unit, start, end),
+            signature=_with_default_mode(
+                (*(n for n in names if n not in _DESCRIPTIONS), *matchers),
+                _mode_argument(unit, call, names),
+            ),
+            arguments=_split_arguments(unit, call.start + 1, _close(unit, call.start + 1)),
+            guard=_guard(unit, body, call.start, declared),
+            exits_before=frozenset(text for at, text in exits if at < call.start),
+            credited=credited,
+            line=unit.tokens[call.start].line,
+            start=call.start,
+            subject=_subject(unit, call, definitions),
+            facts=facts
+            | _slot_fact(program, path, unit, call)
+            | _mode_trust(program, path, unit, call)
+            | _definition_facts(program, path, body, start, end),
+        )
         out.append(
-            Assertion(
-                text=_text(unit, start, end),
-                signature=_with_default_mode(
-                    (*(n for n in names if n not in _DESCRIPTIONS), *matchers),
-                    _mode_argument(unit, call, names),
-                ),
-                arguments=_split_arguments(unit, call.start + 1, _close(unit, call.start + 1)),
-                guard=_guard(unit, body, call.start, declared),
-                exits_before=frozenset(text for at, text in exits if at < call.start),
-                credited=credited,
-                line=unit.tokens[call.start].line,
-                start=call.start,
-                subject=_followed(
-                    roots_of(_split_arguments(unit, call.start + 1, _close(unit, call.start + 1))),
-                    definitions,
-                ),
-                facts=facts
-                | _slot_fact(program, path, unit, call)
-                | _mode_trust(program, path, unit, call)
-                | _definition_facts(program, path, body, start, end),
+            replace(
+                assertion,
+                facts=assertion.facts
+                | _positioned_facts(program, path, assertion, body, start, end),
             )
         )
     for node in walk(body):
@@ -904,16 +918,17 @@ def _number(text: str) -> float | None:
         return None
 
 
-def _assignment_texts(
+def _assignment_spans(
     program: Program, path: str, start: int = 0, end: int | None = None
-) -> dict[str, tuple[str, ...]]:
-    """Every value assigned to each name in a token range (the whole file by default),
-    initializers included, in order."""
+) -> dict[str, tuple[tuple[int, int], ...]]:
+    """Where every value assigned to each name in a token range (the whole file by default)
+    sits, initializers included, in order: from the assignment operator to the end of the
+    value."""
     tokens = program.units[path].tokens
     end = len(tokens) if end is None else end
-    key = ("assignment_texts", path, start, end)
+    key = ("assignment_spans", path, start, end)
     if key not in program.memo:
-        out: dict[str, list[str]] = {}
+        out: dict[str, list[tuple[int, int]]] = {}
         for i in range(start, end - 1):
             token, after = tokens[i], tokens[i + 1]
             if token.kind != "ident" or after.kind != "op" or after.text not in _ASSIGNMENTS:
@@ -930,18 +945,187 @@ def _assignment_texts(
                 elif text in (";", ",") and depth == 0:
                     break
                 j += 1
-            value = " ".join(t.text for t in tokens[i + 1 : j])
-            out.setdefault(token.text, []).append(value)
+            out.setdefault(token.text, []).append((i + 1, j))
         program.memo[key] = {name: tuple(found) for name, found in out.items()}
     return program.memo[key]
 
 
+def _span_texts(unit: CompilationUnit, spans) -> tuple[str, ...]:
+    return tuple(_text(unit, a, b) for a, b in spans)
+
+
+def _field_spans(program: Program, path: str, name: str) -> tuple[tuple[int, int], ...]:
+    """The assignments in a file that can reach a field of that name: every one except those
+    made where a local or parameter of the name is in scope."""
+    key = ("field_spans", path, name)
+    if key not in program.memo:
+        unit = program.units[path]
+        program.memo[key] = tuple(
+            (a, b)
+            for a, b in _assignment_spans(program, path).get(name, ())
+            if (a >= 2 and unit.tokens[a - 2].text == ".") or not _shadowed(unit, a - 1, name)
+        )
+    return program.memo[key]
+
+
+def _declares_field(decl: TypeDecl, name: str) -> bool:
+    return any(name in field.names for field in decl.fields)
+
+
+def _static_import_source(program: Program, path: str, name: str) -> str | None:
+    """The read file a statically imported field of that name comes from."""
+    for imp in program.units[path].imports:
+        if not imp.static:
+            continue
+        owner = imp.name if imp.wildcard else imp.name.rsplit(".", 1)[0]
+        if not imp.wildcard and imp.name.rsplit(".", 1)[-1] != name:
+            continue
+        found = program.types_by_fqn.get(owner)
+        if found is not None and _declares_field(found[1], name):
+            return found[0]
+    return None
+
+
+def _qualifier(tokens, member: int) -> tuple[str, int] | None:
+    """The dotted type name before `.member`, as in `a.Limits.MAX`, with where it starts;
+    None when what comes before the dot is not a plain name."""
+    j = member - 2
+    if j < 0 or tokens[j].kind != "ident":
+        return None
+    while j >= 2 and tokens[j - 1].text == "." and tokens[j - 2].kind == "ident":
+        j -= 2
+    if j >= 1 and tokens[j - 1].text == ".":
+        return None
+    return "".join(t.text for t in tokens[j : member - 1]), j
+
+
+def _enclosing_body(program: Program, unit: CompilationUnit, at: int) -> tuple[str, int, int]:
+    """The method body around token at, named the same way on both sides of the patch."""
+    for node in reversed(path_to(unit, at)):
+        if isinstance(node, Method) and node.body is not None:
+            params = ",".join(p.type for p in node.params)
+            where = f"{program.method_owner.get(id(node), '')}.{node.name}({params})"
+            return where, node.body.start, node.body.end
+    return "", 0, len(unit.tokens)
+
+
+def _name_source(program: Program, path: str, name: str, at: int):
+    """What a name read at token at is assigned: (key, file, spans), or None."""
+    unit = program.units[path]
+    if _shadowed(unit, at, name):
+        where, start, end = _enclosing_body(program, unit, at)
+        spans = _assignment_spans(program, path, start, end).get(name, ())
+        return (("local", path, where, name), path, spans) if spans else None
+    spans = _field_spans(program, path, name)
+    if spans:
+        return ("field", path, name), path, spans
+    other = _static_import_source(program, path, name)
+    if other is not None and other != path:
+        spans = _field_spans(program, other, name)
+        return (("field", other, name), other, spans) if spans else None
+    return None
+
+
+def _member_source(program: Program, path: str, member: int, call: bool):
+    """What `Type.NAME` or `Type.name(...)` at token member reads, in a read file."""
+    tokens = program.units[path].tokens
+    found = _qualifier(tokens, member)
+    if found is None:
+        return None
+    qualifier, at = found
+    if qualifier == "this":
+        return _method_source(program, path, member) if call else _name_source(
+            program, path, tokens[member].text, member)  # fmt: skip
+    binding = program.resolve_type(path, qualifier, at)
+    if binding.kind != "declared" or binding.decl is None:
+        return None
+    name = tokens[member].text
+    if call:
+        return _methods_named(program, binding.path, binding.decl, name)
+    if not _declares_field(binding.decl, name):
+        return None
+    spans = _field_spans(program, binding.path, name)
+    return (("field", binding.path, name), binding.path, spans) if spans else None
+
+
+def _methods_named(program: Program, path: str, decl: TypeDecl, name: str):
+    methods = [m for m in decl.methods if m.name == name and m.body is not None]
+    if not methods:
+        return None
+    spans = tuple((m.body.start, m.body.end) for m in methods)
+    return ("method", program.fqn[id(decl)], name), path, spans
+
+
+def _method_source(program: Program, path: str, at: int):
+    name = program.units[path].tokens[at].text
+    binding = program.resolve_method(path, name, at)
+    if binding.kind != "declared" or not isinstance(binding.decl, Method):
+        return None
+    owner = program.types_by_fqn.get(program.method_owner.get(id(binding.decl), ""))
+    if owner is not None:
+        return _methods_named(program, owner[0], owner[1], name)
+    method = binding.decl
+    if method.body is None:
+        return None
+    return ("method", binding.fqn, name), binding.path, ((method.body.start, method.body.end),)
+
+
+def _references(program: Program, path: str, start: int, end: int, calls: bool):
+    """The sources the names, and when calls is set the method calls, in a token range read."""
+    tokens = program.units[path].tokens
+    for i in range(start, end):
+        if tokens[i].kind != "ident":
+            continue
+        before = tokens[i - 1].text if i else ""
+        call = i + 1 < len(tokens) and tokens[i + 1].text == "("
+        if call and (not calls or before == "new"):
+            continue
+        if before == ".":
+            found = _member_source(program, path, i, call)
+        elif call:
+            found = _method_source(program, path, i)
+        else:
+            found = _name_source(program, path, tokens[i].text, i)
+        if found is not None:
+            yield found
+
+
+def _reached(program: Program, sources, calls: bool, line: int) -> tuple:
+    """Every assignment, and when calls is set every helper body, the sources lead to,
+    transitively, as sorted (key, texts) pairs. Past the expansion cap the file is unparsable."""
+    budget = ExpansionBudget()
+    seen: dict[tuple, tuple[str, ...]] = {}
+    pending = list(sources)
+    while pending:
+        key, where, spans = pending.pop()
+        if key in seen:
+            continue
+        budget.spend(line)
+        unit = program.units[where]
+        seen[key] = _span_texts(unit, spans)
+        for a, b in spans:
+            pending.extend(_references(program, where, a, b, calls))
+    return tuple(sorted(seen.items()))
+
+
+def _assignment_texts(
+    program: Program, path: str, start: int = 0, end: int | None = None
+) -> dict[str, tuple[str, ...]]:
+    """Every value assigned to each name in a token range (the whole file by default),
+    initializers included, in order."""
+    unit = program.units[path]
+    return {
+        name: _span_texts(unit, spans)
+        for name, spans in _assignment_spans(program, path, start, end).items()
+    }
+
+
 def _definition_facts(program: Program, path: str, body: Block, start: int, end: int) -> frozenset:
     """For each name the assertion reads, every value assigned to it: within the method for a
-    name the method declares, across the file otherwise. An assertion whose text is unchanged
-    but whose tolerance, bound or mode local changed is then not a twin."""
+    name the method declares, across the file otherwise, leaving out assignments made where a
+    local of that name is in scope. An assertion whose text is unchanged but whose tolerance,
+    bound or mode local changed is then not a twin."""
     unit = program.units[path]
-    file_wide = _assignment_texts(program, path)
     local = _assignment_texts(program, path, body.start, body.end)
     names = {
         unit.tokens[i].text
@@ -950,10 +1134,57 @@ def _definition_facts(program: Program, path: str, body: Block, start: int, end:
     }
     out = set()
     for name in names:
-        texts = local.get(name) if _shadowed(unit, start, name) else file_wide.get(name)
+        if _shadowed(unit, start, name):
+            texts = local.get(name)
+        else:
+            texts = _span_texts(unit, _field_spans(program, path, name))
         if texts:
             out.add(("defs", name, texts))
     return frozenset(out)
+
+
+def _positioned_facts(program: Program, path: str, a: Assertion, body: Block, start: int,
+                      end: int) -> frozenset:  # fmt: skip
+    """For each name and call in a tolerance, bound or mode position, everything behind it:
+    the values of a name and of every name they read in turn, through static imports and
+    qualifying types in other read files, and the bodies of a helper and all they reach. A
+    bound written the same way keeps its strength only while all of this is unchanged."""
+    words = {w for text in _positioned_texts(a) for w in text.split()}
+    if not words:
+        return frozenset()
+    unit = program.units[path]
+    tokens = unit.tokens
+    out = set()
+    for i in range(start, end):
+        if tokens[i].kind != "ident" or tokens[i].text not in words:
+            continue
+        name = tokens[i].text
+        call = i + 1 < len(tokens) and tokens[i + 1].text == "("
+        if tokens[i - 1].text == ".":
+            found = _member_source(program, path, i, call)
+        elif call:
+            found = _method_source(program, path, i)
+        elif _shadowed(unit, start, name):
+            spans = _assignment_spans(program, path, body.start, body.end).get(name, ())
+            where = _enclosing_body(program, unit, body.start)[0]
+            found = (("local", path, where, name), path, spans) if spans else None
+        else:
+            found = _name_source(program, path, name, start)
+        if found is not None:
+            kind = "helper" if call else "deps"
+            out.add((kind, name, _reached(program, [found], call, tokens[i].line)))
+    return frozenset(out)
+
+
+def _positioned_texts(a: Assertion) -> list[str]:
+    """The texts in an assertion's tolerance, bound and mode positions."""
+    out = [bound[2] for sides in _bounds(a).values() for found in sides.values() for bound in found]
+    tolerance = _tolerance_text(a)
+    if tolerance is not None:
+        out.append(tolerance)
+    if _maybe_json_assert(a):
+        out.append(a.arguments[-1])
+    return out
 
 
 def _defs(a: Assertion) -> frozenset:
@@ -2264,7 +2495,17 @@ def _holds(old_a: Assertion, new_a: Assertion, old: Bound, new: Bound, side: str
 def _assignments_kept(old: Assertion, new: Assertion, text: str) -> bool:
     """Whether every name text reads has the same assignments on both sides."""
     names = _identifiers((text,))
-    return {f for f in _defs(old) if f[1] in names} == {f for f in _defs(new) if f[1] in names}
+    kinds = ("defs", "deps", "helper")
+    return {f for f in old.facts if f[0] in kinds and f[1] in names} == {
+        f for f in new.facts if f[0] in kinds and f[1] in names
+    }
+
+
+def _helpers_kept(old: Assertion, new: Assertion) -> bool:
+    """Whether everything behind the names and calls in the tolerance, bound and mode
+    positions is the same on both sides."""
+    kinds = ("deps", "helper")
+    return {f for f in old.facts if f[0] in kinds} == {f for f in new.facts if f[0] in kinds}
 
 
 def _drops_bounded_subject(old: Assertion, new: Assertion) -> bool:
@@ -2293,7 +2534,7 @@ def _shares_subject(old: Assertion, new: Assertion) -> bool:
 
 def _weakening(old: Assertion, new: Assertion) -> str | None:
     """The named weakening of Decision 5 that turns old into new, if any."""
-    if old.text == new.text and _defs(old) == _defs(new):
+    if old.text == new.text and _defs(old) == _defs(new) and _helpers_kept(old, new):
         return None
     if _json_lenient(new) and not _json_lenient(old) and ("JSONAssert" in old.text
                                                           or _is_exact(old)):  # fmt: skip
@@ -2400,6 +2641,7 @@ def _match(
                     for new in pool
                     if new.text == old.text
                     and _defs(new) == _defs(old)
+                    and _helpers_kept(old, new)
                     and (not new.scanned_only or (old.scanned_only and new.origin == old.origin))
                     and _guard_ok(old, new)
                 ),
@@ -2421,8 +2663,7 @@ def _match(
         usable = [
             n
             for n in pool
-            if n.credited
-            and not n.scanned_only
+            if (n.credited and not n.scanned_only or old.scanned_only and n.origin == old.origin)
             and _guard_ok(old, n)
             and not _drops_bounded_subject(old, n)
         ]

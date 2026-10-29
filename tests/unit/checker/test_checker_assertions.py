@@ -2054,3 +2054,195 @@ class TestUnchangedRuleUnderAnOnDemandImport:
         after = with_imports(body_of("f(); g();", self.FIELDS), self.IMPORTS)
         created = {"src/test/java/a/Rule.java": "package a;\npublic @interface Rule {}\n"}
         assert _codes_creating(before, after, created, tmp_path) & {REMOVED, REBOUND}
+
+
+def _codes_files(files: dict[str, tuple[str, str]], root: Path) -> set[str]:
+    pristine, workspace = root / "p", root / "w"
+    for side, index in ((pristine, 0), (workspace, 1)):
+        for rel, sources in files.items():
+            (side / rel).parent.mkdir(parents=True, exist_ok=True)
+            (side / rel).write_text(sources[index])
+    result = check(sorted(files), pristine, workspace, TARGET)
+    return {f.code for f in result.findings}
+
+
+def _limits(value: str, extra: str = "") -> str:
+    return (
+        "package a;\npublic final class Limits {\n"
+        f"  public static final int MAX = {value};\n{extra}}}\n"
+    )
+
+
+class TestConstantsBehindAnotherName:
+    """A bound, tolerance or mode keeps its strength only while every name behind it, in
+    another read file or behind another constant, keeps its assignments."""
+
+    LIMITS = "src/test/java/a/Limits.java"
+    MAIN_LIMITS = "src/main/java/a/Limits.java"
+
+    @pytest.mark.parametrize(
+        ("statements", "imports"),
+        [("assertTrue(x() < Limits.MAX);", ""),
+         ("assertTrue(x() < a.Limits.MAX);", ""),
+         ("assertTrue(x() < MAX);", "import static a.Limits.MAX;\n"),
+         ("assertEquals(1.0, d(), Limits.MAX);", "")],
+        ids=["qualified", "fully_qualified", "static_import", "tolerance"],
+    )  # fmt: skip
+    def test_a_constant_widened_in_another_read_file(self, tmp_path, statements, imports):
+        before = with_imports(body_of(f"f(); {statements}"), imports)
+        after = with_imports(body_of(f"g(); {statements}"), imports)
+        files = {PATH: (before, after), self.LIMITS: (_limits("5"), _limits("50"))}
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    def test_a_constant_widened_behind_a_static_wildcard_import(self, tmp_path):
+        """The assertion's own name is ambiguous under the wildcard, so the changed one earns
+        no credit and the old one is left removed: a reject either way."""
+        imports = "import static a.Limits.*;\n"
+        before = with_imports(body_of("f(); assertTrue(x() < MAX);"), imports)
+        after = with_imports(body_of("g(); assertTrue(x() < MAX);"), imports)
+        files = {PATH: (before, after), self.LIMITS: (_limits("5"), _limits("50"))}
+        assert _codes_files(files, tmp_path) == {REMOVED}
+        files[self.LIMITS] = (_limits("5"), _limits("5"))
+        assert _codes_files(files, tmp_path) == set()
+
+    def test_a_production_constant_counts_like_a_test_constant(self, tmp_path):
+        before = body_of("f(); assertTrue(x() < Limits.MAX);")
+        after = body_of("g(); assertTrue(x() < Limits.MAX);")
+        files = {PATH: (before, after), self.MAIN_LIMITS: (_limits("5"), _limits("50"))}
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    def test_a_constant_behind_a_second_constant(self, tmp_path):
+        fields = "  static final int OTHER = {};\n  static final int LIMIT = OTHER;"
+        before = body_of("assertTrue(x() < LIMIT);", fields.format(5))
+        after = body_of("assertTrue(x() < LIMIT);", fields.format(50))
+        assert codes(before, after, tmp_path) == {TOLERANCE}
+
+    def test_a_chain_that_crosses_files(self, tmp_path):
+        fields = "  static final int LIMIT = Limits.MAX;"
+        before = body_of("f(); assertTrue(x() < LIMIT);", fields)
+        after = body_of("g(); assertTrue(x() < LIMIT);", fields)
+        files = {PATH: (before, after), self.LIMITS: (_limits("5"), _limits("50"))}
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    def test_a_local_behind_another_local(self, tmp_path):
+        before = body_of("long base = 100; long max = base; assertTrue(elapsed() < max);")
+        after = body_of("long base = 1000; long max = base; assertTrue(elapsed() < max);")
+        assert codes(before, after, tmp_path) == {TOLERANCE}
+
+    def test_a_widened_constant_through_a_qualified_mode_local(self, tmp_path):
+        fields = (
+            "  static final JSONCompareMode OTHER = JSONCompareMode.{};\n"
+            "  static final JSONCompareMode MODE = OTHER;"
+        )
+        imports = JSON_IMPORTS + "import org.skyscreamer.jsonassert.JSONCompareMode;\n"
+        old = with_imports(body_of("JSONAssert.assertEquals(e(), a(), MODE);",
+                                   fields.format("STRICT")), imports)  # fmt: skip
+        new = with_imports(body_of("JSONAssert.assertEquals(e(), a(), MODE);",
+                                   fields.format("LENIENT")), imports)  # fmt: skip
+        assert codes(old, new, tmp_path) & {REMOVED, RELAXED}
+
+    def test_an_unchanged_constant_in_another_file_passes(self, tmp_path):
+        before = body_of("f(); assertTrue(x() < Limits.MAX);")
+        after = body_of("g(); assertTrue(x() < Limits.MAX);")
+        limits = _limits("5", "  public static final int MIN = 1;\n")
+        moved = _limits("5", "  public static final int MIN = 2;\n")
+        files = {PATH: (before, after), self.LIMITS: (limits, moved)}
+        assert _codes_files(files, tmp_path) == set()
+
+    def test_an_unread_constant_class_keeps_the_twin(self, tmp_path):
+        before = body_of("f(); assertTrue(x() < Limits.MAX);")
+        after = body_of("g(); assertTrue(x() < Limits.MAX);")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_long_chain_terminates(self, tmp_path):
+        chain = "\n".join(f"  static final int C{i} = C{i + 1};" for i in range(300))
+        fields = f"{chain}\n  static final int C300 = {{}};"
+        before = body_of("assertTrue(x() < C0);", fields.format(5))
+        after = body_of("assertTrue(x() < C0);", fields.format(50))
+        assert codes(before, after, tmp_path) == {TOLERANCE}
+
+    def test_a_cyclic_chain_terminates(self, tmp_path):
+        fields = "  static int A = B;\n  static int B = A;"
+        before = body_of("f(); assertTrue(x() < A);", fields)
+        after = body_of("g(); assertTrue(x() < A);", fields)
+        assert codes(before, after, tmp_path) == set()
+
+
+class TestHelpersInABoundPosition:
+    """A call whose body changed, sitting where a tolerance, bound or mode goes, no longer
+    stands for the same value."""
+
+    @pytest.mark.parametrize(
+        ("statement", "helper_before", "helper_after"),
+        [("assertTrue(x() < limit());", "  int limit() { return 5; }",
+          "  int limit() { return 50; }"),
+         ("assertEquals(1.0, d(), eps());", "  double eps() { return 0.01; }",
+          "  double eps() { return 0.5; }"),
+         ("assertThat(d()).isCloseTo(1.0, within(eps()));", "  double eps() { return 0.01; }",
+          "  double eps() { return 0.5; }"),
+         ("assertTrue(x() < limit());", "  int limit() { return LIMIT; }\n"
+          "  static final int LIMIT = 5;", "  int limit() { return LIMIT; }\n"
+          "  static final int LIMIT = 50;")],
+        ids=["bound", "delta", "within", "constant_behind_helper"],
+    )  # fmt: skip
+    def test_a_changed_helper_widens_the_bound(self, tmp_path, statement, helper_before,
+                                               helper_after):  # fmt: skip
+        before = body_of(statement, helper_before)
+        after = body_of(statement, helper_after)
+        assert codes(before, after, tmp_path) == {TOLERANCE}
+
+    def test_a_changed_comparator_helper_is_refused(self, tmp_path):
+        imports = JSON_IMPORTS + "import org.skyscreamer.jsonassert.JSONCompareMode;\n"
+        helper = "  Object cmp() {{ return {}; }}"
+        before = with_imports(
+            body_of(
+                "JSONAssert.assertEquals(e(), a(), cmp());",
+                helper.format("make(JSONCompareMode.STRICT)"),
+            ),
+            imports,
+        )
+        after = with_imports(
+            body_of(
+                "JSONAssert.assertEquals(e(), a(), cmp());",
+                helper.format("make(JSONCompareMode.LENIENT)"),
+            ),
+            imports,
+        )
+        assert codes(before, after, tmp_path) & {REMOVED, RELAXED}
+
+    def test_a_changed_subject_helper_still_passes(self, tmp_path):
+        before = body_of("assertTrue(x() < 5);", "  int x() { return compute(); }")
+        after = body_of("assertTrue(x() < 5);", "  int x() { return computeSorted(); }")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_a_changed_expected_value_helper_still_passes(self, tmp_path):
+        before = body_of("assertEquals(expected(), actual());", "  int actual() { return f(); }")
+        after = body_of("assertEquals(expected(), actual());", "  int actual() { return g(); }")
+        assert codes(before, after, tmp_path) == set()
+
+    def test_an_unchanged_bound_helper_passes(self, tmp_path):
+        helper = "  int limit() { return 5; }"
+        before = body_of("f(); assertTrue(x() < limit());", helper)
+        after = body_of("g(); assertTrue(x() < limit());", helper)
+        assert codes(before, after, tmp_path) == set()
+
+    def test_mutually_recursive_bound_helpers_terminate(self, tmp_path):
+        helpers = "  int limit() { return other(); }\n  int other() { return limit(); }"
+        before = body_of("f(); assertTrue(x() < limit());", helpers)
+        after = body_of("g(); assertTrue(x() < limit());", helpers)
+        assert codes(before, after, tmp_path) == set()
+
+
+class TestOutOfScopeLocalsNamedLikeAField:
+    def test_a_new_inner_block_local_leaves_the_field_assertion_alone(self, tmp_path):
+        field = "  static final double EPS = 0.001;"
+        before = body_of("assertEquals(1.0, f(), EPS);", field)
+        added = "{ double EPS = 1; assertEquals(2.0, g(), EPS); }"
+        after = body_of(f"assertEquals(1.0, f(), EPS); {added}", field)
+        assert codes(before, after, tmp_path) == set()
+
+    def test_the_field_widened_beside_a_new_local_is_still_caught(self, tmp_path):
+        before = body_of("assertEquals(1.0, f(), EPS);", "  static final double EPS = 0.001;")
+        after = body_of("assertEquals(1.0, f(), EPS); { double EPS = 1; g(EPS); }",
+                        "  static final double EPS = 100;")  # fmt: skip
+        assert codes(before, after, tmp_path) == {TOLERANCE}
