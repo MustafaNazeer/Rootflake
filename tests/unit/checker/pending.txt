@@ -5,8 +5,6 @@ accept-id-look-up-column-index
 reject-nod-sleep-replaced-by-await
 # Accept fixtures waiting on Task 7b (kind 2 and kind 3 matches); remove when 7b lands.
 accept-assertion-moved-into-await-condition
-# Fixtures for the Decision 6 forms adopted 2026-10-23; remove each as its rule lands.
-reject-existing-return-moved-earlier
 # Waits on a ruling: Decision 8 step 4 flags every newly added annotation of an unread type,
 # here Spring's @Configuration and @Bean on a nested class that runs no tests.
 accept-spring-order-on-new-test-bean

@@ -241,6 +241,30 @@ def _exit_positions(unit: CompilationUnit, method: Method) -> list[tuple[str, in
     return sorted(out)
 
 
+def _around_returns(unit: CompilationUnit, method: Method) -> list[tuple[str, set, set]]:
+    """Each return outside nested code, in order, with the texts of the statements that end
+    before it and of those that start after it, leaving out the ones that hold it."""
+    if method.body is None:
+        return []
+    statements = [n for n in _outside_nested(method.body) if isinstance(n, Statement)]
+    out = []
+    for node in statements:
+        if node.kind != "return":
+            continue
+        before = {text(unit, s) for s in statements if s.end <= node.start}
+        after = {text(unit, s) for s in statements if s.start >= node.end}
+        out.append((text(unit, node), before, after))
+    return out
+
+
+def _return_moved_earlier(old_unit, old: Method, new_unit, new: Method) -> bool:
+    """Whether an existing return now comes ahead of a statement that ran before it."""
+    olds, news = _around_returns(old_unit, old), _around_returns(new_unit, new)
+    if [t for t, _, _ in olds] != [t for t, _, _ in news]:
+        return False
+    return any((o[1] & n[2]) - o[2] for o, n in zip(olds, news, strict=True))
+
+
 def _undiscoverable(old: Method, new: Method) -> bool:
     """Jupiter skips a private or static test method, which only warns."""
     became = {"private", "static"} & set(new.modifiers)
@@ -309,6 +333,8 @@ def _removals(change: FileChange, ctx: Context) -> Iterator[Finding]:
             if [t for t, _ in old_exits] == [t for t, _ in new_exits] and any(
                 n < o for (_, o), (_, n) in zip(old_exits, new_exits, strict=True)
             ):
+                yield Finding("disable/early_return", change.path, new.line)
+            elif _return_moved_earlier(change.before, method, change.after, new):
                 yield Finding("disable/early_return", change.path, new.line)
         if _undiscoverable(method, new) and (
             annotation_names(new.annotations, ctx.after) & TEST_ANNOTATIONS

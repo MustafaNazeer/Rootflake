@@ -711,3 +711,30 @@ class TestEngineSwitches:
         )
         new = old.replace("org.junit.Test", "org.junit.jupiter.api.Test")
         assert codes(old, new, tmp_path) == set()
+
+
+class TestExistingReturnMovedEarlier:
+    BODY = (
+        "@Test public void testFoo() { Item found = null; for (Item i : items()) { if (i.ok())"
+        " { found = i; break; } } if (found == null) { return; } check(found); }"
+    )
+
+    def test_a_return_moved_ahead_of_the_loop_it_followed(self, tmp_path):
+        after = self.BODY.replace(
+            "Item found = null;", "Item found = null; if (found == null) { return; }"
+        ).replace("} if (found == null) { return; }", "}")
+        assert "disable/early_return" in codes(cls(self.BODY), cls(after), tmp_path)
+
+    def test_a_return_left_where_it_was_is_not(self, tmp_path):
+        after = self.BODY.replace("check(found);", "check(found); log(found);")
+        assert "disable/early_return" not in codes(cls(self.BODY), cls(after), tmp_path)
+
+    def test_a_statement_before_it_removed_is_not(self, tmp_path):
+        body = "@Test public void testFoo() { prepare(); if (skip()) { return; } check(); }"
+        after = body.replace("prepare(); ", "")
+        assert "disable/early_return" not in codes(cls(body), cls(after), tmp_path)
+
+    def test_a_statement_moved_from_before_it_to_after_it(self, tmp_path):
+        body = "@Test public void testFoo() { prepare(); if (skip()) { return; } check(); }"
+        after = body.replace("prepare(); ", "").replace("check();", "prepare(); check();")
+        assert "disable/early_return" in codes(cls(body), cls(after), tmp_path)
