@@ -26,7 +26,7 @@ from rootflake.gate.checker.model import Context, FileChange, Finding
 from rootflake.gate.checker.poll import initializer_spans
 from rootflake.gate.checker.retries import Site, _library_wildcards, added, member_key, resolve
 from rootflake.gate.checker.scope import Program, is_library
-from rootflake.gate.checker.survive import loop_key
+from rootflake.gate.checker.survive import loop_key, lost, run_counts
 from rootflake.gate.checker.syntax import (
     Block,
     Catch,
@@ -585,7 +585,7 @@ def _try_findings(ctx: Context, change: FileChange) -> Iterator[Finding]:
             last = (
                 closing is None
                 and not _follows(unit, nodes, statement)
-                and not _all_new(ctx, change, key, block)
+                and not (_all_new(ctx, change, key, block) and not _member_lost(ctx, change, nodes))
             )
         else:  # a widened one by what it newly holds
             twin_block = twin.blocks[0]
@@ -618,7 +618,7 @@ def _try_findings(ctx: Context, change: FileChange) -> Iterator[Finding]:
         )  # fmt: skip
         wrapped = (
             not _interrupt_idiom(unit, statement)
-            and _wraps_pristine(ctx, change.path, key, block)
+            and _wraps_pristine(ctx, change, nodes, block)
             and not _caught_and_checked(ctx, change.path, nodes, statement)
         )
         if covers or assigned or last or retried or wrapped:
@@ -652,9 +652,22 @@ def _wait_results_checked(
     open_waits = [
         c for c in waits if not (returned and any(r.start <= c.start < r.end for r in returns))
     ]
-    if not open_waits or all(_cleanup(unit, c, statement) for c in open_waits):
+    if not open_waits:
+        return True
+    if all(_cleanup(unit, c, statement) for c in open_waits) and not _checked_after(
+        ctx, path, nodes, statement
+    ):
         return True  # cleanup after the test needs no checked result (Decision 7)
     return _read_later(ctx, path, nodes, statement, _assigned(unit, block))
+
+
+def _checked_after(ctx: Context, path: str, nodes: list, statement: Statement) -> bool:
+    """Whether anything after the statement in its method checks, after following helpers, so
+    a wait ahead of it is a sync point rather than cleanup."""
+    method = next((n for n in reversed(nodes) if isinstance(n, Method)), None)
+    if method is None or method.body is None:
+        return True
+    return _covers(ctx, path, _Span(statement.end, method.body.end))
 
 
 def _value_wait(unit: CompilationUnit, call: Call) -> bool:
@@ -712,57 +725,92 @@ def _statement_table(unit: CompilationUnit) -> dict[tuple, set[str]]:
 
 
 def _caught_and_checked(ctx: Context, path: str, nodes: list, statement: Statement) -> bool:
-    """Whether every catch stores the exception it caught in a name a later assertion reads,
-    the hand written check for an expected exception."""
+    """Whether every catch first stores the exception it caught in a name, and a later
+    statement of the same block asserts on that name in a way that fails when nothing was
+    caught: the hand written check for an expected exception."""
     unit = ctx.after.units[path]
     tokens = unit.tokens
     stored = set()
     for catch in statement.catches:
-        names = {
-            tokens[k - 1].text
-            for k in range(catch.block.start + 1, catch.block.end - 1)
-            if tokens[k].text == "=" and tokens[k - 1].kind == "ident"
-            and tokens[k + 1].text == catch.name and tokens[k + 2].text == ";"
-        }  # fmt: skip
-        if not names:
+        first = catch.block.statements[0] if catch.block.statements else None
+        words = [] if first is None else [t.text for t in tokens[first.start : first.end]]
+        if len(words) != 4 or words[1:] != ["=", catch.name, ";"]:
             return False
-        stored |= names
-    return _read_later(ctx, path, nodes, statement, stored)
-
-
-def _wraps_pristine(ctx: Context, path: str, key: tuple, block: Block) -> bool:
-    """Whether a try block holds a statement its pristine member ran outside any try more often
-    than the patched member still does, so the statement moved into the try rather than being
-    copied ahead of the code that still runs it."""
-    if path not in ctx.before.units:
+        stored.add(words[0])
+    holder = next(
+        (n for n in reversed(nodes) if isinstance(n, Block)
+         and any(st is statement for st in n.statements)),
+        None,
+    )  # fmt: skip
+    if holder is None:
         return False
-    before = _outside_counts(ctx.before, path).get(key, Counter())
-    after = _outside_counts(ctx.after, path).get(key, Counter())
-    unit = ctx.after.units[path]
-    return any(before[t] > after[t] for t in _statement_texts(unit, block))
+    later = [st for st in holder.statements if st.start >= statement.end]
+    return all(any(_asserts_caught(unit, st, name) for st in later) for name in stored)
 
 
-def _outside_counts(program: Program, path: str) -> dict[tuple, Counter]:
-    memo = ("swallow/outside_counts", path)
-    if memo not in program.memo:
-        unit = program.units[path]
-        out: dict[tuple, Counter] = {}
-        for node in walk(unit):
-            if not isinstance(node, Statement) or node.blocks or node.kind == "local_type":
-                continue
-            nodes = path_to(unit, node.start)
-            if not _guarded(nodes):
-                key = tuple((k, nm) for k, nm, _ in _owner_key(unit, nodes))
-                out.setdefault(key, Counter())[_text(unit, node.start, node.end)] += 1
-        program.memo[memo] = out
-    return program.memo[memo]
+_CAUGHT_CHECKS = frozenset(["assertNotNull", "assertNull", "assertSame", "assertThat"])
 
 
-def _guarded(nodes: list) -> bool:
+def _asserts_caught(unit: CompilationUnit, statement: Statement, name: str) -> bool:
+    if statement.kind != "expression":
+        return False
+    calls = [c for c in calls_in(unit, statement) if not c.reference]
+    if not calls:
+        return False
+    call = calls[0]
+    arguments = [" ".join(a.split()) for a in _arguments(unit, call)]
+    if call.name in _CAUGHT_CHECKS:
+        return name in arguments
+    if call.name in ("assertTrue", "assertFalse"):
+        forms = {f"{name} == null", f"{name} != null", f"null == {name}", f"null != {name}"}
+        return any(a in forms or a.startswith(f"{name} instanceof ") for a in arguments)
+    return False
+
+
+def _wraps_pristine(ctx: Context, change: FileChange, nodes: list, block: Block) -> bool:
+    """Whether a try block holds a statement its pristine member ran outside any try more often
+    than the patched member still runs it in the same place, so the statement moved into the
+    try rather than being copied ahead of the code that still runs it. A copy under a
+    condition, in a lambda or in another try does not count as still running it."""
+    pair = _member_counts(ctx, change, nodes)
+    if pair is None:
+        return False
+    before, after = pair
+    texts = set(_statement_texts(change.after, block))
     return any(
-        isinstance(n, Statement) and n.kind == "try" and n.blocks and nodes[k + 1] is n.blocks[0]
-        for k, n in enumerate(nodes[:-1])
+        text in texts and after[(text, where)] < count
+        for (text, where), count in before.items()
+        if not any(part[0] == "try" and part[2] == "block0" for part in where)
     )
+
+
+def _member_lost(ctx: Context, change: FileChange, nodes: list) -> bool:
+    pair = _member_counts(ctx, change, nodes)
+    return pair is not None and lost(*pair)
+
+
+def _member_counts(ctx: Context, change: FileChange, nodes: list):
+    """The run counts of the pristine and patched bodies of the member around a statement,
+    or None for a member the pristine file does not have."""
+    method = next((n for n in reversed(nodes) if isinstance(n, Method)), None)
+    if change.before is None or method is None or method.body is None:
+        return None
+    plain = _plain_key(change.after, method)
+    memo = ("swallow/members", change.path)
+    if memo not in ctx.before.memo:
+        ctx.before.memo[memo] = {
+            _plain_key(change.before, m): m
+            for m in walk(change.before)
+            if isinstance(m, Method) and m.body is not None
+        }
+    old = ctx.before.memo[memo].get(plain)
+    if old is None:
+        return None
+    return run_counts(change.before, old.body), run_counts(change.after, method.body)
+
+
+def _plain_key(unit: CompilationUnit, method: Method) -> tuple:
+    return tuple((kind, name) for kind, name, _ in _owner_key(unit, path_to(unit, method.start)))
 
 
 def _outside_table(unit: CompilationUnit) -> dict[tuple, set[str]]:

@@ -171,3 +171,75 @@ class TestExitsCountOnlyAgainstWhatTheyCanSkip:
             " { break; } svc.use(i); } assertEquals(3, svc.count());"
         )
         assert EARLY in judged(before, after, tmp_path)
+
+
+HELPER = "\nvoid runScenario() { svc.process(); }"
+
+
+class TestRewrittenPristineCodeIsNotNew:
+    @pytest.mark.parametrize(
+        "after",
+        [
+            "try { this.svc.process(); } catch (Exception e) { }",
+            "try { Object r = svc.process(); } catch (Exception e) { }",
+            "assertEquals(1, svc.count()); try { this.svc.process(); } catch (Exception e) { }",
+        ],
+    )
+    def test_a_rewritten_statement_in_a_try_that_ends_the_test_is_rejected(self, after, tmp_path):
+        before = (
+            "svc.process();"
+            if after.startswith("try")
+            else ("assertEquals(1, svc.count()); svc.process();")
+        )
+        assert CATCH in judged(before, after, tmp_path)
+
+    def test_an_inlined_helper_in_a_try_that_ends_the_test_is_rejected(self, tmp_path):
+        before = cls(method("runScenario();") + HELPER)
+        after = cls(method("try { svc.process(); } catch (Exception e) { }") + HELPER)
+        assert CATCH in codes(before, after, tmp_path)
+
+    def test_a_rewritten_statement_after_a_break_in_a_new_loop_is_an_early_return(self, tmp_path):
+        before = "svc.process(); assertEquals(1, svc.count());"
+        after = (
+            "for (int i = 0; i < 1; i++) { if (svc.busy()) { break; } this.svc.process(); }"
+            " assertEquals(1, svc.count());"
+        )
+        assert EARLY in judged(before, after, tmp_path)
+
+
+class TestCopiesAndStoresThatDoNotCount:
+    MOVED = "try { svc.process(); } catch (Exception e) { } "
+
+    @pytest.mark.parametrize(
+        "copy", ["if (false) { svc.process(); }", "Runnable unused = () -> { svc.process(); };"]
+    )
+    def test_a_copy_that_does_not_run_in_the_same_place_does_not_count(self, copy, tmp_path):
+        before = "svc.process(); assertEquals(1, svc.count());"
+        after = self.MOVED + copy + " assertEquals(1, svc.count());"
+        assert CATCH in judged(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        "after",
+        [
+            "Exception seen = null; try { svc.process(); } catch (IllegalStateException e)"
+            " { if (false) { seen = e; } } assertNotNull(seen);",
+            "Exception seen = null; try { svc.process(); } catch (IllegalStateException e)"
+            " { seen = e; } assertNotNull(String.valueOf(seen));",
+        ],
+    )
+    def test_a_store_that_is_conditional_or_read_trivially_does_not_count(self, after, tmp_path):
+        before = "svc.process(); assertEquals(1, svc.count());"
+        assert CATCH in judged(before, after, tmp_path)
+
+    def test_a_cleanup_wait_ahead_of_a_checking_helper_is_a_sync_point(self, tmp_path):
+        helper = "\nvoid checkState() { assertEquals(1, svc.count()); }"
+        before = cls(method("svc.start(); checkState();") + helper)
+        after = cls(
+            method(
+                "try { svc.start(); } finally { try { done.await(5, TimeUnit.SECONDS); }"
+                " catch (InterruptedException e) { Thread.currentThread().interrupt(); } }"
+                " checkState();"
+            )
+            + helper
+        )
+        assert CATCH in codes(before, after, tmp_path)

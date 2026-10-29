@@ -136,6 +136,59 @@ def _outside_nested(body) -> Iterator:
         )
 
 
+def run_counts(unit: CompilationUnit, body: Block | None) -> Counter:
+    """The simple statements of a body, each with where it runs: the statements around it in
+    the body (a statement's kind, its header text and which of its parts holds it), and any
+    lambda or class it sits in. So a statement moved into a `try`, rewritten, or copied under
+    `if (false)` or into a lambda no longer counts as the one that ran before."""
+    out: Counter = Counter()
+    if body is None:
+        return out
+    for node in walk(body):
+        if isinstance(node, Statement) and not node.blocks and node.kind != "local_type":
+            out[(text(unit, node), _run_context(unit, body, node))] += 1
+    return out
+
+
+def lost(before: Counter, after: Counter) -> bool:
+    """Whether a statement that ran before runs fewer times, in the same place, after."""
+    return any(after[key] < count for key, count in before.items())
+
+
+def _run_context(unit: CompilationUnit, body: Block, node: Statement) -> tuple:
+    nodes = path_to(unit, node.start)
+    inside = nodes[next((k for k, n in enumerate(nodes) if n is body), 0) + 1 :]
+    out = []
+    for k, n in enumerate(inside[:-1]):
+        nxt = inside[k + 1]
+        if isinstance(n, Lambda):
+            out.append(("lambda",))
+        elif isinstance(n, TypeDecl):
+            out.append(("class", n.name))
+        elif isinstance(n, Statement) and n is not node:
+            out.append((n.kind, _header(unit, n), _part(n, nxt)))
+    return tuple(out)
+
+
+def _header(unit: CompilationUnit, n: Statement) -> str:
+    if n.header is None:
+        return ""
+    return " ".join(t.text for t in unit.tokens[n.header.start : n.header.end])
+
+
+def _part(n: Statement, inner) -> str:
+    at = inner.start
+    for i, b in enumerate(n.blocks):
+        if b.start <= at < b.end:
+            return f"block{i}"
+    for i, c in enumerate(n.catches):
+        if c.start <= at < c.end:
+            return f"catch{i}"
+    if n.finally_block is not None and n.finally_block.start <= at < n.finally_block.end:
+        return "finally"
+    return "other"
+
+
 def _returns(method: Method) -> int:
     """Returns outside nested lambdas and classes. A void `return;` always counts; a value
     return does not in a non void @TestFactory, which must return its tests."""
@@ -232,10 +285,22 @@ def _added_and_trailing(unit: CompilationUnit, around: list, node: Statement, ol
     return True
 
 
+def _old_loops(before: CompilationUnit, method: Method, after: CompilationUnit, new: Method):
+    """The before method's loops for `_loop_exits`, with no statement texts when a statement
+    the before method ran no longer runs in the same place, so a rewritten or inlined
+    statement cannot make an added loop read as holding only new code."""
+    keys, inside, everywhere = loops_of(before, method)
+    if lost(run_counts(before, method.body), run_counts(after, new.body)):
+        everywhere = None
+    return keys, inside, everywhere
+
+
 def _added_and_new(unit: CompilationUnit, loop: Statement, node: Statement, old: tuple) -> bool:
     keys, _, everywhere = old
-    return not keys[loop_key(unit, loop)] and not (
-        (_statement_texts(unit, loop) - {text(unit, node)}) & everywhere
+    return (
+        everywhere is not None
+        and not keys[loop_key(unit, loop)]
+        and not ((_statement_texts(unit, loop) - {text(unit, node)}) & everywhere)
     )
 
 
@@ -338,9 +403,9 @@ def _removals(change: FileChange, ctx: Context) -> Iterator[Finding]:
             yield Finding("disable/test_body_emptied", change.path, new.line)
         if _returns(new) > _returns(method):
             yield Finding("disable/early_return", change.path, new.line)
-        elif _loop_exits(change.after, new, loops_of(change.before, method)) > _loop_exits(
-            change.before, method
-        ):
+        elif _loop_exits(
+            change.after, new, _old_loops(change.before, method, change.after, new)
+        ) > _loop_exits(change.before, method):
             yield Finding("disable/early_return", change.path, new.line)
         else:
             old_exits = _exit_positions(change.before, method)
