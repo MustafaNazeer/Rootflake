@@ -243,3 +243,101 @@ class TestCopiesAndStoresThatDoNotCount:
             + helper
         )
         assert CATCH in codes(before, after, tmp_path)
+
+
+class TestCatchesInWorkerThreads:
+    AFTER = " assertEquals(1, svc.count());"
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [
+            ("new Thread(() -> { svc.run(); }).start();",
+             "new Thread(() -> { try { svc.run(); } catch (Exception e) { e.printStackTrace(); } })"
+             ".start();"),
+            ("pool.execute(() -> { svc.run(); });",
+             "pool.execute(() -> { try { svc.run(); } catch (Exception e) { log.warn(e); } });"),
+            ("new Thread(() -> { while (true) { svc.handle(queue.take()); } }).start();",
+             "new Thread(() -> { while (true) { try { svc.handle(queue.take()); }"
+             " catch (InterruptedException e) { break; } } }).start();"),
+        ],
+    )  # fmt: skip
+    def test_a_catch_that_only_reports_in_a_worker_thread_is_accepted(
+        self, before, after, tmp_path
+    ):
+        found = judged(before + self.AFTER, after + self.AFTER, tmp_path)
+        assert not {c for c in found if c.startswith("swallow_failure/")}
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [
+            ("pool.submit(() -> { svc.run(); return 1; }).get();",
+             "pool.submit(() -> { try { svc.run(); } catch (Exception e) { e.printStackTrace(); }"
+             " return 1; }).get();"),
+            ("new Thread(() -> { svc.run(); }).start();",
+             "new Thread(() -> { try { svc.run(); } catch (Exception e) { done.set(true); } })"
+             ".start();"),
+            ("new Thread(() -> { svc.run(); }).start();",
+             "new Thread(() -> { try { svc.run(); } catch (Exception e) { ok = true; } })"
+             ".start();"),
+            ("new Thread(() -> { svc.run(); }).start();",
+             "new Thread(() -> { try { svc.run(); } catch (Exception e) { latch.countDown(); } })"
+             ".start();"),
+        ],
+    )  # fmt: skip
+    def test_a_submitted_task_or_a_catch_that_sets_state_is_still_judged(
+        self, before, after, tmp_path
+    ):
+        assert CATCH in judged(before + self.AFTER, after + self.AFTER, tmp_path)
+
+
+class TestOtherEditsInTheSameMember:
+    def test_a_sleep_replaced_by_a_new_search_loop_is_not_an_early_return(self, tmp_path):
+        before = "svc.start(); Thread.sleep(100); assertEquals(1, svc.count());"
+        after = (
+            "svc.start(); for (int i = 0; i < 100; i++) { if (svc.count() >= 1) { break; }"
+            " Thread.yield(); } assertEquals(1, svc.count());"
+        )
+        assert EARLY not in judged(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("before", "after"),
+        [
+            ("svc.start(1); assertEquals(1, svc.count());",
+             "svc.start(2); assertEquals(1, svc.count());"),
+            ("if (a) { svc.start(); } assertEquals(1, svc.count());",
+             "if (a && b) { svc.start(); } assertEquals(1, svc.count());"),
+        ],
+    )  # fmt: skip
+    def test_new_cleanup_ending_a_test_with_another_edit_is_accepted(self, before, after, tmp_path):
+        cleanup = ' try { System.clearProperty("a"); } catch (SecurityException e) { }'
+        assert CATCH not in judged(before, after + cleanup, tmp_path)
+
+    def test_a_statement_moved_from_the_test_into_a_new_after_method_is_rejected(self, tmp_path):
+        before = cls(method("svc.process(); assertEquals(1, svc.count()); svc.stop();"))
+        after = with_after(TEST, "try { svc.stop(); } catch (Exception e) { }")
+        assert CATCH in codes(before, after, tmp_path)
+
+
+class TestHandWrittenExpectedExceptionForms:
+    BEFORE = "svc.process(); assertEquals(1, n);"
+    TRY = (
+        "Exception seen = null; try { svc.process(); }"
+        " catch (IllegalStateException e) { seen = e; } "
+    )
+
+    @pytest.mark.parametrize(
+        "check",
+        ['assertEquals("boom", seen.getMessage());', 'assertThat(seen).hasMessage("boom");',
+         "assertNull(seen);", "assertTrue(seen instanceof IllegalStateException);"],
+    )  # fmt: skip
+    def test_a_check_that_fails_when_nothing_was_caught_is_accepted(self, check, tmp_path):
+        after = self.TRY + check + " assertEquals(1, n);"
+        assert CATCH not in judged(self.BEFORE, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        "check",
+        ["assertSame(seen, seen);", "assertThat(seen);", "assertThat(seen == seen).isTrue();"],
+    )
+    def test_a_check_that_holds_whatever_was_caught_is_rejected(self, check, tmp_path):
+        after = self.TRY + check + " assertEquals(1, n);"
+        assert CATCH in judged(self.BEFORE, after, tmp_path)

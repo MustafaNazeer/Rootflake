@@ -24,9 +24,10 @@ from rootflake.gate.checker.assertions import (
 from rootflake.gate.checker.calls import Call, calls_in, follow_for_scan, reach
 from rootflake.gate.checker.model import Context, FileChange, Finding
 from rootflake.gate.checker.poll import initializer_spans
+from rootflake.gate.checker.production import _LOG_CALLS
 from rootflake.gate.checker.retries import Site, _library_wildcards, added, member_key, resolve
 from rootflake.gate.checker.scope import Program, is_library
-from rootflake.gate.checker.survive import loop_key, lost, run_counts
+from rootflake.gate.checker.survive import loop_key, lost_calls, runs
 from rootflake.gate.checker.syntax import (
     Block,
     Catch,
@@ -570,6 +571,8 @@ def _try_findings(ctx: Context, change: FileChange) -> Iterator[Finding]:
     for statement, fresh, twin in _judged(ctx, change):
         if not any(_swallows(ctx.after, change.path, c) for c in statement.catches):
             continue
+        if _on_a_worker(unit, statement) and all(_only_reports(unit, c) for c in statement.catches):
+            continue  # what a worker thread throws never fails the test (semantics note, 19)
         nodes = path_to(unit, statement.start)
         block = statement.blocks[0]
         key = tuple((kind, name) for kind, name, _ in _owner_key(unit, nodes))
@@ -585,7 +588,10 @@ def _try_findings(ctx: Context, change: FileChange) -> Iterator[Finding]:
             last = (
                 closing is None
                 and not _follows(unit, nodes, statement)
-                and not (_all_new(ctx, change, key, block) and not _member_lost(ctx, change, nodes))
+                and not (
+                    _all_new(ctx, change, key, block)
+                    and not _lost_reappears(ctx, change, nodes, block)
+                )
             )
         else:  # a widened one by what it newly holds
             twin_block = twin.blocks[0]
@@ -625,6 +631,52 @@ def _try_findings(ctx: Context, change: FileChange) -> Iterator[Finding]:
             yield Finding(CATCH, change.path, statement.line)
             if (covers or retried) and loop is not None:
                 yield Finding(RETRY_LOOP, change.path, statement.line)
+
+
+_REPORTS = _LOG_CALLS | frozenset(
+    ["print", "println", "printf", "interrupt", "currentThread", "getMessage", "toString"]
+)
+
+
+def _on_a_worker(unit: CompilationUnit, statement: Statement) -> bool:
+    """Whether a statement sits in a lambda handed straight to `new Thread(...)` or to an
+    `execute(...)` call, whose exceptions go to the thread's uncaught exception handler or into
+    a future no one reads, and never fail the test. A lambda given to `submit` is not one: its
+    exception comes back from `get`."""
+    lam = next((n for n in reversed(path_to(unit, statement.start)) if isinstance(n, Lambda)), None)
+    if lam is None:
+        return False
+    tokens, depth = unit.tokens, 0
+    for k in range(lam.start - 1, -1, -1):
+        text = tokens[k].text
+        if text in (")", "]", "}"):
+            depth += 1
+        elif text in ("(", "[", "{"):
+            if depth == 0:
+                if text != "(" or k == 0:
+                    return False
+                name = tokens[k - 1].text
+                if name == "Thread" and k >= 2 and tokens[k - 2].text == "new":
+                    return True
+                return name == "execute" and k >= 2 and tokens[k - 2].text == "."
+            depth -= 1
+        elif text == "," and depth == 0:
+            return False
+    return False
+
+
+def _only_reports(unit: CompilationUnit, catch: Catch) -> bool:
+    """Whether a catch only reports what it caught, restores the interrupt or leaves: it sets
+    no state the test could read in place of the work that failed."""
+    if _assigned(unit, catch.block):
+        return False
+    if any(c.name not in _REPORTS for c in calls_in(unit, catch.block)):
+        return False
+    return all(
+        n.kind in ("expression", "break", "continue", "return", "empty")
+        for n in walk(catch.block)
+        if isinstance(n, Statement)
+    )
 
 
 def _runs_again(unit: CompilationUnit, statement: Statement, loop: Statement | None) -> bool:
@@ -759,6 +811,19 @@ def _asserts_caught(unit: CompilationUnit, statement: Statement, name: str) -> b
         return False
     call = calls[0]
     arguments = [" ".join(a.split()) for a in _arguments(unit, call)]
+    if not arguments or (len(arguments) > 1 and all(a == name for a in arguments)):
+        return False  # assertSame(seen, seen) holds whatever was caught
+    if any(a.startswith(f"{name} .") or f" {name} . " in f" {a}" for a in arguments):
+        return True  # a dereference fails when nothing was caught
+    if call.name == "assertThat" and len(arguments) == 1:
+        close = _close(unit, call.end)
+        after = unit.tokens[close + 1 : close + 4]
+        return (
+            name in arguments
+            and len(after) == 3
+            and after[0].text == "."
+            and (after[1].kind == "ident" and after[2].text == "(")
+        )  # AssertJ checks only in the call that follows assertThat
     if call.name in _CAUGHT_CHECKS:
         return name in arguments
     if call.name in ("assertTrue", "assertFalse"):
@@ -771,31 +836,44 @@ def _wraps_pristine(ctx: Context, change: FileChange, nodes: list, block: Block)
     """Whether a try block holds a statement its pristine member ran outside any try more often
     than the patched member still runs it in the same place, so the statement moved into the
     try rather than being copied ahead of the code that still runs it. A copy under a
-    condition, in a lambda or in another try does not count as still running it."""
-    pair = _member_counts(ctx, change, nodes)
-    if pair is None:
-        return False
-    before, after = pair
+    condition, in a lambda or in another try does not count as still running it. In a member
+    the pristine file does not have, such as a new after method, a statement counts as moved
+    when the whole file runs it outside a try fewer times than before."""
     texts = set(_statement_texts(change.after, block))
+    pair = _member_pair(ctx, change, nodes)
+    if pair is None:
+        if change.before is None:
+            return False
+        was = _file_outside(ctx.before, change.path)
+        now = _file_outside(ctx.after, change.path)
+        return any(now[t] < was[t] for t in texts)
+    old, new = pair
+    was, now = runs(ctx.before, change.path, old.body), runs(ctx.after, change.path, new.body)
     return any(
-        text in texts and after[(text, where)] < count
-        for (text, where), count in before.items()
-        if not any(part[0] == "try" and part[2] == "block0" for part in where)
+        key[0] in texts and len(now.get(key, ())) < len(found)
+        for key, found in was.items()
+        if not any(part[0] == "try" and part[2] == "block0" for part in key[1])
     )
 
 
-def _member_lost(ctx: Context, change: FileChange, nodes: list) -> bool:
-    pair = _member_counts(ctx, change, nodes)
-    return pair is not None and lost(*pair)
+def _lost_reappears(ctx: Context, change: FileChange, nodes: list, block: Block) -> bool:
+    """Whether the try block makes a call that a statement its member no longer runs in the
+    same place made, directly or one level down (`lost_calls`), so a rewritten or inlined
+    statement does not read as new."""
+    pair = _member_pair(ctx, change, nodes)
+    if pair is None:
+        return False
+    old, new = pair
+    gone = lost_calls(ctx.before, ctx.after, change.path, old.body, new.body)
+    return bool(gone & {c.name for c in calls_in(change.after, block)})
 
 
-def _member_counts(ctx: Context, change: FileChange, nodes: list):
-    """The run counts of the pristine and patched bodies of the member around a statement,
-    or None for a member the pristine file does not have."""
+def _member_pair(ctx: Context, change: FileChange, nodes: list):
+    """The pristine and patched member around a statement, or None for a member the pristine
+    file does not have."""
     method = next((n for n in reversed(nodes) if isinstance(n, Method)), None)
     if change.before is None or method is None or method.body is None:
         return None
-    plain = _plain_key(change.after, method)
     memo = ("swallow/members", change.path)
     if memo not in ctx.before.memo:
         ctx.before.memo[memo] = {
@@ -803,10 +881,27 @@ def _member_counts(ctx: Context, change: FileChange, nodes: list):
             for m in walk(change.before)
             if isinstance(m, Method) and m.body is not None
         }
-    old = ctx.before.memo[memo].get(plain)
-    if old is None:
-        return None
-    return run_counts(change.before, old.body), run_counts(change.after, method.body)
+    old = ctx.before.memo[memo].get(_plain_key(change.after, method))
+    return None if old is None else (old, method)
+
+
+def _file_outside(program: Program, path: str) -> Counter:
+    """How many times each simple statement text runs outside any try block in a file."""
+    memo = ("swallow/file_outside", path)
+    if memo not in program.memo:
+        unit = program.units[path]
+        out: Counter = Counter()
+        for node in walk(unit):
+            if isinstance(node, Statement) and not node.blocks and node.kind != "local_type":
+                nodes = path_to(unit, node.start)
+                if not any(
+                    isinstance(n, Statement) and n.kind == "try" and n.blocks
+                    and nodes[k + 1] is n.blocks[0]
+                    for k, n in enumerate(nodes[:-1])
+                ):  # fmt: skip
+                    out[_text(unit, node.start, node.end)] += 1
+        program.memo[memo] = out
+    return program.memo[memo]
 
 
 def _plain_key(unit: CompilationUnit, method: Method) -> tuple:
@@ -851,6 +946,12 @@ def _exit_sites(program: Program, path: str) -> list[Site]:
                 nested = path_to(unit, inner.start)
                 below = nested[next(k for k, n in enumerate(nested) if n is block) + 1 :]
                 if any(isinstance(n, (Lambda, TypeDecl)) for n in below):
+                    continue
+                if (
+                    _on_a_worker(unit, node)
+                    and all(_only_reports(unit, c) for c in node.catches)
+                    and where == "catch"
+                ):
                     continue
                 if inner.kind != "return" and any(
                     isinstance(n, Statement) and (n.kind in _LOOPS or n.kind == "switch")

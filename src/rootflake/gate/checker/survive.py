@@ -136,23 +136,44 @@ def _outside_nested(body) -> Iterator:
         )
 
 
-def run_counts(unit: CompilationUnit, body: Block | None) -> Counter:
-    """The simple statements of a body, each with where it runs: the statements around it in
-    the body (a statement's kind, its header text and which of its parts holds it), and any
+def runs(program: Program, path: str, body: Block | None) -> dict[tuple, list[Statement]]:
+    """The simple statements of a body, by where each runs: its text, the statements around it
+    in the body (a statement's kind, its header text and which of its parts holds it), and any
     lambda or class it sits in. So a statement moved into a `try`, rewritten, or copied under
-    `if (false)` or into a lambda no longer counts as the one that ran before."""
-    out: Counter = Counter()
+    `if (false)` or into a lambda no longer counts as the one that ran before. Computed once
+    per body."""
     if body is None:
-        return out
-    for node in walk(body):
-        if isinstance(node, Statement) and not node.blocks and node.kind != "local_type":
-            out[(text(unit, node), _run_context(unit, body, node))] += 1
-    return out
+        return {}
+    memo = ("survive/runs", path, body.start)
+    if memo not in program.memo:
+        unit = program.units[path]
+        out: dict[tuple, list[Statement]] = {}
+        for node in walk(body):
+            if isinstance(node, Statement) and not node.blocks and node.kind != "local_type":
+                key = (text(unit, node), _run_context(unit, body, node))
+                out.setdefault(key, []).append(node)
+        program.memo[memo] = out
+    return program.memo[memo]
 
 
-def lost(before: Counter, after: Counter) -> bool:
-    """Whether a statement that ran before runs fewer times, in the same place, after."""
-    return any(after[key] < count for key, count in before.items())
+def lost_calls(
+    before: Program, after: Program, path: str, old: Block | None, new: Block | None
+) -> set[str]:
+    """The names of the calls made by the statements the old body ran that the new body no
+    longer runs in the same place, with the calls of each method of that name a read file
+    declares, one level down: what a rewritten, wrapped or inlined statement may still call."""
+    was, now = runs(before, path, old), runs(after, path, new)
+    unit = before.units[path]
+    names: set[str] = set()
+    for key, nodes in was.items():
+        if len(now.get(key, ())) < len(nodes):
+            for node in nodes:
+                names |= {c.name for c in calls_in(unit, node)}
+    for name in list(names):
+        for where, method in before.methods_by_name.get(name, ()):
+            if method.body is not None:
+                names |= {c.name for c in calls_in(before.units[where], method.body)}
+    return names
 
 
 def _run_context(unit: CompilationUnit, body: Block, node: Statement) -> tuple:
@@ -272,7 +293,7 @@ def _added_and_trailing(unit: CompilationUnit, around: list, node: Statement, ol
     every block's statement on that way is the block's last. A loop is added when no loop of
     its kind and header text was in the before method and it holds no statement that sat
     inside a loop there, so editing a loop's header does not make it new."""
-    keys, inside, _ = old
+    keys, inside = old[:2]
     loop = around[0]
     if keys[loop_key(unit, loop)] or (_statement_texts(unit, loop) - {text(unit, node)}) & inside:
         return False
@@ -285,20 +306,19 @@ def _added_and_trailing(unit: CompilationUnit, around: list, node: Statement, ol
     return True
 
 
-def _old_loops(before: CompilationUnit, method: Method, after: CompilationUnit, new: Method):
-    """The before method's loops for `_loop_exits`, with no statement texts when a statement
-    the before method ran no longer runs in the same place, so a rewritten or inlined
-    statement cannot make an added loop read as holding only new code."""
-    keys, inside, everywhere = loops_of(before, method)
-    if lost(run_counts(before, method.body), run_counts(after, new.body)):
-        everywhere = None
-    return keys, inside, everywhere
+def _old_loops(ctx: Context, path: str, method: Method, new: Method):
+    """The before method's loops for `_loop_exits`, with the calls a lost statement may still
+    make (`lost_calls`), so a rewritten or inlined statement cannot make an added loop read as
+    holding only new code."""
+    keys, inside, everywhere = loops_of(ctx.before.units[path], method)
+    gone = lost_calls(ctx.before, ctx.after, path, method.body, new.body)
+    return keys, inside, everywhere, gone
 
 
 def _added_and_new(unit: CompilationUnit, loop: Statement, node: Statement, old: tuple) -> bool:
-    keys, _, everywhere = old
+    keys, _, everywhere, gone = old
     return (
-        everywhere is not None
+        not gone & {c.name for c in calls_in(unit, loop)}
         and not keys[loop_key(unit, loop)]
         and not ((_statement_texts(unit, loop) - {text(unit, node)}) & everywhere)
     )
@@ -404,7 +424,7 @@ def _removals(change: FileChange, ctx: Context) -> Iterator[Finding]:
         if _returns(new) > _returns(method):
             yield Finding("disable/early_return", change.path, new.line)
         elif _loop_exits(
-            change.after, new, _old_loops(change.before, method, change.after, new)
+            change.after, new, _old_loops(ctx, change.path, method, new)
         ) > _loop_exits(change.before, method):
             yield Finding("disable/early_return", change.path, new.line)
         else:
