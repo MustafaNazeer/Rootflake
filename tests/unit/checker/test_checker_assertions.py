@@ -2000,6 +2000,20 @@ class TestModeNamesTheCallCannotVouchFor:
         after = "JSONAssert.assertEquals(e(), a(), LENIENT);"
         assert REMOVED in self._codes(tmp_path, after, extending)
 
+    @pytest.mark.parametrize(
+        ("base", "expected"),
+        [("public class Base {}", set()), ("public class Base extends ExternalBase {}", {REMOVED})],
+    )
+    def test_an_unread_supertype_of_a_read_supertype_counts(self, tmp_path, base, expected):
+        old, new = (
+            with_imports(body_of(s), self.IMPORTS).replace(
+                "public class FooTest {", "public class FooTest extends Base {"
+            )
+            for s in (self.BEFORE, "JSONAssert.assertEquals(e(), a(), LENIENT);")
+        )
+        extra = {"src/test/java/a/Base.java": f"package a;\n{base}\n"}
+        assert codes(old, new, tmp_path, extra) == expected
+
     def test_a_local_hiding_the_class_name_is_unknown(self, tmp_path):
         after = (
             "Object JSONCompareMode = k(); "

@@ -1730,13 +1730,17 @@ def _member_names(program: Program) -> frozenset[str]:
 
 
 def _unread_supertype(program: Program, path: str, at: int) -> bool:
-    """Whether a type enclosing token at has a supertype no read file declares, which may
-    declare any member name."""
+    """Whether a type enclosing token at, or any read supertype of one, has a supertype no read
+    file declares, which may declare any member name."""
     for node in path_to(program.units[path], at):
         if isinstance(node, TypeDecl):
-            for name in (*node.extends, *node.implements):
-                if program.resolve_type(path, name, node.start, header=True).kind != "declared":
-                    return True
+            for owner, decl in ((path, node), *program.supertypes(path, node)):
+                for name in (*decl.extends, *decl.implements):
+                    if (
+                        program.resolve_type(owner, name, decl.start, header=True).kind
+                        != "declared"
+                    ):
+                        return True
     return False
 
 
