@@ -433,7 +433,7 @@ def sleep_form(program: Program, path: str, call: Call) -> bool:
         return False
     if follow_for_scan(program, path, call):
         return False  # a read declaration is followed into its body instead
-    return named or "sleep" in lower
+    return True
 
 
 # -- timeouts on test methods and rules ---------------------------------------------------
@@ -502,9 +502,40 @@ def _rule_timeouts(unit: CompilationUnit) -> dict[tuple, Bound | None]:
             for span in field.initializers.values():
                 text = _text(unit, span.start, span.end)
                 if kind == "Timeout" or "Timeout" in text.split():
-                    bounds.append(_rule_bound(text, field.line))
+                    bounds.append(_rule_bound(_timeout_part(text), field.line))
+        for method in node.methods:  # JUnit 4 also reads a rule a method returns
+            names = {a.name.rsplit(".", 1)[-1] for a in method.annotations}
+            kind = (method.return_type or "").split("<")[0].rsplit(".", 1)[-1]
+            if not names & {"Rule", "ClassRule"} or method.body is None:
+                continue
+            for statement in walk(method.body):
+                if not isinstance(statement, Statement) or statement.kind != "return":
+                    continue
+                text = _text(unit, statement.start + 1, statement.end - 1)
+                if text and (kind == "Timeout" or "Timeout" in text.split()):
+                    bounds.append(_rule_bound(_timeout_part(text), statement.line))
         out[_member_key(path_to(unit, node.start))] = _tightest(bounds)
     return out
+
+
+def _timeout_part(text: str) -> str:
+    """The Timeout inside a rule's text, as in `RuleChain.outerRule(new Timeout(5000))
+    .around(cleanup)`, so a rule added around it leaves the bound as it was."""
+    words = text.split()
+    for k in range(len(words) - 2):
+        if words[k : k + 3] == ["new", "Timeout", "("]:
+            close = _matching_close(words, k + 2)
+            if close is not None:
+                return " ".join(words[k : close + 1])
+        if words[k : k + 2] == ["Timeout", "."] and k + 3 < len(words) and words[k + 3] == "(":
+            if words[k + 2] == "builder":
+                at = next((j for j in range(k, len(words)) if words[j] == "withTimeout"), None)
+                close = _matching_close(words, at + 1) if at is not None else None
+            else:
+                close = _matching_close(words, k + 3)
+            if close is not None:
+                return " ".join(words[k : close + 1])
+    return text
 
 
 def _rule_bound(text: str, line: int) -> Bound:
@@ -743,6 +774,33 @@ def _reaches_sleep(ctx: Context, path: str, call: Call) -> bool:
     return False
 
 
+def _reaches_ignored_wait(ctx: Context, path: str, call: Call) -> bool:
+    """Whether a call reaches a helper that makes a bounded wait and drops its result, as
+    `static void waitFor(CountDownLatch l) { l.await(5, SECONDS); }` does: the call then waits up
+    to the bound and checks nothing, a fixed sleep like an unchecked latch wait. A helper that
+    returns the result leaves it to its caller and is not judged here, a recorded limit."""
+    program = ctx.after
+    roots = follow_for_scan(program, path, call)
+    if not roots:
+        return False
+    for reached in reach(program, roots, True, ctx.budget):
+        body = reached.method.body
+        if body is None:
+            continue
+        inner = program.units[reached.path]
+        for wait in calls_in(inner, body):
+            if wait.reference or wait.name not in _RESULT_WAITS:
+                continue
+            if not _argument_bounds(_arguments(inner, wait), 0)[0]:
+                continue
+            statement, _ = _statement(path_to(inner, wait.start))
+            if statement is None or not _result_ignored(inner, wait, statement):
+                continue
+            if not _cleanup(inner, wait, statement):
+                return True
+    return False
+
+
 def _sleep_findings(ctx: Context, change: FileChange, found: _Bounds) -> Iterator[Finding]:
     program, unit = ctx.after, change.after
     old_sites = _sites(change.before)
@@ -770,7 +828,9 @@ def _sleep_findings(ctx: Context, change: FileChange, found: _Bounds) -> Iterato
                     continue
             seen.add(call.start)
             yield Finding(CODE, change.path, line)
-        elif _reaches_sleep(ctx, change.path, call):
+        elif _reaches_sleep(ctx, change.path, call) or _reaches_ignored_wait(
+            ctx, change.path, call
+        ):
             seen.add(call.start)
             yield Finding(CODE, change.path, line)
 

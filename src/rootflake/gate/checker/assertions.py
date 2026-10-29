@@ -1329,16 +1329,21 @@ def _field_facts(program: Program, path: str) -> tuple[dict, dict, dict]:
                         bool(span) and not reassigned and _literal_expression(text)
                     )
         resolving: set[str] = set()
+        folded: dict[str, float | None] = {}  # a shared operand folds once, not once per use
 
         def constant(name: str) -> float | None:
-            found = texts.get(name.replace("this . ", "", 1), [])
+            name = name.replace("this . ", "", 1)
+            if name in folded:
+                return folded[name]
+            found = texts.get(name, [])
             if len(found) != 1 or found[0] is None or name in resolving:
                 return None
             resolving.add(name)
             try:
-                return fold(found[0], constant)
+                folded[name] = fold(found[0], constant)
             finally:
                 resolving.discard(name)
+            return folded[name]
 
         values = {name: [constant(name) if len(found) == 1 else None for _ in found]
                   for name, found in texts.items()}  # fmt: skip

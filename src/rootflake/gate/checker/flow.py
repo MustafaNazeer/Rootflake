@@ -177,6 +177,7 @@ def sinks(program: Program, path: str) -> list[tuple[int, int, str]]:
         if isinstance(node, Statement) and node.kind in _LOOPS and node.header is not None:
             if waits_inside(program, path, node):
                 out += [(s, e, LOOP) for s, e in bound_spans(unit, node)]
+                out += [(s, e, LOOP) for s, e in _checked_in_helpers(program, path, node)]
     program.memo[key] = out
     return out
 
@@ -238,9 +239,34 @@ def bound_spans(unit: CompilationUnit, loop: Statement) -> list[tuple[int, int]]
             if any(isinstance(n, Lambda) or (isinstance(n, Statement) and n.kind in _LOOPS)
                    for n in inner):  # fmt: skip
                 continue
-            if node.blocks and _leaves(unit, node.blocks[0]):
-                spans.append((node.header.start, node.header.end))
+            if any(_leaves(unit, block) for block in node.blocks):
+                spans.append((node.header.start, node.header.end))  # either branch may leave
     return spans
+
+
+def _checked_in_helpers(program: Program, path: str, loop: Statement) -> list[tuple[int, int]]:
+    """The arguments of each call in a waiting loop's body to a read helper that throws, fails
+    or asserts, since such a helper can hold the loop's bound, as `check(deadline)` does. Only
+    the helper the loop calls is read, not the ones it calls in turn."""
+    unit = program.units[path]
+    out = []
+    for body in loop.blocks:
+        for call in calls_in(unit, body):
+            if call.reference:
+                continue
+            for target_path, method in follow_for_scan(program, path, call):
+                if method.body is None:
+                    continue
+                inner = program.units[target_path]
+                if any(
+                    isinstance(n, Statement) and n.kind == "throw" for n in walk(method.body)
+                ) or any(
+                    not c.reference and (c.name == "fail" or is_assertion_name(c.name))
+                    for c in calls_in(inner, method.body)
+                ):
+                    out += _argument_spans(unit, call)
+                    break
+    return out
 
 
 # -- following a value ----------------------------------------------------------------------
@@ -371,6 +397,8 @@ def flows(ctx: Context, item: tuple, kinds: frozenset) -> bool:
 def _numeric(text: str, constants: dict[str, str]) -> float | None:
     value = fold(text, constant_lookup(constants))
     if value is None:
+        if text.endswith(" . toMillis ( )"):
+            text = text[: -len(" . toMillis ( )")]  # a duration read back in milliseconds
         is_duration, ms = duration_ms(text)
         value = ms if is_duration else None
     return value
@@ -401,8 +429,8 @@ def _raised(old: str, new: str, old_constants: dict, new_constants: dict) -> boo
         return False
     before, after = _numeric(old, old_constants), _numeric(new, new_constants)
     if before is None or after is None:
-        if _masked(old) == _masked(new) and "-" not in old.split():
-            return _any_raised([_literals(old)], [_literals(new)])  # only its literals moved
+        if _masked(old) == _masked(new):
+            return _directed_raised(old, new)  # only its literals moved
         return True  # a changed value that cannot be read fails closed
     return after > before
 
@@ -431,72 +459,167 @@ def _raised_values(ctx: Context, change: FileChange) -> Iterator[Finding]:
 
 # -- values changed after their declaration ------------------------------------------------
 
-_GROWING = {"*=": lambda v: v <= 1, "+=": lambda v: v <= 0, "<<=": lambda v: v == 0}
-_SHRINKING = {"/=": lambda v: v >= 1, "-=": lambda v: v >= 0, ">>=": lambda v: v >= 0}
+_NUMERIC_TYPES = frozenset(["int", "long", "short", "byte", "double", "float", "Integer", "Long",
+                            "Short", "Byte", "Double", "Float"])  # fmt: skip
 
 
-def _assignments(unit: CompilationUnit) -> list[tuple[tuple, str, str, int, int]]:
-    """Each statement that writes a plain name: its member and name, the operator, the right
-    hand text, its line and token."""
+def _assignments(unit: CompilationUnit) -> list[tuple[tuple, str, str, str, int, int]]:
+    """Each statement that writes a plain name, `this.name` or `Type.name`: the member it sits
+    in, read without parameter types, the name, the operator, the right hand text, its line and
+    token."""
     out = []
     tokens = unit.tokens
     for node in walk(unit):
         if not isinstance(node, Statement) or node.kind != "expression":
             continue
-        if node.end - node.start < 4 or tokens[node.start].kind != "ident":
+        at = node.start
+        if (
+            node.end - at >= 6
+            and tokens[at].kind in ("ident", "keyword")
+            and (tokens[at + 1].text == "." and tokens[at + 2].kind == "ident")
+            and (tokens[at].text == "this" or tokens[at].kind == "ident")
+        ):
+            at += 2  # this.name = ... and Type.name = ...
+        if node.end - at < 4 or tokens[at].kind != "ident":
             continue
-        op = tokens[node.start + 1]
+        op = tokens[at + 1]
         if op.kind != "op" or not op.text.endswith("=") or op.text in ("==", "!=", "<=", ">="):
             continue
         end = node.end - 1 if tokens[node.end - 1].text == ";" else node.end
-        key = (_member_key(path_to(unit, node.start)), tokens[node.start].text)
-        out.append((key, op.text, _text(unit, node.start + 2, end), op.line, node.start))
+        member = tuple(k[:2] for k in _member_key(path_to(unit, node.start)))
+        out.append(
+            (member, tokens[at].text, op.text, _text(unit, at + 2, end), op.line, node.start)
+        )
     return out
 
 
-def _value_of(declarations: dict, member: tuple, name: str) -> str | None:
-    local = declarations.get((member, name, 1))
-    if local is not None:
-        return local[0]
+def _timed(text: str, constants: dict) -> bool:
+    """Whether a value is a number, a duration, or reads a clock or a time unit, the values a
+    timing bound is made of; a server, a flag or a list written again is not."""
+    if _numeric(text, constants) is not None or duration_ms(text)[0]:
+        return True
+    words = text.split()
+    return any(w in _CLOCK_CALLS or w in _CLOCK_OWNERS or w in CONVERSIONS or w == "TimeUnit"
+               for w in words)  # fmt: skip
+
+
+def _field_types(program: Program) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = {}
+    for unit in program.units.values():
+        for node in walk(unit):
+            if isinstance(node, Field):
+                for name in node.names:
+                    out.setdefault(name, set()).add(node.type)
+    return out
+
+
+def _initializer(declarations: dict, member: tuple, name: str) -> str | None:
+    for key, found in declarations.items():
+        if len(key) == 3 and key[1] == name and tuple(k[:2] for k in key[0]) == member:
+            return found[0] if key[2] == 1 else None
     fields = [d for k, d in declarations.items() if len(k) == 2 and k[1] == name and d[3]]
     return fields[0][0] if len(fields) == 1 else None
 
 
-def _assignment_raised(op: str, text: str, start: str | None, constants: dict) -> bool:
-    value = _numeric(text, constants)
+_GROWING = frozenset(["+=", "*=", "<<="])
+_SHRINKING = frozenset(["-=", "/=", ">>=", ">>>="])
+
+
+def _write_raised(op: str, old: str | None, new: str, constants: tuple[dict, dict]) -> bool:
+    """Whether a write makes the value it holds larger than the one it replaces: for `=` the
+    values are compared, for a compound write its step, a new step against no step at all."""
+    if op == "=":
+        return old is None or _raised(old, new, *constants)
+    step = _numeric(new, constants[1])
+    if step is None:
+        return True
+    if old is None:
+        neutral = {"+=": 0, "-=": 0, "*=": 1, "/=": 1, "<<=": 0, ">>=": 0, ">>>=": 0}
+        old_step = neutral.get(op)
+    else:
+        old_step = _numeric(old, constants[0])
+    if old_step is None:
+        return True
     if op in _GROWING:
-        return value is None or not _GROWING[op](value)
+        return step > old_step
     if op in _SHRINKING:
-        return value is None or not _SHRINKING[op](value)
-    if op == "=" and start is not None:
-        return _raised(start, text, constants, constants)
-    return True  # a write that cannot be read fails closed
+        return step < old_step
+    return True
 
 
 def _changed_after_declaration(ctx: Context, change: FileChange) -> Iterator[Finding]:
+    """Writes the patch made to a value that already existed. Each changed write is paired with
+    the pristine write it replaces, by member, name and operator in order; a write left over is
+    compared with the declared value, or with zero for a numeric field declared without one. A
+    write that only moved, with the same text, between members is not judged."""
     unit = change.after
-    new_constants = _file_constants(unit)
-    declarations = _declarations(unit)
-    old_writes = Counter((k, op, t) for k, op, t, _, _ in _assignments(change.before))
+    old_constants, new_constants = _file_constants(change.before), _file_constants(unit)
+    old_writes, new_writes = _assignments(change.before), _assignments(unit)
+    old_groups: dict[tuple, list[str]] = {}
+    for member, name, op, text, _, _ in old_writes:
+        old_groups.setdefault((member, name, op), []).append(text)
+    new_groups: dict[tuple, list[tuple]] = {}
+    for member, name, op, text, line, at in new_writes:
+        new_groups.setdefault((member, name, op), []).append((text, line, at))
+    left_old: Counter = Counter()
+    pending = []
+    for key, writes in new_groups.items():
+        olds = list(old_groups.get(key, ()))
+        fresh = []
+        for write in writes:
+            if write[0] in olds:
+                olds.remove(write[0])
+            else:
+                fresh.append(write)
+        for k, write in enumerate(fresh):
+            pending.append((key, olds[k] if k < len(olds) else None, write))
+        for text in olds[len(fresh) :]:
+            left_old[(key[1], key[2], text)] += 1
+    for key, olds in old_groups.items():
+        if key not in new_groups:
+            for text in olds:
+                left_old[(key[1], key[2], text)] += 1
+    old_declarations, declarations = _declarations(change.before), _declarations(unit)
+    old_fields = _field_types(ctx.before)
     candidates = []
-    old_declarations = _declarations(change.before)
-    for key, op, text, line, at in _assignments(unit):
-        if old_writes[(key, op, text)] > 0:
-            old_writes[(key, op, text)] -= 1
-            continue
-        if _value_of(old_declarations, key[0], key[1]) is None:
+    for (member, name, op), old, (text, line, at) in pending:
+        if old is None and left_old[(name, op, text)] > 0:
+            left_old[(name, op, text)] -= 1
+            continue  # moved to another member unchanged
+        local = any(len(k) == 3 and k[1] == name and tuple(m[:2] for m in k[0]) == member
+                    for k in old_declarations)  # fmt: skip
+        if (
+            old is None
+            and not local
+            and name not in old_fields
+            and not _old_local(change.before, member, name)
+        ):
             continue  # a value the patch declares is new code, judged where it is read
-        start = _value_of(declarations, key[0], key[1])
-        if _assignment_raised(op, text, start, new_constants):
-            candidates.append((key[1], line, at))
+        if old is None and op == "=":
+            old = _initializer(old_declarations, member, name)
+            if old is None and not local and old_fields.get(name, set()) & _NUMERIC_TYPES:
+                old = "0"
+        if not (_timed(text, new_constants) or (old is not None and _timed(old, old_constants))):
+            continue
+        if _write_raised(op, old, text, (old_constants, new_constants)):
+            candidates.append((name, line, at, None))
+        elif op != "=":
+            # In a count up or a countdown a smaller step waits longer, while on a deadline a
+            # larger one does, so a compound step that reaches a loop bound fails closed.
+            candidates.append((name, line, at, frozenset([LOOP])))
     for key, (text, line, at, is_field) in declarations.items():
         if is_field or key[2] != 1 or key in old_declarations:
             continue
-        shadowed = _value_of({k: d for k, d in declarations.items() if len(k) == 2}, (), key[1])
-        if shadowed is not None and _raised(shadowed, text, new_constants, new_constants):
-            candidates.append((key[1], line, at))
-    for name, line, at in candidates:
+        shadowed = _initializer({k: d for k, d in declarations.items() if len(k) == 2}, (), key[1])
+        if (
+            shadowed is not None
+            and _timed(shadowed, new_constants)
+            and _raised(shadowed, text, new_constants, new_constants)
+        ):
+            candidates.append((key[1], line, at, None))
+    for name, line, at, only in candidates:
         kinds = _ALL if timing_name(name) else frozenset([TIMING, LOOP])
+        kinds = kinds if only is None else kinds & only
         nodes = path_to(unit, at)
         method = next((n for n in reversed(nodes) if isinstance(n, Method)), None)
         if method is not None and method.body is not None and _local_declared(unit, method, name):
@@ -507,11 +630,110 @@ def _changed_after_declaration(ctx: Context, change: FileChange) -> Iterator[Fin
             yield Finding(CODE, change.path, line)
 
 
+def _old_local(unit: CompilationUnit, member: tuple, name: str) -> bool:
+    """Whether the pristine member declares a local or parameter of that name, initialized or
+    not."""
+    for node in walk(unit):
+        if (
+            isinstance(node, Method)
+            and tuple(k[:2] for k in _member_key(path_to(unit, node.start)))
+            == member[: len(member)]
+            and _local_declared(unit, node, name)
+        ):
+            return True
+    return False
+
+
 # -- raised literals in a loop header or an elapsed time assertion --------------------------
 
 
 def _literals(text: str) -> list[float]:
     return [v for v in (literal(w) for w in text.split()) if v is not None]
+
+
+_SEPARATORS = frozenset(["&&", "||", ";", ",", "?", ":"])
+_SIDES = {"<": 1, "<=": 1, ">": -1, ">=": -1, "==": 0, "!=": 0}
+
+
+def _directed(text: str) -> list[tuple[float, int]]:
+    """Each literal with the way it loosens a bound when it grows: 1 when a larger value waits
+    longer, as in `i < 10`, -1 when a smaller one does, as a floor in `remaining > 4000` or a
+    divisor in `TIMEOUT / 10` do, and 0 when either change can, as in `==` or inside a call's
+    arguments, so any change there counts."""
+    words = text.split()
+    opens: list[int] = []
+    group = [-1] * len(words)  # the open parenthesis each word sits in
+    for k, w in enumerate(words):
+        group[k] = opens[-1] if opens else -1
+        if w == "(":
+            opens.append(k)
+        elif w == ")" and opens:
+            opens.pop()
+            group[k] = opens[-1] if opens else -1
+
+    depth = [0] * len(words)
+    level = 0
+    for k, w in enumerate(words):
+        if w == ")":
+            level -= 1
+        depth[k] = level
+        if w == "(":
+            level += 1
+
+    def segment(k: int) -> tuple[int, int]:
+        start, end = k, k
+        while (
+            start > 0
+            and depth[start - 1] >= depth[k]
+            and not (depth[start - 1] == depth[k] and words[start - 1] in _SEPARATORS)
+        ):
+            start -= 1
+        while (
+            end + 1 < len(words)
+            and depth[end + 1] >= depth[k]
+            and not (depth[end + 1] == depth[k] and words[end + 1] in _SEPARATORS)
+        ):
+            end += 1
+        return start, end
+
+    def flipped(k: int) -> int:
+        before = words[k - 1] if k else ""
+        if before == "/":
+            return -1
+        if before == "-":
+            return -1  # a subtrahend, or a negated value
+        return 1
+
+    def side(k: int) -> int:
+        """The direction for the item at k, a literal or an open parenthesis, in its group."""
+        start, end = segment(k)
+        for j in range(start, end + 1):
+            if depth[j] == depth[k] and words[j] in _SIDES and j != k:
+                way = _SIDES[words[j]]
+                return way if k > j else -way
+        outer = group[k]
+        if outer < 0:
+            return 1
+        if outer >= 1 and (words[outer - 1][:1].isalnum() or words[outer - 1][:1] in "_$>"):
+            return 0  # the arguments of a call
+        return side(outer) * flipped(outer)
+
+    out = []
+    for k, w in enumerate(words):
+        value = literal(w)
+        if value is not None:
+            out.append((value, side(k) * flipped(k)))
+    return out
+
+
+def _directed_raised(old: str, new: str) -> bool:
+    before, after = _directed(old), _directed(new)
+    if len(before) != len(after):
+        return False
+    for (b, _), (a, way) in zip(before, after, strict=True):
+        if a != b and (way == 0 or (a - b) * way > 0):
+            return True
+    return False
 
 
 def _any_raised(old: list[list[float]], new: list[list[float]]) -> bool:
@@ -529,8 +751,8 @@ def _loops(program: Program, path: str, unit: CompilationUnit) -> dict[tuple, li
             continue
         if not waits_inside(program, path, node):
             continue
-        text = " ; ".join(_text(unit, s, e) for s, e in bound_spans(unit, node))
-        out.setdefault(_member_key(path_to(unit, node.start)), []).append((text, node.line))
+        texts = tuple(_text(unit, s, e) for s, e in bound_spans(unit, node))
+        out.setdefault(_member_key(path_to(unit, node.start)), []).append((texts, node.line))
     return out
 
 
@@ -546,13 +768,79 @@ def _names(text: str) -> set[str]:
     }
 
 
-def _loop_widened(old: str, new: str) -> bool:
-    """Whether a waiting loop's bound text got looser. Under the same shape its literals are
-    compared in place; a changed shape passes only when its literals are the same and it reads
-    no name the old bound did not, so a bound moved into a new name fails closed."""
+def _loop_widened(old_spans: tuple, new_spans: tuple) -> bool:
+    """Whether a waiting loop's bound got looser. Under the same shape its literals are compared
+    in place by the way each loosens the bound. A changed shape passes when it only adds
+    conditions, which can only end the loop sooner: conjuncts at the top level of its header
+    condition, or whole new `if` statements that leave it, each free of writes and waits, with
+    every old one kept as it was. Any other change passes only when its literals are the same
+    and it reads no name the old bound did not, so a bound moved into a new name fails closed."""
+    old, new = " ; ".join(old_spans), " ; ".join(new_spans)
     if _masked(old) == _masked(new):
-        return _any_raised([_literals(old)], [_literals(new)])
+        return _directed_raised(old, new)
+    if _only_conditions_added(old_spans, new_spans):
+        return False
     return _literals(old) != _literals(new) or bool(_names(new) - _names(old))
+
+
+_WRITES = frozenset(["++", "--"])
+
+
+def _top_split(text: str, separator: str) -> list[str]:
+    words = text.split()
+    parts, current, depth = [], [], 0
+    for w in words:
+        if w in ("(", "[", "{"):
+            depth += 1
+        elif w in (")", "]", "}"):
+            depth -= 1
+        if depth == 0 and w == separator:
+            parts.append(" ".join(current))
+            current = []
+        else:
+            current.append(w)
+    parts.append(" ".join(current))
+    return parts
+
+
+def _unwrapped(text: str) -> str:
+    words = text.split()
+    if len(words) >= 2 and words[0] == "(" and words[-1] == ")":
+        return " ".join(words[1:-1])
+    return text
+
+
+def _pure(text: str) -> bool:
+    for w in text.split():
+        if w in _WRITES or (w.endswith("=") and w not in ("==", "!=", "<=", ">=")):
+            return False
+        lower = w.lower()
+        if "sleep" in lower or any(word in lower for word in _WAIT_WORDS):
+            return False
+    return True
+
+
+def _only_conditions_added(old_spans: tuple, new_spans: tuple) -> bool:
+    if not old_spans or not new_spans:
+        return False
+    old_head, new_head = _top_split(_unwrapped(old_spans[0]), ";"), _top_split(
+        _unwrapped(new_spans[0]), ";")  # fmt: skip
+    if len(old_head) != len(new_head):
+        return False
+    middle = 1 if len(old_head) == 3 else 0
+    if len(old_head) == 3 and (old_head[0], old_head[2]) != (new_head[0], new_head[2]):
+        return False
+    pairs = [(_top_split(old_head[middle], "&&"), _top_split(new_head[middle], "&&")),
+             (list(old_spans[1:]), list(new_spans[1:]))]  # fmt: skip
+    for olds, news in pairs:
+        left = list(news)
+        for item in olds:
+            if item not in left:
+                return False
+            left.remove(item)
+        if not all(_pure(item) for item in left):
+            return False
+    return True
 
 
 def _widened_loops(old: dict, new: dict, path: str) -> Iterator[Finding]:
@@ -562,7 +850,8 @@ def _widened_loops(old: dict, new: dict, path: str) -> Iterator[Finding]:
         pairs = []
         for k in list(pending):  # loops whose bound text kept its shape pair first, in order
             match = next((j for j, t in enumerate(olds) if t is not None
-                          and _masked(t) == _masked(items[k][0])), None)  # fmt: skip
+                          and _masked(" ; ".join(t)) == _masked(" ; ".join(items[k][0]))),
+                         None)  # fmt: skip
             if match is not None:
                 pairs.append((olds[match], k))
                 olds[match] = None

@@ -305,3 +305,204 @@ class TestValuesChangedAfterDeclaration:
     def test_a_new_local_written_twice_is_new_code(self, tmp_path):
         after = f"long t; t = 5000; {self.WAIT}"
         assert TIMING not in judged("assertTrue(ready());", after, tmp_path)
+
+
+class TestWritesPairedWithThePristineWrite:
+    WAIT = "assertTrue(latch.await(waitMs, TimeUnit.MILLISECONDS));"
+    LATCH = "CountDownLatch latch = new CountDownLatch(1);\n"
+
+    def pair(self, before_members: str, after_members: str, tmp_path, body: str = WAIT):
+        before = cls(self.LATCH + before_members + "\n" + method(body))
+        after = cls(self.LATCH + after_members + "\n" + method(body))
+        return codes(before, after, tmp_path)
+
+    def test_a_setup_write_raised_on_a_field_without_initializer(self, tmp_path):
+        old = "long waitMs; @BeforeEach void up() { waitMs = 5000; }"
+        assert TIMING in self.pair(old, old.replace("5000", "600000"), tmp_path)
+
+    def test_a_setup_write_lowered_is_not(self, tmp_path):
+        old = "long waitMs; @BeforeEach void up() { waitMs = 5000; }"
+        assert TIMING not in self.pair(old, old.replace("5000", "100"), tmp_path)
+
+    def test_a_write_through_this(self, tmp_path):
+        old = "long waitMs = 5000; @BeforeEach void up() { }"
+        new = "long waitMs = 5000; @BeforeEach void up() { this.waitMs = 600000; }"
+        assert TIMING in self.pair(old, new, tmp_path)
+
+    def test_a_constructor_write_raised(self, tmp_path):
+        old = "long waitMs; FooTest() { waitMs = 5000; }"
+        assert TIMING in self.pair(old, old.replace("5000", "600000"), tmp_path)
+
+    def test_a_first_write_to_a_numeric_field_without_initializer(self, tmp_path):
+        old = "long waitMs; @BeforeEach void up() { }"
+        new = "long waitMs; @BeforeEach void up() { waitMs = 600000; }"
+        assert TIMING in self.pair(old, new, tmp_path)
+
+    def test_a_write_raised_under_a_larger_initializer(self, tmp_path):
+        old = "long waitMs = 60000; @BeforeEach void up() { waitMs = 1000; }"
+        assert TIMING in self.pair(old, old.replace("1000", "30000"), tmp_path)
+
+    def test_a_split_local_raised(self, tmp_path):
+        loop = (
+            "long deadline; deadline = System.currentTimeMillis() + 5000; while (!ready()) {"
+            ' if (System.currentTimeMillis() > deadline) fail("late"); Thread.sleep(10); }'
+        )
+        assert TIMING in judged(loop, loop.replace("5000", "600000"), tmp_path)
+
+    def test_a_write_moved_to_another_member_unchanged_is_not(self, tmp_path):
+        old = "volatile long waitMs = 0; void a() { waitMs = 5000; } void b() { }"
+        new = "volatile long waitMs = 0; void a() { } void b() { waitMs = 5000; }"
+        assert TIMING not in self.pair(old, new, tmp_path)
+
+    def test_a_write_in_a_helper_whose_parameters_changed_is_not(self, tmp_path):
+        old = "long waitMs = 1000; void configure() { waitMs = 2000; }"
+        new = "long waitMs = 1000; void configure(int n) { waitMs = 2000; }"
+        assert TIMING not in self.pair(old, new, tmp_path)
+
+
+class TestStateWritesAreNotTimings:
+    LOOP = "f(); while (!server.isStarted()) { Thread.sleep(10); } assertTrue(server.isStarted());"
+
+    def test_a_server_set_up_again(self, tmp_path):
+        before = cls("static Server server = null; @BeforeEach void up() { }\n" + method(self.LOOP))
+        after = cls(
+            "static Server server = null; @BeforeEach void up() { server = new Server(8080); }\n"
+            + method(self.LOOP)
+        )
+        assert TIMING not in codes(before, after, tmp_path)
+
+    def test_a_flag_set_in_a_callback(self, tmp_path):
+        loop = "f(); while (!done) { Thread.sleep(10); } assertTrue(done);"
+        before = cls("volatile boolean done = false; void finish() { }\n" + method(loop))
+        after = cls(
+            "volatile boolean done = false; void finish() { done = true; }\n" + method(loop)
+        )
+        assert TIMING not in codes(before, after, tmp_path)
+
+    def test_a_counter_reset(self, tmp_path):
+        loop = (
+            "f(); while (counter.get() < 3) { Thread.sleep(10); } assertEquals(3, counter.get());"
+        )
+        members = "AtomicInteger counter = new AtomicInteger(); @BeforeEach void up() { %s }\n"
+        before = cls(members % "" + method(loop))
+        after = cls(members % "counter = new AtomicInteger(0);" + method(loop))
+        assert TIMING not in codes(before, after, tmp_path)
+
+
+class TestCompoundSteps:
+    COUNTDOWN = (
+        "long remaining = 5000; while (!ready() && remaining > 0) { Thread.sleep(100);"
+        " remaining -= 100; } assertTrue(ready());"
+    )
+
+    def test_a_smaller_countdown_step_waits_longer(self, tmp_path):
+        after = self.COUNTDOWN.replace("-= 100", "-= 1")
+        assert TIMING in judged(self.COUNTDOWN, after, tmp_path)
+
+    def test_a_larger_step_in_a_loop_bound_fails_closed(self, tmp_path):
+        after = self.COUNTDOWN.replace("-= 100", "-= 200")
+        assert TIMING in judged(self.COUNTDOWN, after, tmp_path)
+
+    def test_a_lowered_floor(self, tmp_path):
+        before = self.COUNTDOWN.replace("remaining > 0", "remaining > 4000")
+        assert TIMING in judged(before, self.COUNTDOWN, tmp_path)
+
+    def test_a_divisor_lowered(self, tmp_path):
+        field = "static final long T = Config.TIMEOUT_MS / %s;\n"
+        wait = method("assertTrue(latch.await(T, TimeUnit.MILLISECONDS));")
+        assert TIMING in codes(cls(field % "10" + wait), cls(field % "1" + wait), tmp_path)
+
+
+class TestBoundsInBranchesAndHelpers:
+    def test_a_deadline_checked_in_an_else_branch(self, tmp_path):
+        loop = (
+            "long deadline = System.currentTimeMillis() + 5000; while (true) { if (ready()) break;"
+            " if (System.currentTimeMillis() < deadline) { Thread.sleep(10); } else {"
+            ' fail("late"); } }'
+        )
+        assert TIMING in judged(loop, loop.replace("5000", "600000"), tmp_path)
+
+    def test_a_deadline_checked_in_a_helper(self, tmp_path):
+        helper = (
+            "void check(long d) { if (System.currentTimeMillis() > d)"
+            ' throw new AssertionError("late"); }\n'
+        )
+        loop = (
+            "long deadline = System.currentTimeMillis() + 5000;"
+            " while (!ready()) { check(deadline); Thread.sleep(10); }"
+        )
+        before = cls(helper + method(loop))
+        after = cls(helper + method(loop.replace("5000", "600000")))
+        assert TIMING in codes(before, after, tmp_path)
+
+
+class TestConditionsAdded:
+    LOOP = "for (int i = 0; i < 10; i++) { Thread.sleep(50); } assertTrue(ready());"
+
+    @pytest.mark.parametrize(
+        "added", ["!server.isReady()", "!done.get()", "queue.size() < 3", "latch.getCount() > 0"]
+    )
+    def test_a_state_conjunct_is_not(self, tmp_path, added):
+        after = self.LOOP.replace("i < 10;", f"i < 10 && {added};")
+        assert TIMING not in judged(self.LOOP, after, tmp_path)
+
+    def test_a_disjunct_is(self, tmp_path):
+        after = self.LOOP.replace("i < 10;", "i < 10 || !server.isReady();")
+        assert TIMING in judged(self.LOOP, after, tmp_path)
+
+    def test_a_conjunct_beside_a_raised_bound_is(self, tmp_path):
+        after = self.LOOP.replace("i < 10;", "i < 100 && !server.isReady();")
+        assert TIMING in judged(self.LOOP, after, tmp_path)
+
+    def test_a_conjunct_that_writes_is(self, tmp_path):
+        after = self.LOOP.replace("i < 10;", "i < 10 && (n = poll()) == 0;")
+        assert TIMING in judged(self.LOOP, after, tmp_path)
+
+
+class TestHelperDropsAWaitResult:
+    def test_a_new_call_of_a_helper_that_ignores_await(self, tmp_path):
+        helper = (
+            "CountDownLatch latch = new CountDownLatch(1);\n"
+            "static void waitFor(CountDownLatch l) throws Exception"
+            " { l.await(5, TimeUnit.SECONDS); }\n"
+        )
+        before = cls(helper + method("f(); Thread.sleep(2000); assertTrue(ready());"))
+        after = cls(helper + method("f(); waitFor(latch); assertTrue(ready());"))
+        assert TIMING in codes(before, after, tmp_path)
+
+    def test_a_helper_that_returns_the_result_is_left_to_its_caller(self, tmp_path):
+        helper = (
+            "CountDownLatch latch = new CountDownLatch(1);\n"
+            "static boolean waitFor(CountDownLatch l) throws Exception"
+            " { return l.await(5, TimeUnit.SECONDS); }\n"
+        )
+        before = cls(helper + method("f(); Thread.sleep(2000); assertTrue(ready());"))
+        after = cls(helper + method("f(); assertTrue(waitFor(latch)); assertTrue(ready());"))
+        assert TIMING not in codes(before, after, tmp_path)
+
+
+class TestRuleChainsAndRuleMethods:
+    IMPORTS = TestRulesTypedByInterface.IMPORTS + "import org.junit.rules.RuleChain;\n"
+
+    def test_a_rule_added_around_a_chained_timeout_is_not(self, tmp_path):
+        before = cls(
+            "@Rule public RuleChain chain = RuleChain.outerRule(new Timeout(5000));"
+            + method("f();"), self.IMPORTS)  # fmt: skip
+        after = cls(
+            "@Rule public RuleChain chain = RuleChain.outerRule(new Timeout(5000))"
+            ".around(cleanup);" + method("f();"), self.IMPORTS)  # fmt: skip
+        assert TIMING not in codes(before, after, tmp_path)
+
+    def test_a_raised_timeout_from_a_rule_method(self, tmp_path):
+        rule = "@Rule public Timeout timeout() { return Timeout.seconds(%d); }\n"
+        before = cls(rule % 5 + method("f();"), self.IMPORTS)
+        after = cls(rule % 60 + method("f();"), self.IMPORTS)
+        assert TIMING in codes(before, after, tmp_path)
+
+
+def test_a_doubling_constant_chain_folds_quickly(tmp_path):
+    chain = " ".join(f"static final long A{i} = A{i + 1} + A{i + 1};" for i in range(40))
+    members = chain + " static final long A40 = 1;\n"
+    before = cls(members + method("assertEquals(A0, f(), 1);"))
+    after = cls(members + method("assertEquals(A0, g(), 1);"))
+    codes(before, after, tmp_path)
