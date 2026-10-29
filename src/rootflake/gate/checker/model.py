@@ -24,6 +24,7 @@ class Finding:
 class Target:
     class_name: str
     method: str | None
+    module: str | None = None  # the target's module path, "" for the repository root
 
     @property
     def dotted(self) -> str:

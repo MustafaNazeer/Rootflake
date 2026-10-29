@@ -18,7 +18,7 @@ import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
-from rootflake.gate.checker.check import CheckResult, Finding, Target, check
+from rootflake.gate.checker.check import CheckResult, Finding, Target, check, target_paths
 from rootflake.gate.validator import Change, Rejection, Validation, path_syntax, validate
 from rootflake.sandbox.executor import DockerRunner, ProcessRunner
 
@@ -184,7 +184,8 @@ def check_isolated(
             "paths": list(paths),
             "pristine": str(pristine),
             "workspace": str(workspace),
-            "target": target and {"class": target.class_name, "method": target.method},
+            "target": target
+            and {"class": target.class_name, "method": target.method, "module": target.module},
             "overridden": list(overridden),
         }
         (work / "request.json").write_text(json.dumps(request))
@@ -194,7 +195,7 @@ def check_isolated(
                 return CheckResult((Finding("checker/checker_timeout", None),))
             if outcome == "error":
                 return error
-            return _decode_findings(outcome, paths)
+            return _decode_findings(outcome, [*paths, *target_paths(paths, target)])
         except OSError, ValueError, RecursionError:
             return error
 
@@ -212,7 +213,8 @@ def _main_validate(work: Path) -> None:
 
 def _main_check(work: Path) -> None:
     request = json.loads((work / "request.json").read_text())
-    target = request["target"] and Target(request["target"]["class"], request["target"]["method"])
+    found = request["target"]
+    target = found and Target(found["class"], found["method"], found.get("module"))
     result = check(
         request["paths"],
         Path(request["pristine"]),

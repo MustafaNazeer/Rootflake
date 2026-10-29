@@ -5,6 +5,7 @@ reject, accept, or accept flagged, with a code, file and line for every finding.
 inside it is a reject with a `checker/` code, never an accept.
 """
 
+import re
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -14,8 +15,34 @@ from rootflake.gate.checker.lexer import Unparsable, tokenize
 from rootflake.gate.checker.model import CheckResult, Context, FileChange, Finding, Target
 from rootflake.gate.checker.syntax import parse
 
-__all__ = ["CheckResult", "FileChange", "Finding", "Target", "check"]
+__all__ = ["CheckResult", "FileChange", "Finding", "Target", "check", "target_paths"]
 RULES = (survive, assertions)
+_ROOTS = ("src/test/java/", "src/main/java/")
+_CLASS = re.compile(r"[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*")
+
+
+def _module(path: str) -> str | None:
+    for root in _ROOTS:
+        if path.startswith(root):
+            return ""
+        if f"/{root}" in path:
+            return path.split(f"/{root}", 1)[0]
+    return None
+
+
+def target_paths(paths: Sequence[str], target: Target | None) -> list[str]:
+    """Where the target class's top level file sits, in its module when the caller names it and
+    otherwise in the module of each approved path, when the patch does not touch it. Its unchanged
+    assertions are then read, so a patch that changes only a constant they read is still seen."""
+    if target is None:
+        return []
+    top = target.class_name.split("$", 1)[0]
+    if not _CLASS.fullmatch(top):
+        return []
+    modules = {target.module} if target.module is not None else {_module(p) for p in paths} - {None}
+    rel = "src/test/java/" + top.replace(".", "/") + ".java"
+    found = {f"{m}/{rel}" if m else rel for m in modules}
+    return sorted(found - set(paths))
 
 
 def _judge(
@@ -59,7 +86,10 @@ def check(
     try:
         if len(paths) > MAX_FILES:
             return CheckResult((Finding("checker/checker_error", None),))
-        findings, changes = _read(paths, pristine, workspace)
+        extra = [p for p in target_paths(paths, target) if read_side(pristine, p) is not None]
+        if len(paths) + len(extra) > MAX_FILES:
+            return CheckResult((Finding("checker/checker_error", None),))
+        findings, changes = _read([*paths, *extra], pristine, workspace)
         if any(f.code.startswith("checker/") for f in findings):
             return CheckResult(tuple(findings))
         found = findings + _judge(changes, target, overridden)

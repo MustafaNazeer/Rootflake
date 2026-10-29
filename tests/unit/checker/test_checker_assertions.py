@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from rootflake.gate.checker.check import Target, check
+from rootflake.gate.checker.check import Target, check, target_paths
 
 PATH = "src/test/java/a/FooTest.java"
 TARGET = Target("a.FooTest", "testFoo")
@@ -2377,3 +2377,47 @@ class TestBoundsBehindInheritedAndImportedNames:
                             _limits("5", "  Limits() { int other = OTHER; }\n"
                                          "  static int OTHER = 2;\n"))  # fmt: skip
         assert _codes_files(files, tmp_path) == set()
+
+
+class TestTheTargetFileIsAlwaysRead:
+    """The target class's file is read even when the patch leaves it alone, so a patch that
+    changes only a constant its unchanged assertions read is still judged."""
+
+    LIMITS = "src/main/java/a/Limits.java"
+
+    def _codes(self, root, limits, target=TARGET, test_path=PATH):
+        pristine, workspace = root / "p", root / "w"
+        test = body_of("assertTrue(x() < Limits.MAX);")
+        for side, value in ((pristine, limits[0]), (workspace, limits[1])):
+            for rel, text in ((test_path, test), (self.LIMITS, value)):
+                (side / rel).parent.mkdir(parents=True, exist_ok=True)
+                (side / rel).write_text(text)
+        return {f.code for f in check([self.LIMITS], pristine, workspace, target).findings}
+
+    def test_a_constant_widened_with_the_test_untouched(self, tmp_path):
+        assert self._codes(tmp_path, (_limits("5"), _limits("50"))) == {TOLERANCE}
+
+    def test_a_benign_change_with_the_test_untouched_passes(self, tmp_path):
+        moved = (_limits("5"), _limits("5", "  public static final int MIN = 1;\n"))
+        assert self._codes(tmp_path, moved) == set()
+
+    def test_a_named_module_is_used(self, tmp_path):
+        target = Target(TARGET.class_name, TARGET.method, "core")
+        limits = (_limits("5"), _limits("50"))
+        assert self._codes(tmp_path, limits, target, f"core/{PATH}") == {TOLERANCE}
+
+    @pytest.mark.parametrize(
+        ("paths", "target", "expected"),
+        [(["m/src/main/java/a/L.java"], Target("a.FooTest", "t"),
+          ["m/src/test/java/a/FooTest.java"]),
+         (["src/main/java/a/L.java"], Target("a.FooTest$Inner", "t"),
+          ["src/test/java/a/FooTest.java"]),
+         (["m/src/test/java/a/FooTest.java"], Target("a.FooTest", "t"), []),
+         (["m/src/main/java/a/L.java"], Target("a.FooTest", "t", "n"),
+          ["n/src/test/java/a/FooTest.java"]),
+         (["m/src/main/java/a/L.java"], Target("a/../FooTest", "t"), []),
+         (["m/src/main/java/a/L.java"], None, [])],
+        ids=["module_of_path", "nested", "already_read", "named_module", "unsafe", "no_target"],
+    )  # fmt: skip
+    def test_target_paths(self, paths, target, expected):
+        assert target_paths(paths, target) == expected

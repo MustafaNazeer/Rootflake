@@ -1,0 +1,13 @@
+diff --git a/google-cloud-firestore/src/main/java/com/google/cloud/firestore/BulkWriter.java b/google-cloud-firestore/src/main/java/com/google/cloud/firestore/BulkWriter.java
+index b0630da..aa9d07f 100644
+--- a/google-cloud-firestore/src/main/java/com/google/cloud/firestore/BulkWriter.java
++++ b/google-cloud-firestore/src/main/java/com/google/cloud/firestore/BulkWriter.java
+@@ -133,7 +133,7 @@ public final class BulkWriter implements AutoCloseable {
+    * The default jitter to apply to the exponential backoff used in retries. For example, a factor
+    * of 0.3 means a 30% jitter is applied.
+    */
+-  static final double DEFAULT_JITTER_FACTOR = 0.3;
++  static final double DEFAULT_JITTER_FACTOR = 1.0;
+ 
+   private static final WriteResultCallback DEFAULT_SUCCESS_LISTENER =
+       (documentReference, result) -> {};

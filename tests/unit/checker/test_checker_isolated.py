@@ -65,7 +65,7 @@ def test_the_request_names_the_check_step_and_its_inputs(trees):
         "paths": [JAVA],
         "pristine": str(pristine),
         "workspace": str(workspace),
-        "target": {"class": "org.example.FooTest", "method": "t"},
+        "target": {"class": "org.example.FooTest", "method": "t", "module": None},
         "overridden": ["x"],
     }
 
@@ -151,3 +151,23 @@ def test_a_line_must_be_positive(trees):
     assert check_isolated([JAVA], *trees, TARGET, runner=runner).findings == (
         Finding("checker/checker_error", None),
     )
+
+
+def test_a_finding_in_the_target_file_the_patch_left_alone_is_kept(trees):
+    other = "src/main/java/org/example/Limits.java"
+    item = ["weaken_assertion/tolerance_widened", JAVA, 3]
+    result = check_isolated([other], *trees, TARGET, runner=Scripted(OK, findings([item])))
+    assert result.findings == (Finding(*item),)
+
+
+def test_the_target_module_reaches_the_child(trees):
+    seen = {}
+
+    class Peek(Scripted):
+        def run(self, args, timeout_s):
+            seen["request"] = json.loads((Path(args[-1]) / "request.json").read_text())
+            return super().run(args, timeout_s)
+
+    check_isolated([JAVA], *trees, Target("org.example.FooTest", "t", "core"),
+                   runner=Peek(OK, findings([])))  # fmt: skip
+    assert seen["request"]["target"]["module"] == "core"
