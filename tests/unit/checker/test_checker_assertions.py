@@ -2683,6 +2683,13 @@ class TestConditionsAndSubjectsThroughOnceAssignedLocals:
             ("work(); assertTrue(dir.listFiles().length < 5);",
              "File[] files = Objects.requireNonNull(dir.listFiles()); work();"
              " assertTrue(files.length < 5);"),
+            ('if (future.get() != null && q.size() > 0) { fail("x"); }',
+             'int c = q.size(); if (future.get() != null && c > 0) { fail("x"); }'),
+            ('if (job.get() && q.size() > 0) { fail("x"); }',
+             'int c = q.size(); if (job.get() && c > 0) { fail("x"); }'),
+            ("long start = clock.millis(); assertTrue(done.get() && clock.millis() - start < 100);",
+             "long start = clock.millis(); long now = clock.millis();"
+             " assertTrue(done.get() && now - start < 100);"),
             ('if (q.poll() != null && q.size() > 0) { fail("x"); }',
              'int c = q.size(); if (q.poll() != null && c > 0) { fail("x"); }'),
             ('if (drain(q) && q.size() > 0) { fail("x"); }',

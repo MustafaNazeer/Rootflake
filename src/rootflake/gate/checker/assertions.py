@@ -264,7 +264,7 @@ def _uses(tokens, start: int, end: int, names) -> set[int]:
 _QUERIES = frozenset(
     {
         "contains", "containsKey", "containsValue", "containsAll", "isEmpty", "size",
-        "length", "get", "getOrDefault", "equals", "equalsIgnoreCase", "startsWith",
+        "length", "getOrDefault", "equals", "equalsIgnoreCase", "startsWith",
         "endsWith", "matches", "indexOf", "lastIndexOf", "charAt", "isPresent",
     }
 )  # fmt: skip
