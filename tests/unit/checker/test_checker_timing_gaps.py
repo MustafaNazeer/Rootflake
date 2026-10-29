@@ -210,3 +210,26 @@ class TestJavaFolding:
         constants = {f"C{k}": f"C{k - 1} + C{k - 1}" for k in range(1, 60)}
         constants["C0"] = "1"
         assert constant_lookup(constants)("C59") == 2.0**59
+
+
+class TestRethrowsAreNotChecks:
+    SLEEP = (
+        "try { Thread.sleep(50); }"
+        " catch (InterruptedException e) { throw new RuntimeException(e); }"
+    )
+
+    def test_a_rethrow_in_a_catch_does_not_check_the_wait(self, tmp_path):
+        after = (
+            "long deadline = System.currentTimeMillis() + 5000;"
+            f" while (!ready() && System.currentTimeMillis() < deadline) {{ {self.SLEEP} }}"
+            " assertEquals(3, n());"
+        )
+        assert TIMING in judged("assertEquals(3, n());", after, tmp_path)
+
+    def test_a_throw_on_the_deadline_still_checks_it(self, tmp_path):
+        after = (
+            "long deadline = System.currentTimeMillis() + 5000; while (!ready()) {"
+            ' if (System.currentTimeMillis() > deadline) throw new AssertionError("late");'
+            f" {self.SLEEP} }} assertEquals(3, n());"
+        )
+        assert TIMING not in judged("assertEquals(3, n());", after, tmp_path)

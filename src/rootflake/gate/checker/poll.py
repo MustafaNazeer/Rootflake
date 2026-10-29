@@ -27,6 +27,7 @@ from rootflake.gate.checker.calls import Call, calls_in
 from rootflake.gate.checker.scope import Program
 from rootflake.gate.checker.syntax import (
     Block,
+    Catch,
     CompilationUnit,
     Field,
     Lambda,
@@ -367,7 +368,7 @@ def read_loop(
                 guards.append((_text(unit, node.header.start + 1, node.header.end - 1), node))
             elif node.kind in LOOPS and node.header is not None:
                 inner_headers.append(_condition(unit, node))
-            elif node.kind == "throw":
+            elif node.kind == "throw" and not _in_catch(unit, loop, node):
                 throws = True
             elif node.kind == "return":
                 returns = True
@@ -400,6 +401,13 @@ def read_loop(
         if _leaves(unit, node):
             exits.append(guard)
     return Loop(reads_state, bounded, checked_first, asserts, exits)
+
+
+def _in_catch(unit: CompilationUnit, loop: Statement, node: Statement) -> bool:
+    """A throw in a catch block rethrows what the body raised; it does not check the wait."""
+    path = path_to(unit, node.start)
+    at = next((k for k, n in enumerate(path) if n is loop), -1)
+    return any(isinstance(n, Catch) for n in path[at + 1 :])
 
 
 def _leaves(unit: CompilationUnit, node: Statement) -> bool:
