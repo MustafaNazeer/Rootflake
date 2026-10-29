@@ -284,6 +284,35 @@ class TestUnreadNamesAreNeverAccepted:
         after = before.replace("@Test void", "@RepeatedTest(3) void")
         assert EXISTING not in run(before, after, tmp_path)
 
+    SPIN = """package a;
+import org.junit.jupiter.api.extension.InvocationInterceptor;
+public class Spin implements InvocationInterceptor { }
+"""
+    SHADOW = """package a;
+import org.junit.jupiter.api.extension.ExtendWith;
+@ExtendWith(Spin.class)
+public @interface RepeatedTest { int value(); }
+"""
+
+    def test_a_repeated_test_shadowed_in_both_roots_is_flagged(self, tmp_path):
+        head = "package a;\nimport org.junit.jupiter.api.*;\n"
+        before = head + "public class FooTest {\n@Test void testFoo() { }\n}\n"
+        after = before.replace("}\n}", "}\n@RepeatedTest(2) void other() { }\n}")
+        files = {
+            f"src/{root}/java/a/{name}.java": text
+            for root in ("test", "main")
+            for name, text in (("RepeatedTest", self.SHADOW), ("Spin", self.SPIN))
+        }
+        assert run(before, after, tmp_path, files) == {UNKNOWN}
+
+    def test_an_ignore_rule_shadowed_in_both_roots_is_flagged(self, tmp_path):
+        files = {
+            f"src/{root}/java/a/Ignore.java": RETRYING_RULE.format(name="Ignore")
+            for root in ("test", "main")
+        }
+        found = run(wildcard_class(), wildcard_class(rule_field("Ignore")), tmp_path, files)
+        assert found == {UNKNOWN}
+
     def test_a_file_gone_at_the_read_is_a_checker_error(self, tmp_path, monkeypatch):
         from rootflake.gate.checker import check as check_module
 

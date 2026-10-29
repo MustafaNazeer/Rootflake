@@ -588,7 +588,12 @@ class _Judge:
         fqn = binding.fqn
         top = _top_level(self.program, path, name, index)
         if binding.kind == "unresolved" and _known_wildcard_name(self.program.units[path], name):
-            return set()  # judged by Decision 6, not a retry
+            # A same package type of that name shadows the import, so the exemption needs the
+            # read to have found no such type.
+            if top is not None and top[0] in self.ctx.absent:
+                return set()  # judged by Decision 6, not a retry
+            if top is not None and top[0] in self.ctx.ambiguous:
+                return {UNKNOWN}
         if retry_named(name):
             return {EXISTING}
         if top is not None and top[0] in self.ctx.ambiguous:
