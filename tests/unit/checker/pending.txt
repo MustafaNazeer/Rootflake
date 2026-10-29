@@ -1,7 +1,6 @@
 # Checker fixtures not yet decided correctly. Each one runs as a strict expected failure;
 # remove a line once its fixture passes. The checker is done when only the known false
 # rejects under the last heading remain.
-accept-id-look-up-column-index
 reject-nod-sleep-replaced-by-await
 # Accept fixtures waiting on Task 7b (kind 2 and kind 3 matches); remove when 7b lands.
 accept-assertion-moved-into-await-condition
