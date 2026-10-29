@@ -8,6 +8,7 @@ or be matched by an added assertion that keeps its strength; otherwise it was re
 """
 
 import json
+import re
 from collections.abc import Iterator
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -1158,6 +1159,8 @@ def _positioned_facts(program: Program, path: str, a: Assertion, body: Block, st
     for i in range(start, end):
         if tokens[i].kind != "ident" or tokens[i].text not in words:
             continue
+        if i + 1 < len(tokens) and tokens[i + 1].text == ".":
+            continue  # a qualifier, followed through the member it qualifies
         name = tokens[i].text
         call = i + 1 < len(tokens) and tokens[i + 1].text == "("
         if tokens[i - 1].text == ".":
@@ -1170,10 +1173,32 @@ def _positioned_facts(program: Program, path: str, a: Assertion, body: Block, st
             found = (("local", path, where, name), path, spans) if spans else None
         else:
             found = _name_source(program, path, name, start)
-        if found is not None:
+        sources = [] if found is None else [found]
+        if found is None or found[0][0] != "local":
+            sources.extend(_every_source(program, name))
+        if sources:
             kind = "helper" if call else "deps"
-            out.add((kind, name, _reached(program, [found], call, tokens[i].line)))
+            out.add((kind, name, _reached(program, sources, True, tokens[i].line)))
     return frozenset(out)
+
+
+def _every_source(program: Program, name: str) -> list:
+    """Every field assignment, qualified write and method body of that name in any read file.
+    A name the resolution above cannot place, or places in one file while another read file
+    writes or declares the same member name (an inherited field, an on demand import, an
+    unknown receiver, `Limits.MAX = 50` in a test), is then still covered, failing closed."""
+    out = []
+    for path in sorted(program.units):
+        spans = _field_spans(program, path, name)
+        if spans:
+            out.append((("field", path, name), path, spans))
+    for path, method in program.methods_by_name.get(name, ()):
+        if method.body is not None:
+            where = program.method_owner.get(id(method), "")
+            body = ((method.body.start, method.body.end),)
+            params = ",".join(p.type for p in method.params)
+            out.append((("method", where, f"{name}({params})"), path, body))
+    return out
 
 
 def _positioned_texts(a: Assertion) -> list[str]:
@@ -2461,11 +2486,28 @@ def _bounds(a: Assertion) -> dict[str, dict[str, list[Bound]]]:
                     continue
                 left, _, right = conjunct.partition(op)
                 left, right = _strip_parens(left), _strip_parens(right)
-                if _value(a, left) is not None and _value(a, right) is None:
+                lv, rv = _value(a, left), _value(a, right)
+                if lv is not None and rv is None:
                     left, right, side = right, left, _FLIPPED[side]  # `5 < x` bounds x from below
+                elif lv is None and rv is None and _constant_like(left) and _has_call(right):
+                    left, right, side = right, left, _FLIPPED[side]  # `Limits.MAX > x()`
                 add(left, side, (_value(a, right), strict, right))
                 break
     return out
+
+
+def _constant_like(text: str) -> bool:
+    """A qualified name or an upper case one, which a test compares against, never a local."""
+    return (
+        re.fullmatch(r"[A-Za-z_$][\w$]*( \. [A-Za-z_$][\w$]*)+|[A-Z][A-Z0-9_]*", text) is not None
+    )
+
+
+def _has_call(text: str) -> bool:
+    return (
+        re.search(r"(?<![\w.])(?!new\b)[A-Za-z_$][\w$]* \(", text) is not None
+        or re.search(r"\. [A-Za-z_$][\w$]* \(", text) is not None
+    )
 
 
 def _looser(old: Assertion, new: Assertion) -> bool:

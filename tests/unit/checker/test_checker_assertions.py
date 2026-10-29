@@ -2260,3 +2260,120 @@ class TestOutOfScopeLocalsNamedLikeAField:
         after = body_of("assertEquals(1.0, f(), EPS); { double EPS = 1; g(EPS); }",
                         "  static final double EPS = 100;")  # fmt: skip
         assert codes(before, after, tmp_path) == {TOLERANCE}
+
+
+def _class_file(package: str, head: str, body: str) -> str:
+    return f"package {package};\n{head} {{\n{body}\n}}\n"
+
+
+class TestBoundsBehindInheritedAndImportedNames:
+    """Names in a bound reached through a read supertype, an on demand import, a call, a write
+    from another file, or the left side of a comparison are followed like any other."""
+
+    BASE = "src/test/java/a/BaseTest.java"
+    LIMITS = "src/test/java/a/Limits.java"
+
+    def _files(self, before, after, extra_before, extra_after, path=None):
+        return {PATH: (before, after), (path or self.LIMITS): (extra_before, extra_after)}
+
+    def test_an_inherited_constant(self, tmp_path):
+        def test(s):
+            return body_of(s).replace("public class FooTest {",
+                                      "public class FooTest extends BaseTest {")  # fmt: skip
+
+        base = "public abstract class BaseTest"
+        field = "  protected static final double EPSILON = {};"
+        files = self._files(test("f(); assertEquals(1.0, d(), EPSILON);"),
+                            test("g(); assertEquals(1.0, d(), EPSILON);"),
+                            _class_file("a", base, field.format("0.001")),
+                            _class_file("a", base, field.format("0.5")), self.BASE)  # fmt: skip
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    def test_a_qualified_constant_declared_in_a_read_supertype(self, tmp_path):
+        base = _class_file("a", "public class Base", "  public static final int MAX = {};")
+        files = {
+            PATH: (body_of("f(); assertTrue(x() < Limits.MAX);"),
+                   body_of("g(); assertTrue(x() < Limits.MAX);")),
+            self.LIMITS: (_class_file("a", "public class Limits extends Base", ""),) * 2,
+            self.BASE: (base.replace("{}", "5"), base.replace("{}", "50")),
+        }  # fmt: skip
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    def test_a_qualifier_under_an_on_demand_import(self, tmp_path):
+        before = with_imports(body_of("f(); assertTrue(x() < Limits.MAX);"), "import b.*;\n")
+        after = with_imports(body_of("g(); assertTrue(x() < Limits.MAX);"), "import b.*;\n")
+        limits = (
+            "package b;\npublic final class Limits {{\n  public static final int MAX = {};\n}}\n"
+        )
+        files = self._files(before, after, limits.format(5), limits.format(50),
+                            "src/test/java/b/Limits.java")  # fmt: skip
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    @pytest.mark.parametrize(
+        ("statement", "helpers"),
+        [("assertTrue(x() < MAX);", "  static final int MAX = compute();\n"
+          "  static int compute() {{ return {}; }}"),
+         ("long max = limit(); assertTrue(x() < max);", "  static int limit() {{ return {}; }}")],
+        ids=["constant", "local"],
+    )  # fmt: skip
+    def test_a_call_behind_a_bound_name(self, tmp_path, statement, helpers):
+        before = body_of(statement, helpers.format(5))
+        after = body_of(statement, helpers.format(50))
+        assert codes(before, after, tmp_path) == {TOLERANCE}
+
+    def test_a_qualified_write_from_the_test(self, tmp_path):
+        limits = _class_file("a", "public final class Limits", "  public static int MAX = 5;")
+        files = self._files(body_of("f(); assertTrue(x() < Limits.MAX);"),
+                            body_of("Limits.MAX = 50; assertTrue(x() < Limits.MAX);"),
+                            limits, limits)  # fmt: skip
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    def test_a_constant_on_the_left_of_the_comparison(self, tmp_path):
+        files = self._files(body_of("f(); assertTrue(Limits.MAX > x());"),
+                            body_of("g(); assertTrue(Limits.MAX > x());"),
+                            _limits("5"), _limits("50"))  # fmt: skip
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    def test_a_statically_imported_helper(self, tmp_path):
+        imports = "import static a.Limits.limit;\n"
+        limits = _class_file("a", "public final class Limits",
+                             "  public static int limit() { return VALUE; }")  # fmt: skip
+        files = self._files(with_imports(body_of("f(); assertTrue(x() < limit());"), imports),
+                            with_imports(body_of("g(); assertTrue(x() < limit());"), imports),
+                            *(limits.replace("VALUE", v) for v in ("5", "50")))  # fmt: skip
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    def test_a_helper_on_an_unknown_receiver(self, tmp_path):
+        limits = _class_file("a", "public final class Limits",
+                             "  public int limit() { return VALUE; }")  # fmt: skip
+        files = self._files(body_of("f(); assertTrue(x() < l().limit());"),
+                            body_of("g(); assertTrue(x() < l().limit());"),
+                            *(limits.replace("VALUE", v) for v in ("5", "50")))  # fmt: skip
+        assert _codes_files(files, tmp_path) == {TOLERANCE}
+
+    def test_unchanged_inherited_and_imported_names_pass(self, tmp_path):
+        imports = "import static a.Limits.limit;\n"
+        limits = _class_file("a", "public final class Limits",
+                             "  public static int limit() { return 5; }\n"
+                             "  public static final int MAX = 5;")  # fmt: skip
+        moved = limits.replace("{\n  public", "{\n  static int unused() { return 1; }\n  public", 1)
+        stmt = "assertTrue(x() < limit()); assertTrue(Limits.MAX > x());"
+        files = self._files(with_imports(body_of(f"f(); {stmt}"), imports),
+                            with_imports(body_of(f"g(); {stmt}"), imports),
+                            limits, moved)  # fmt: skip
+        assert _codes_files(files, tmp_path) == set()
+
+    def test_a_changed_subject_local_beside_a_helper_bound_passes(self, tmp_path):
+        helper = "  int limit() { return 5; }"
+        before = body_of("int v = f(); assertTrue(v < limit());", helper)
+        after = body_of("int v = g(); assertTrue(v < limit());", helper)
+        assert codes(before, after, tmp_path) == set()
+
+    def test_an_unrelated_member_of_the_qualifying_type_passes(self, tmp_path):
+        files = self._files(body_of("f(); assertTrue(x() < Limits.MAX);"),
+                            body_of("g(); assertTrue(x() < Limits.MAX);"),
+                            _limits("5", "  Limits() { int other = OTHER; }\n"
+                                         "  static int OTHER = 1;\n"),
+                            _limits("5", "  Limits() { int other = OTHER; }\n"
+                                         "  static int OTHER = 2;\n"))  # fmt: skip
+        assert _codes_files(files, tmp_path) == set()
