@@ -216,3 +216,16 @@ def test_an_uppercase_receiver_that_is_not_a_type_is_followed_everywhere():
     )
     reached = reach(p, [(PATH, method(p, "t"))], scan=True, budget=ExpansionBudget())
     assert names(reached) == ["sleepy", "t"]
+
+
+def test_a_loop_body_reaching_past_the_cap_is_unparsable():
+    from rootflake.gate.checker.flow import waits_inside
+    from rootflake.gate.checker.syntax import Statement
+    from rootflake.gate.checker.tree import walk
+
+    helpers = " ".join(f"void h{n}() {{ h{n + 1}(); }}" for n in range(2100))
+    p = program(f"class T {{ void t() {{ while (x) {{ h0(); }} }} {helpers} void h2100() {{}} }}")
+    unit = p.units[PATH]
+    loop = next(n for n in walk(unit) if isinstance(n, Statement) and n.kind == "while")
+    with pytest.raises(Unparsable):
+        waits_inside(p, PATH, loop)

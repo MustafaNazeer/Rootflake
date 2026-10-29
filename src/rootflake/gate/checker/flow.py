@@ -16,7 +16,7 @@ from collections import Counter, deque
 from collections.abc import Iterator
 
 from rootflake.gate.checker.assertions import _close, _declarators, _text, is_assertion_name
-from rootflake.gate.checker.calls import Call, calls_in, follow_for_scan, reach
+from rootflake.gate.checker.calls import Call, ExpansionBudget, calls_in, follow_for_scan, reach
 from rootflake.gate.checker.model import Context, FileChange, Finding
 from rootflake.gate.checker.poll import initializer_spans
 from rootflake.gate.checker.scope import Program
@@ -186,7 +186,15 @@ def sinks(program: Program, path: str) -> list[tuple[int, int, str]]:
 
 def waits_inside(program: Program, path: str, loop: Statement) -> bool:
     """Whether a loop's body sleeps or makes a timed wait, directly or through a read helper."""
+    key = ("waits_inside", path, loop.start)
+    if key not in program.memo:
+        program.memo[key] = _waits_inside(program, path, loop)
+    return program.memo[key]
+
+
+def _waits_inside(program: Program, path: str, loop: Statement) -> bool:
     unit = program.units[path]
+    budget = ExpansionBudget()
     for body in loop.blocks:
         for call in calls_in(unit, body):
             if call.reference:
@@ -198,7 +206,7 @@ def waits_inside(program: Program, path: str, loop: Statement) -> bool:
             roots = follow_for_scan(program, path, call)
             if not roots:
                 continue
-            for reached in reach(program, roots, True, _Unlimited()):
+            for reached in reach(program, roots, True, budget):
                 if reached.method.body is None:
                     continue
                 inner_unit = program.units[reached.path]
@@ -241,11 +249,6 @@ def bound_spans(unit: CompilationUnit, loop: Statement) -> list[tuple[int, int]]
 class _Whole:
     def __init__(self, unit: CompilationUnit):
         self.start, self.end = 0, len(unit.tokens)
-
-
-class _Unlimited:
-    def spend(self, line: int) -> None:
-        pass
 
 
 # -- following a value ----------------------------------------------------------------------
