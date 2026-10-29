@@ -256,6 +256,83 @@ public class Guard implements TestRule {
         assert found == {"checker/checker_error"}
 
 
+WILDCARD = "package a;\nimport org.junit.*;\nimport org.junit.rules.*;\n"
+
+
+def wildcard_class(fields: str = "") -> str:
+    return java_class(fields).replace(HEAD, WILDCARD)
+
+
+class TestUnreadNamesAreNeverAccepted:
+    @pytest.mark.parametrize("name", ["Con", "Aux", "Nul", "Com1", "Guard$X"])
+    def test_a_name_the_path_rules_refuse_is_flagged(self, tmp_path, name):
+        files = {f"src/test/java/a/{name}.java": RETRYING_RULE.format(name=name)}
+        found = run(wildcard_class(), wildcard_class(rule_field(name)), tmp_path, files)
+        assert found == {UNKNOWN}
+
+    def test_a_non_ascii_name_is_flagged(self, tmp_path):
+        found = run(wildcard_class(), wildcard_class(rule_field("W\u00e4chter")), tmp_path)
+        assert found == {UNKNOWN}
+
+    def test_the_name_rule_comes_before_the_wildcard_reading(self, tmp_path):
+        found = run(wildcard_class(), wildcard_class(rule_field("FlakyGuard")), tmp_path)
+        assert found == {EXISTING}
+
+    def test_a_repeated_test_from_a_wildcard_is_not_a_retry(self, tmp_path):
+        head = "package a;\nimport org.junit.jupiter.api.*;\n"
+        before = head + "public class FooTest {\n@Test void testFoo() { }\n}\n"
+        after = before.replace("@Test void", "@RepeatedTest(3) void")
+        assert EXISTING not in run(before, after, tmp_path)
+
+    def test_a_file_gone_at_the_read_is_a_checker_error(self, tmp_path, monkeypatch):
+        from rootflake.gate.checker import check as check_module
+
+        real = check_module.read_side
+
+        def vanished(root, path):
+            return None if path.endswith("Guard.java") else real(root, path)
+
+        monkeypatch.setattr(check_module, "read_side", vanished)
+        files = {"src/test/java/a/Guard.java": RETRYING_RULE.format(name="Guard")}
+        found = run(wildcard_class(), wildcard_class(rule_field("Guard")), tmp_path, files)
+        assert found == {"checker/checker_error"}
+
+
+class TestClassLiterals:
+    EXTENSION = """package a;
+import org.junit.jupiter.api.extension.InvocationInterceptor;
+public class Guard implements InvocationInterceptor { }
+"""
+
+    @pytest.mark.parametrize(
+        "annotation", ["@ExtendWith(Guard.class)", "@ExtendWith({Guard.class})",
+                       "@ExtendWith(value = Guard.class)"],
+    )  # fmt: skip
+    def test_each_form_names_the_type(self, tmp_path, annotation):
+        imports = "import org.junit.jupiter.api.extension.ExtendWith;\n"
+        files = {"src/test/java/a/Guard.java": self.EXTENSION}
+        before = java_class(imports=imports)
+        after = java_class(imports=imports, header=annotation)
+        assert run(before, after, tmp_path, files) == {"retry/invocation_interceptor"}
+
+    @pytest.mark.parametrize(
+        ("annotation", "imports"),
+        [("@RunWith(Unknown.class)", "import org.junit.runner.RunWith;\nimport b.Unknown;\n"),
+         ("@Listeners(Unknown.class)",
+          "import org.testng.annotations.Listeners;\nimport b.Unknown;\n")],
+    )  # fmt: skip
+    def test_an_unknown_runner_or_listener_is_flagged(self, tmp_path, annotation, imports):
+        before = java_class(imports=imports)
+        after = java_class(imports=imports, header=annotation)
+        assert run(before, after, tmp_path) == {UNKNOWN}
+
+    def test_a_retry_named_runner_is_rejected(self, tmp_path):
+        imports = "import org.junit.runner.RunWith;\nimport b.RetryRunner;\n"
+        before = java_class(imports=imports)
+        after = java_class(imports=imports, header="@RunWith(RetryRunner.class)")
+        assert run(before, after, tmp_path) == {EXISTING}
+
+
 class TestUnderTest:
     def test_a_file_inside_the_library_it_uses_is_flagged(self, tmp_path):
         head = "package dev.failsafe.internal;\nimport org.junit.Test;\n"

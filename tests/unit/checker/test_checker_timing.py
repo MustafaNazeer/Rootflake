@@ -23,6 +23,7 @@ def codes(before: str | None, after: str | None, tmp_path: Path, path: str = PAT
     pristine, workspace = tmp_path / "p", tmp_path / "w"
     for root, source in ((pristine, before), (workspace, after)):
         root.mkdir(parents=True)
+        (root / "pom.xml").write_text("<project/>")  # a module, as the validator requires
         if source is not None:
             (root / path).parent.mkdir(parents=True)
             (root / path).write_text(source)

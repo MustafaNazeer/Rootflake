@@ -56,9 +56,10 @@ class Context:
     overridden: Sequence[str] = ()
     budget: ExpansionBudget = field(default_factory=ExpansionBudget)
     # Pristine files read to resolve a newly referenced extension type (Decision 2), and the
-    # top level names whose file could not be told apart or did not match.
+    # top level names whose file could not be told apart, did not match or could not be read.
     extensions: dict[str, CompilationUnit] = field(default_factory=dict)
     ambiguous: set[str] = field(default_factory=set)
+    absent: set[str] = field(default_factory=set)  # every candidate checked and not there
 
     def __post_init__(self) -> None:
         self.before = Program({c.path: c.before for c in self.changes if c.before is not None})

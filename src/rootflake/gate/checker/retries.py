@@ -178,6 +178,19 @@ def _wildcard_named(unit: CompilationUnit, name: str, table: dict[str, str]) -> 
     )
 
 
+# Test library types whose names the step 1 rule would catch, by the package that holds them,
+# so they are known when only an on demand import supplies them.
+_WILDCARD_NAMES = {"org.junit.jupiter.api": frozenset(["RepeatedTest"]),
+                   "org.junit": frozenset(["Ignore"])}  # fmt: skip
+
+
+def _known_wildcard_name(unit: CompilationUnit, name: str) -> bool:
+    return any(
+        imp.wildcard and not imp.static and name in _WILDCARD_NAMES.get(imp.name, ())
+        for imp in unit.imports
+    )
+
+
 def _wildcard_role(unit: CompilationUnit, name: str) -> str | None:
     """The role of a referencing annotation an on demand import could supply, so that
     `import org.junit.*;` with `@Rule` still names its field type."""
@@ -205,7 +218,7 @@ def _class_literals(unit: CompilationUnit, annotation: Annotation) -> list[tuple
     if annotation.arguments is None:
         return []
     tokens, out = unit.tokens, []
-    for i in range(annotation.arguments.start, annotation.arguments.end - 1):
+    for i in range(annotation.arguments.start + 1, annotation.arguments.end):
         if tokens[i].text == "class" and tokens[i - 1].text == ".":
             j = i - 2
             parts = []
@@ -574,12 +587,16 @@ class _Judge:
             return self.declared(binding)
         fqn = binding.fqn
         top = _top_level(self.program, path, name, index)
+        if binding.kind == "unresolved" and _known_wildcard_name(self.program.units[path], name):
+            return set()  # judged by Decision 6, not a retry
+        if retry_named(name):
+            return {EXISTING}
         if top is not None and top[0] in self.ctx.ambiguous:
             return {UNKNOWN}
         if binding.kind == "unresolved" and _library_wildcards(self.program.units[path]):
-            return set()  # no file of the package declares it, so a test library supplies it
-        if retry_named(name):
-            return {EXISTING}
+            if top is not None and top[0] in self.ctx.absent:
+                return set()  # no file of the module declares it, so a test library supplies it
+            return {UNKNOWN}
         if fqn in ALLOWLIST or binding.kind == "library" or (fqn or "").startswith("java."):
             return set()
         return {UNKNOWN}

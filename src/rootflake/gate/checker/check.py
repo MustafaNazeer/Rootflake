@@ -87,18 +87,24 @@ def _extensions(context: Context, pristine: Path, room: int) -> list[Finding]:
     for path, fqn in retries.requests(context):
         module = _module(path)
         if module is None or not all(_IDENT.fullmatch(part) for part in fqn.split(".")):
+            context.ambiguous.add(fqn)  # never read, so never taken as absent
             continue
-        present = []
+        present, refused = [], False
         for candidate in extension_candidates(module, fqn):
             problem = existing_java_problem(candidate, pristine)
             if problem is None:
                 present.append(candidate)
             elif problem.code in _REFUSED:
                 return [Finding("checker/checker_error", path)]
-        if len(present) > 1:
-            context.ambiguous.add(fqn)  # both a test and a main file: flagged, not guessed
+            elif problem.code != "not_found":
+                refused = True
+        if refused or len(present) > 1:
+            context.ambiguous.add(fqn)  # refused by a path rule, or in both roots: flagged
             continue
-        if not present or present[0] in read:
+        if not present:
+            context.absent.add(fqn)
+            continue
+        if present[0] in read:
             continue
         if room <= 0:
             return [Finding("checker/checker_error", path)]
@@ -109,7 +115,7 @@ def _extensions(context: Context, pristine: Path, room: int) -> list[Finding]:
         except CheckerError:
             return [Finding("checker/checker_error", path)]
         if content is None:
-            continue
+            return [Finding("checker/checker_error", path)]  # there at the check, gone at the read
         try:
             unit = parse(tokenize(content))
         except Unparsable:
