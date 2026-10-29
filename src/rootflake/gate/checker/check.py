@@ -9,7 +9,7 @@ import re
 from collections.abc import Sequence
 from pathlib import Path
 
-from rootflake.gate.checker import assertions, flow, retries, survive, timing
+from rootflake.gate.checker import assertions, flow, retries, survive, swallow, timing
 from rootflake.gate.checker.files import MAX_FILES, CheckerError, extension_candidates, read_side
 from rootflake.gate.checker.lexer import Unparsable, tokenize
 from rootflake.gate.checker.model import CheckResult, Context, FileChange, Finding, Target
@@ -25,7 +25,7 @@ __all__ = [
     "checked_target",
     "target_paths",
 ]
-RULES = (survive, assertions, timing, flow, retries)
+RULES = (survive, assertions, timing, flow, retries, swallow)
 _IDENT = re.compile(r"[A-Za-z_$][A-Za-z0-9_$]*")
 _REFUSED = frozenset(["symlink", "not_regular", "mode"])
 _ROOTS = (["src", "test", "java"], ["src", "main", "java"])

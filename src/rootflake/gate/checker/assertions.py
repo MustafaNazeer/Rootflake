@@ -1097,7 +1097,11 @@ def _references(program: Program, path: str, start: int, end: int, calls: bool):
             yield found
         qualifier = i + 1 < len(tokens) and tokens[i + 1].text == "."
         if calls and not qualifier and (found is None or found[0][0] != "local"):
-            yield from _every_source(program, tokens[i].text)
+            sources = _every_source(program, tokens[i].text)
+            receiver = _receiver_type(program.units[path], i) if call and before == "." else None
+            if receiver is not None:
+                sources = [s for s in sources if _may_dispatch(program, s, receiver)]
+            yield from sources
 
 
 def _reached(program: Program, sources, calls: bool, line: int) -> tuple:
@@ -1208,6 +1212,59 @@ def _every_source(program: Program, name: str) -> list:
             params = ",".join(p.type for p in method.params)
             out.append((("method", where, f"{name}({params})"), path, body))
     return out
+
+
+def _receiver_type(unit: CompilationUnit, member: int) -> str | None:
+    """The simple declared type of the local or parameter a call at token member is made on,
+    as TimeProvider in `tp.currentTimeMicros()`; None for any other receiver or a type written
+    with type arguments, an array or var."""
+    tokens = unit.tokens
+    j = member - 2
+    if j < 0 or tokens[j].kind != "ident" or (j and tokens[j - 1].text == "."):
+        return None
+    name = tokens[j].text
+    for node in reversed(path_to(unit, j)):
+        if isinstance(node, Lambda) and name in node.params:
+            return None
+        if isinstance(node, Method):
+            for p in node.params:
+                if p.name == name:
+                    return p.type if re.fullmatch(r"[A-Za-z_$][\w$]*", p.type) else None
+        if isinstance(node, Block):
+            for statement in node.statements:
+                if statement.start >= j:
+                    break
+                if statement.kind != "local_var":
+                    continue
+                at = [k for k in _declarators(tokens, statement.start, statement.end - 1)
+                      if tokens[k].text == name]  # fmt: skip
+                if at:
+                    type_token = tokens[at[0] - 1]
+                    if type_token.kind != "ident" or type_token.text == "var":
+                        return None
+                    if at[0] >= 2 and tokens[at[0] - 2].text == ".":
+                        return None
+                    return type_token.text
+    return None
+
+
+def _may_dispatch(program: Program, source, receiver: str) -> bool:
+    """Whether a same named method could run for a call on a receiver declared as that type:
+    a method of a class that is not the type, extends and implements nothing, and that no read
+    type extends cannot. Every other source is kept, failing closed."""
+    if source[0][0] != "method":
+        return True
+    owner = program.types_by_fqn.get(source[0][1])
+    if owner is None:
+        return True
+    decl = owner[1]
+    if decl.kind != "class" or decl.name == receiver or decl.extends or decl.implements:
+        return True
+    for path in program.units:
+        for other in program.all_types(path):
+            if decl.name in {_base_type(n).rsplit(".", 1)[-1] for n in other.extends}:
+                return True
+    return False
 
 
 def _positioned_texts(a: Assertion) -> list[str]:

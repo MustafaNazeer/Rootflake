@@ -13,6 +13,7 @@ from rootflake.gate.checker.model import Context, FileChange, Finding
 from rootflake.gate.checker.scope import Program
 from rootflake.gate.checker.syntax import (
     Annotation,
+    Block,
     Catch,
     CompilationUnit,
     Lambda,
@@ -149,23 +150,61 @@ def _returns(method: Method) -> int:
     )
 
 
-def _loop_exits(unit: CompilationUnit, method: Method) -> int:
+def _loop_exits(unit: CompilationUnit, method: Method, old_loops: Counter | None = None) -> int:
     """`continue` statements, and `break` statements whose nearest breakable is a loop, outside
-    nested lambdas and classes; each one can skip the cases after it."""
+    nested lambdas and classes; each one can skip the cases after it. With old_loops, the loops
+    of the before method, an exit that is the last statement of a loop the patch added skips no
+    case: the passes after it never ran before, and nothing of the loop body follows it."""
     count = 0
     for node in _outside_nested(method.body):
         if not isinstance(node, Statement) or node.kind not in ("continue", "break"):
             continue
-        if node.kind == "continue" or node.end - node.start > 2:
-            count += 1  # every continue, and every labelled break, can skip cases
+        if node.end - node.start > 2:
+            count += 1  # every labelled break or continue can skip cases
             continue
-        around = [n for n in path_to(unit, node.start) if isinstance(n, Statement)]
-        breakable = next(
-            (n for n in reversed(around) if n.kind in ("for", "while", "do", "switch")), None
+        around = [n for n in path_to(unit, node.start) if isinstance(n, Statement | Block)]
+        kinds = (
+            ("for", "while", "do") if node.kind == "continue" else ("for", "while", "do", "switch")
         )
-        if breakable is not None and breakable.kind != "switch":
-            count += 1
+        at = next(
+            (k for k in range(len(around) - 1, -1, -1)
+             if isinstance(around[k], Statement) and around[k].kind in kinds),
+            None,
+        )  # fmt: skip
+        if at is None or around[at].kind == "switch":
+            continue
+        if old_loops is not None and _added_and_trailing(unit, around[at:], node, old_loops):
+            continue
+        count += 1
     return count
+
+
+def loop_key(unit: CompilationUnit, loop: Statement) -> tuple[str, str]:
+    header = loop.header
+    return loop.kind, "" if header is None else " ".join(
+        t.text for t in unit.tokens[header.start : header.end])  # fmt: skip
+
+
+def loops_of(unit: CompilationUnit, method: Method) -> Counter:
+    return Counter(
+        loop_key(unit, n)
+        for n in _outside_nested(method.body)
+        if isinstance(n, Statement) and n.kind in ("for", "while", "do")
+    )
+
+
+def _added_and_trailing(unit: CompilationUnit, around: list, node: Statement, old: Counter) -> bool:
+    """Whether the loop an exit leaves is not in the before method, and on the way down to the
+    exit every block's statement on that way is the block's last."""
+    if old[loop_key(unit, around[0])]:
+        return False
+    chain = [*around[1:], node]
+    for k, block in enumerate(chain[:-1]):
+        if isinstance(block, Block) and (
+            not block.statements or block.statements[-1] is not chain[k + 1]
+        ):
+            return False
+    return True
 
 
 def _exit_positions(unit: CompilationUnit, method: Method) -> list[tuple[str, int]]:
@@ -243,7 +282,9 @@ def _removals(change: FileChange, ctx: Context) -> Iterator[Finding]:
             yield Finding("disable/test_body_emptied", change.path, new.line)
         if _returns(new) > _returns(method):
             yield Finding("disable/early_return", change.path, new.line)
-        elif _loop_exits(change.after, new) > _loop_exits(change.before, method):
+        elif _loop_exits(change.after, new, loops_of(change.before, method)) > _loop_exits(
+            change.before, method
+        ):
             yield Finding("disable/early_return", change.path, new.line)
         else:
             old_exits = _exit_positions(change.before, method)

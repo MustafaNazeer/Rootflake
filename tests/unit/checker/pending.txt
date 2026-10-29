@@ -7,20 +7,7 @@ accept-production-sleep-moved-into-new-method
 accept-production-sleep-not-reached-from-test
 accept-test-resource-lighter-workload
 accept-tzd-default-zone-set-and-restored
-reject-assertions-removed-and-exception-swallowed
-reject-assume-no-exception-in-catch
-reject-catch-assertion-error-empty
-reject-catch-exception-return-early
-reject-catch-throwable-and-print
-reject-junit4-expected-exception-added
-reject-junit4-expected-exception-rule-added
-reject-junit5-exception-handler-aborts-failures
 reject-nod-sleep-replaced-by-await
-reject-production-helper-swallows-test-lambda
-reject-retry-loop-swallows-throwable
-reject-try-fail-always-throwing-expression-hides-body
-reject-try-fail-catch-comparison-failure
-reject-try-fail-guarded-return-before-fail
 # Accept fixtures waiting on Task 7b (kind 2 and kind 3 matches); remove when 7b lands.
 accept-assertion-moved-into-await-condition
 # Fixtures for the Decision 6 forms adopted 2026-10-23; remove each as its rule lands.

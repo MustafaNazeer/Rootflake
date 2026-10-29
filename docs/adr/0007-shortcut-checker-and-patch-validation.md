@@ -291,6 +291,15 @@ Every widened timing bound in test code is rejected with `weaken_assertion/timin
 * TestNG `successPercentage` below 100 is rejected with or without `invocationCount`, since a single invocation also passes under it.
 * A TestNG listener that calls `setStatus` with anything other than `ITestResult.FAILURE` is rejected with `retry/invocation_interceptor`, since the status value cannot always be folded.
 
+**Amended 2026-10-29: how the swallow rules are read.**
+
+* A `try` the patch adds is judged whole, by rules 1, 2 and 3. A `try` the pristine method already had, matched by the member it sits in and its sorted catch types, is judged only by the statements it newly holds, by rules 1 and 2; rule 3 does not apply to it, since nothing that follows it changed. An assertion moved into an existing swallowing `try` is therefore rejected, while a call added beside the old ones is not.
+* The name prefixes `assert`, `verify`, `check` and `expect` count only in test code. A helper declared in production code counts only through a call that resolves to a test library, an assertion name or a wait.
+* A helper reached from a call the patch adds is judged by rule 1 alone. A `try` in it whose catch swallows is rejected when the `try` covers a check, or when it runs one of the helper's parameters and the arguments of the new call cover a check, as `quietly(() -> assertTrue(done()))` does; the parameter is followed only at the first hop.
+* A loop around the `try` counts as code that follows it under rule 3, since the loop runs its body again.
+* Under Decision 6, a `break` or `continue` that is the last statement of a loop the patch adds, on every block down to it, is not an early return: the passes after it never ran before, and nothing of the loop body follows it. A loop counts as added when no loop of the same kind and header text was in the before method. A guarded `break` before other statements of a new loop is still an early return.
+* Under Decision 5, a method found only by its name for a call on a local or parameter is left out when the receiver is declared as a simple type, and the method's class is not that type, extends and implements nothing, and no read type extends it, since such a class cannot be the receiver. A subclass in a file the checker does not read is a recorded limit; it would have to predate the patch, since every file the patch adds or changes is read.
+
 **Swallowed failures** (`swallow_failure/...`). A new or widened `catch` in test code whose body does not end in a rethrow, a `throw` that is not an assumption, or a `fail`, is rejected when any of these hold, whatever type it catches:
 
 1. its `try` block covers, after following helpers, lambdas and method references, an assertion, a `verify`, a wait (a call matched by Decision 7, an Awaitility condition, or a latch, barrier, future or executor wait), an `assertThrows`, a `fail`, or a call whose name starts with `assert`, `verify`, `check` or `expect`;
