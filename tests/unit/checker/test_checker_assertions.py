@@ -2653,6 +2653,13 @@ class TestConditionsAndSubjectsThroughOnceAssignedLocals:
         )
         assert self.REMOVED in codes(body_of(self.LOOP), body_of(after), tmp_path)
 
+    def test_a_guard_reading_a_local_after_a_library_query_on_another_receiver_is_kept(
+        self, tmp_path
+    ):
+        before = 'if (seen.contains(x) && q.size() > 0) { fail("x"); }'
+        after = 'int c = q.size(); if (seen.contains(x) && c > 0) { fail("x "); }'
+        assert self.REMOVED not in codes(body_of(before), body_of(after), tmp_path)
+
     def test_a_guard_through_a_local_assigned_twice_is_not_read(self, tmp_path):
         after = (
             "for (File file : files()) { String n = file.getName(); n = other();"
@@ -2676,6 +2683,13 @@ class TestConditionsAndSubjectsThroughOnceAssignedLocals:
             ("work(); assertTrue(dir.listFiles().length < 5);",
              "File[] files = Objects.requireNonNull(dir.listFiles()); work();"
              " assertTrue(files.length < 5);"),
+            ('if (q.poll() != null && q.size() > 0) { fail("x"); }',
+             'int c = q.size(); if (q.poll() != null && c > 0) { fail("x"); }'),
+            ('if (drain(q) && q.size() > 0) { fail("x"); }',
+             'int c = q.size(); if (drain(q) && c > 0) { fail("x"); }'),
+            ("long start = clock.millis(); assertTrue(work() && clock.millis() - start < 100);",
+             "long start = clock.millis(); long now = clock.millis();"
+             " assertTrue(work() && now - start < 100);"),
             ("while (!done()) { assertTrue(step()); }",
              "boolean d = done(); while (!d) { assertTrue(step()); }"),
         ],

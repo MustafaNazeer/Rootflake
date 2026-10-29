@@ -222,11 +222,19 @@ def _may_change(tokens, start: int, end: int) -> bool:
     return False
 
 
-def _assertion_locals(unit: CompilationUnit, index: int) -> tuple[tuple[str, str], ...]:
-    statement = next((n for n in reversed(path_to(unit, index)) if isinstance(n, Statement)), None)
-    if statement is None:
+def _assertion_locals(unit: CompilationUnit, call: Call) -> tuple[tuple[str, str], ...]:
+    """The locals declared just before an assertion's statement whose every use in its
+    arguments is settled (`_settled_uses`)."""
+    statement = next(
+        (n for n in reversed(path_to(unit, call.start)) if isinstance(n, Statement)), None
+    )
+    values = _locals_before(unit, statement) if statement is not None else {}
+    if not values:
         return ()
-    return tuple(sorted(_locals_before(unit, statement).items()))
+    first, last = call.start + 2, _close(unit, call.start + 1)
+    late = _uses(unit.tokens, first, last, values) - _settled_uses(unit.tokens, first, last, values)
+    unsettled = {unit.tokens[i].text for i in late}
+    return tuple(sorted((n, v) for n, v in values.items() if n not in unsettled))
 
 
 def _enhanced_for(unit: CompilationUnit, node: Statement) -> bool:
@@ -236,15 +244,62 @@ def _enhanced_for(unit: CompilationUnit, node: Statement) -> bool:
 
 
 def _read_through(unit: CompilationUnit, start: int, end: int, values: dict[str, str]) -> str:
-    """The text of a token range with each name in values, other than a member access, read
-    as its value."""
+    """The text of a token range with each settled use (`_settled_uses`) of a name in values
+    read as its value."""
     tokens = unit.tokens
+    settled = _settled_uses(tokens, start, end, values)
     return " ".join(
-        values[t.text]
-        if t.kind == "ident" and t.text in values and (i == 0 or tokens[i - 1].text != ".")
-        else t.text
-        for i, t in ((i, tokens[i]) for i in range(start, end))
+        values[tokens[i].text] if i in settled else tokens[i].text for i in range(start, end)
     )
+
+
+def _uses(tokens, start: int, end: int, names) -> set[int]:
+    return {
+        i
+        for i in range(start, end)
+        if tokens[i].kind == "ident" and tokens[i].text in names and tokens[i - 1].text != "."
+    }
+
+
+_QUERIES = frozenset(
+    {
+        "contains", "containsKey", "containsValue", "containsAll", "isEmpty", "size",
+        "length", "get", "getOrDefault", "equals", "equalsIgnoreCase", "startsWith",
+        "endsWith", "matches", "indexOf", "lastIndexOf", "charAt", "isPresent",
+    }
+)  # fmt: skip
+
+
+def _query(tokens, name: int) -> bool:
+    """Whether the call named at a token is one of the library queries in `_QUERIES` on a
+    named receiver other than this or super."""
+    return (
+        tokens[name].text in _QUERIES
+        and name >= 2
+        and tokens[name - 1].text == "."
+        and tokens[name - 2].kind == "ident"
+        and tokens[name - 2].text not in ("this", "super")
+    )
+
+
+def _settled_uses(tokens, start: int, end: int, names) -> set[int]:
+    """The uses of names in a token range, other than member accesses, that come before any
+    call other than a query (`_QUERIES`) on a named receiver has returned, and before any
+    assignment, `++` or `--`. In `drain(q) && c > 0` the use of `c` follows `drain`, which
+    could have changed what `c` was read from, so it is not settled, while in
+    `!expected.contains(n) && !n.startsWith("test-")` both uses of `n` are."""
+    out, opened, changed = set(), [], False
+    for i in range(start, end):
+        text = tokens[i].text
+        if text in ("++", "--") or text in _ASSIGNMENTS:
+            changed = True
+        elif text == "(":
+            opened.append(i > 0 and tokens[i - 1].kind == "ident" and not _query(tokens, i - 1))
+        elif text == ")" and opened:
+            changed = opened.pop() or changed
+        elif not changed and i in _uses(tokens, i, i + 1, names):
+            out.add(i)
+    return out
 
 
 def _bracketed(tokens) -> str:
@@ -652,7 +707,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             arguments=_split_arguments(unit, call.start + 1, _close(unit, call.start + 1)),
             guard=_guard(unit, body, call.start, declared),
             read_guard=_guard(unit, body, call.start, declared, True),
-            read_locals=_assertion_locals(unit, call.start),
+            read_locals=_assertion_locals(unit, call),
             exits_before=frozenset(text for at, text in exits if at < call.start),
             credited=credited,
             line=unit.tokens[call.start].line,
