@@ -89,6 +89,39 @@ class TestProductionRetry:
         after = "void run() { try { connect(); } catch (IOException e) { run(); } }"
         assert RETRY in production(self.CALL, after, tmp_path)
 
+    def test_a_task_that_hands_itself_on(self, tmp_path):
+        after = (
+            'public void run() { try { connect(); } catch (Exception e) { LOG.warn("x", e); }'
+            " finally { executor.schedule(this, 1, TimeUnit.SECONDS); } }"
+        )
+        assert production("public void run() { connect(); }", after, tmp_path) == {RETRY}
+
+    def test_a_task_that_hands_on_a_field_holding_itself(self, tmp_path):
+        after = (
+            "private final Runnable self = this;\n"
+            'public void run() { try { connect(); } catch (Exception e) { LOG.warn("x", e); }'
+            " finally { executor.schedule(self, 1, TimeUnit.SECONDS); } }"
+        )
+        before = "private final Runnable self = this;\npublic void run() { connect(); }"
+        assert production(before, after, tmp_path) == {RETRY}
+
+    def test_a_catch_that_passes_this_to_a_listener_is_a_call_not_a_task(self, tmp_path):
+        after = (
+            'void close() { try { connect(); } catch (Exception e) { LOG.warn("x", e); }'
+            " listeners.remove(this); }"
+        )
+        assert RETRY not in production("void close() { connect(); }", after, tmp_path)
+
+    def test_many_helpers_do_not_flag_an_unrelated_method(self, tmp_path):
+        helpers = (
+            "".join(f"void h{i}() {{ h{i + 1}(); }}\n" for i in range(300)) + "void h300() { }\n"
+        )
+        bodies = "".join(
+            f'void m{i}() {{ try {{ h0(); }} catch (Exception e) {{ LOG.warn("x", e); }} }}\n'
+            for i in range(12)
+        )
+        assert RETRY not in production(helpers, helpers + bodies, tmp_path)
+
     def test_a_rescheduling_method_that_already_was_one_is_not(self, tmp_path):
         before = (
             'void run() { try { connect(); } catch (Exception e) { LOG.warn("x", e); }'
@@ -153,11 +186,21 @@ class TestProductionSleepAdded:
         before = "void run() throws Exception { Thread.sleep(100); connect(); }"
         assert SLEEP not in production(before, before.replace("100", "50"), tmp_path)
 
-    def test_a_sleep_a_test_reaches_is_left_to_the_test_rules(self, tmp_path):
+    BEFORE = service("void run() throws Exception { connect(); }")
+    AFTER = service("void run() throws Exception { Thread.sleep(100); connect(); }")
+
+    def test_a_sleep_an_unchanged_test_reaches_is_flagged(self, tmp_path):
         test = junit_file("@Test void testRun() throws Exception { new Service().run(); }")
-        before = service("void run() throws Exception { connect(); }")
-        after = service("void run() throws Exception { Thread.sleep(100); connect(); }")
-        found = codes({MAIN: (before, after), TEST: (test, test)}, tmp_path)
+        found = codes({MAIN: (self.BEFORE, self.AFTER), TEST: (test, test)}, tmp_path)
+        assert found == {SLEEP}
+
+    def test_a_sleep_a_rejected_test_call_reaches_is_left_to_the_test_rules(self, tmp_path):
+        before = junit_file("@Test void testRun() throws Exception { check(); }")
+        after = junit_file(
+            "@Test void testRun() throws Exception { new Service().run(); check(); }"
+        )
+        found = codes({MAIN: (self.BEFORE, self.AFTER), TEST: (before, after)}, tmp_path)
+        assert "weaken_assertion/timing_bound_widened" in found
         assert SLEEP not in found
 
 

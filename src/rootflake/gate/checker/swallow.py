@@ -239,7 +239,7 @@ def _swallows(program: Program, path: str, catch: Catch) -> bool:
     if last.kind == "expression":
         calls = [c for c in calls_in(unit, last) if not c.reference]
         if calls and calls[0].name == "fail":
-            if calls[0].receiver_at is None:
+            if calls[0].receiver_at is None or calls[0].receiver in ("this", "super"):
                 return not _library_name(program, unit, "fail")
             return not _library_receiver(program, path, calls[0])
     return True
@@ -249,6 +249,8 @@ def _library_receiver(program: Program, path: str, call: Call) -> bool:
     """Whether a qualified call's receiver, read with any package before it, resolves to a
     test library type, as `Assert.fail` and `org.junit.Assert.fail` do."""
     tokens, j = program.units[path].tokens, call.receiver_at
+    if call.receiver == "<expr>" or tokens[j].kind != "ident":
+        return False
     parts = [tokens[j].text]
     while j >= 2 and tokens[j - 1].text == "." and tokens[j - 2].kind == "ident":
         parts.insert(0, tokens[j - 2].text)
@@ -256,13 +258,29 @@ def _library_receiver(program: Program, path: str, call: Call) -> bool:
     binding = program.resolve_type(path, ".".join(parts), j)
     if binding.kind == "library":
         return True
-    unit = program.units[path]
+    unit, name = program.units[path], parts[0]
     return (
         binding.kind == "unresolved"
         and len(parts) == 1
+        and name[0].isupper()
+        and not name.isupper()
+        and not program.methods_by_name.get(call.name)
+        and not _names_a_variable(tokens, name)
         and _library_wildcards(unit)
         and any(imp.wildcard and not imp.static and is_library(imp.name) for imp in unit.imports)
     )  # the stricter reading of Decision 8: only library and JDK packages are on demand
+
+
+def _names_a_variable(tokens, name: str) -> bool:
+    """Whether the file declares a field, local or parameter of that name, as `Reporter
+    Reporter;` does, so a call on it is a call on an object and not on a type."""
+    return any(
+        t.text == name
+        and 0 < k < len(tokens) - 1
+        and (tokens[k - 1].kind == "ident" or tokens[k - 1].text in (">", "]"))
+        and tokens[k + 1].text in ("=", ";", ",", ")", ":")
+        for k, t in enumerate(tokens)
+    )
 
 
 def _aborts(program: Program, path: str, name: str, index: int) -> bool:

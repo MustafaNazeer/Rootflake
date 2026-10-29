@@ -100,15 +100,66 @@ def _retry_loops(program: Program, path: str) -> list[tuple[tuple, int]]:
     ]
 
 
-def _reschedules(program: Program, path: str, method: Method, budget: ExpansionBudget) -> bool:
+_HANDS_ON = frozenset(
+    ["schedule", "scheduleAtFixedRate", "scheduleWithFixedDelay", "submit", "execute",
+     "newTimeout", "post", "postDelayed"]
+)  # fmt: skip
+_TASK_METHODS = frozenset(["run", "call"])
+
+
+def _arguments(unit: CompilationUnit, call: Call) -> list[list[str]]:
+    tokens, out, current, depth = unit.tokens, [], [], 0
+    for token in tokens[call.end + 1 :]:
+        text = token.text if token.kind == "op" else None
+        if text in ("(", "[", "{"):
+            depth += 1
+        elif text in (")", "]", "}"):
+            if depth == 0:
+                break
+            depth -= 1
+        elif text == "," and depth == 0:
+            out.append(current)
+            current = []
+            continue
+        current.append(token.text)
+    return [*out, current] if current else out
+
+
+def _self_fields(unit: CompilationUnit) -> set[str]:
+    """Names the file sets to `this`, as `Runnable self = this;` does."""
+    tokens = unit.tokens
+    return {
+        tokens[k - 2].text
+        for k in range(2, len(tokens) - 1)
+        if tokens[k].text == "this" and tokens[k - 1].text == "=" and tokens[k + 1].text == ";"
+        and tokens[k - 2].kind == "ident"
+    }  # fmt: skip
+
+
+def _hands_on_itself(unit: CompilationUnit, call: Call, selves: set[str]) -> bool:
+    """Whether a call hands the running task to an executor, as `schedule(this, 1, SECONDS)`
+    does in a Runnable's run()."""
+    if call.name not in _HANDS_ON:
+        return False
+    return any(arg == ["this"] or (len(arg) == 1 and arg[0] in selves)
+               for arg in _arguments(unit, call))  # fmt: skip
+
+
+def _reschedules(program: Program, path: str, method: Method) -> bool:
     """Whether a method's body, or a helper it reaches, calls it again or hands on a reference
-    to it, as a task that schedules itself from its `finally` block does."""
+    to it, as a task that schedules itself from its `finally` block does. A task's run() or
+    call() that hands `this` to an executor counts too. Each method has its own budget."""
     if method.body is None:
         return False
-    for reached in reach(program, [(path, method)], True, budget):
+    task = method.name in _TASK_METHODS
+    for reached in reach(program, [(path, method)], True, ExpansionBudget()):
         if reached.method.body is None:
             continue
-        for call in calls_in(program.units[reached.path], reached.method.body):
+        unit = program.units[reached.path]
+        selves = _self_fields(unit) if task else set()
+        for call in calls_in(unit, reached.method.body):
+            if task and not call.reference and _hands_on_itself(unit, call, selves):
+                return True
             if call.name != method.name or call.receiver not in (None, "this"):
                 continue
             if any(m is method for _, m in follow_for_scan(program, reached.path, call)):
@@ -119,11 +170,10 @@ def _reschedules(program: Program, path: str, method: Method, budget: ExpansionB
 def _rescheduling(program: Program, path: str) -> list[tuple[tuple, int]]:
     unit = program.units[path]
     out = []
-    budget = ExpansionBudget()
     for node in walk(unit):
         if isinstance(node, Method) and node.body is not None and _keeps_going(unit, node.body):
             try:
-                again = _reschedules(program, path, node, budget)
+                again = _reschedules(program, path, node)
             except Unparsable:
                 again = True  # past the cap: flagged for a person to read
             if again:
@@ -168,31 +218,34 @@ def _sleeps(program: Program, path: str) -> list[tuple[tuple, int, Call]]:
     return out
 
 
-def _reached_from_tests(ctx: Context) -> set[int] | None:
-    """The methods a scan from test code reaches, which the test code rules judge (Decision 4),
-    or None when the scan goes past its cap."""
+def _judged_from_tests(ctx: Context) -> set[int]:
+    """The production methods a test call reaches when the test code rules reject that call
+    for reaching a fixed sleep (Decision 4): a call on a statement the patch added to a test
+    file. A sleep only an unchanged test reaches is judged by no rule, so it is flagged."""
     memo = ctx.after.memo
-    if ("production", "reached") not in memo:
-        roots = []
-        for path in sorted(ctx.test_paths):
-            unit = ctx.after.units[path]
-            for call in calls_in(unit, retries.unit_span(unit)):
-                roots.extend(follow_for_scan(ctx.after, path, call))
+    if ("production", "judged") not in memo:
+        found: set[int] = set()
         try:
-            found = {id(r.method) for r in reach(ctx.after, roots, True, ExpansionBudget())}
+            for change in ctx.changes:
+                if change.path not in ctx.test_paths:
+                    continue
+                unit, path = change.after, change.path
+                old_sites, new_sites = timing._sites(change.before), timing._sites(unit)
+                for call in calls_in(unit, retries.unit_span(unit)):
+                    if call.reference:
+                        continue
+                    site = timing._site(unit, call.start)
+                    if new_sites[site] <= old_sites[site]:
+                        continue
+                    if not timing._reaches_sleep(ctx, path, call):
+                        continue
+                    roots = follow_for_scan(ctx.after, path, call)
+                    budget = ExpansionBudget()
+                    found.update(id(r.method) for r in reach(ctx.after, roots, True, budget))
         except Unparsable:
-            found = None
-        memo[("production", "reached")] = found
-    return memo[("production", "reached")]
-
-
-def _method_at(unit: CompilationUnit, index: int) -> Method | None:
-    holder = None
-    for node in walk(unit):
-        if isinstance(node, Method) and node.start <= index < node.end:
-            if holder is None or node.start >= holder.start:
-                holder = node
-    return holder
+            found = set()  # past the cap: every added sleep is flagged
+        memo[("production", "judged")] = found
+    return memo[("production", "judged")]
 
 
 def _sleep_findings(ctx: Context, change: FileChange) -> Iterator[Finding]:
@@ -202,13 +255,13 @@ def _sleep_findings(ctx: Context, change: FileChange) -> Iterator[Finding]:
     lines = set(_excess(old, [(k, line) for k, line, _ in new]))
     if not lines:
         return
-    reached = _reached_from_tests(ctx)
+    judged = _judged_from_tests(ctx)
     for _, line, call in new:
         if line not in lines:
             continue
-        method = _method_at(change.after, call.start)
-        if reached is not None and method is not None and id(method) in reached:
-            continue  # judged by the test code rules
+        method = timing._method_at(change.after, call.start)
+        if method is not None and id(method) in judged:
+            continue  # rejected by the test code rules
         yield Finding(SLEEP, path, line)
 
 

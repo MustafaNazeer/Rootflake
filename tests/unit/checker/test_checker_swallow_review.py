@@ -319,6 +319,38 @@ class TestQualifiedFailRethrows:
         imports = JUNIT4 + "import a.util.Checks;\n"
         assert CATCH in self.judge("Checks.fail", tmp_path, imports)
 
+    def judge_with(self, members: str, fail: str, tmp_path, prefix: str = "") -> set[str]:
+        after = (
+            f"{prefix}try {{ service.process(); }} catch (IOException e) {{"
+            f" {fail}(e.getMessage()); }}"
+        )
+        before = cls(members + method(prefix + self.BEFORE), JUNIT4)
+        return codes(before, cls(members + method(after), JUNIT4), tmp_path)
+
+    def test_a_fail_on_this_the_class_declares_swallows(self, tmp_path):
+        members = "void fail(String m) { }\n"
+        assert CATCH in self.judge_with(members, "this.fail", tmp_path)
+
+    def test_a_fail_on_a_field_of_an_unread_type_swallows(self, tmp_path):
+        assert CATCH in self.judge_with("Reporter reporter;\n", "reporter.fail", tmp_path)
+
+    def test_a_fail_on_a_capitalized_field_swallows(self, tmp_path):
+        assert CATCH in self.judge_with("Reporter Reporter;\n", "Reporter.fail", tmp_path)
+
+    def test_a_fail_on_a_constant_swallows(self, tmp_path):
+        assert CATCH in self.judge_with("static Reporter REPORTER;\n", "REPORTER.fail", tmp_path)
+
+    def test_a_fail_on_a_local_swallows(self, tmp_path):
+        prefix = "Reporter r = reporter(); "
+        assert CATCH in self.judge_with("", "r.fail", tmp_path, prefix)
+
+    def test_a_fail_on_a_new_object_swallows(self, tmp_path):
+        assert CATCH in self.judge_with("", "new Reporter().fail", tmp_path)
+
+    def test_a_fail_on_a_wildcard_type_when_a_read_file_declares_fail_swallows(self, tmp_path):
+        members = "static class Reporter { static void fail(String m) { } }\n"
+        assert CATCH in self.judge_with(members, "Reporter.fail", tmp_path)
+
 
 class TestElementAndContainerWrites:
     def test_an_array_element_read_later(self, tmp_path):
