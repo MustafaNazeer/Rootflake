@@ -473,7 +473,10 @@ def _throws_skip_local(unit: CompilationUnit, body: Block, statement: Statement)
     )
 
 
-def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str]]:
+def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str, int]]:
+    """Each exit of a body, with its text, its start, and the end of the code it can skip: the
+    loop or switch an unlabelled `break` or `continue` leaves, the whole body otherwise. So a
+    `break` in a search loop that ends before an assertion does not stand before it."""
     out = []
     for node in walk(body):
         if isinstance(node, Statement) and node.kind in _EXITS:
@@ -491,8 +494,26 @@ def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str]]:
             # Mustafa 2026-10-23: an exit is its statement plus its full guard text, so an
             # existing exit under a changed condition counts as newly guarded.
             guard = " / ".join(_guard(unit, body, node.start))
-            out.append((node.start, f"{_text(unit, node.start, node.end)} @ {guard}"))
+            text = f"{_text(unit, node.start, node.end)} @ {guard}"
+            out.append((node.start, text, _skips_until(unit, body, node)))
     return out
+
+
+def _skips_until(unit: CompilationUnit, body: Block, node: Statement) -> int:
+    if node.kind not in ("break", "continue") or node.end - node.start > 2:
+        return body.end  # a return, a throw, or a labelled break or continue
+    kinds = ("for", "while", "do") if node.kind == "continue" else ("for", "while", "do", "switch")
+    target = next(
+        (n for n in reversed(path_to(unit, node.start))
+         if isinstance(n, Statement) and n is not node and n.kind in kinds),
+        None,
+    )  # fmt: skip
+    return body.end if target is None else target.end
+
+
+def _exits_before(exits, at: int) -> frozenset[str]:
+    """The exits that run before a position and can skip it."""
+    return frozenset(text for start, text, until in exits if start < at < until)
 
 
 def _top_operators(unit: CompilationUnit, start: int, end: int) -> list[tuple[int, str]]:
@@ -649,7 +670,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             out.append(Assertion(
                 f"assertThrows ( {arguments[0]} )", ("assertThrows",), arguments,
                 _guard(unit, body, call.start, declared),
-                frozenset(t for at, t in exits if at < call.start), rule[1],
+                _exits_before(exits, call.start), rule[1],
                 unit.tokens[call.start].line, call.start, facts=facts,
             ))  # fmt: skip
             continue
@@ -708,7 +729,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             guard=_guard(unit, body, call.start, declared),
             read_guard=_guard(unit, body, call.start, declared, True),
             read_locals=_assertion_locals(unit, call),
-            exits_before=frozenset(text for at, text in exits if at < call.start),
+            exits_before=_exits_before(exits, call.start),
             credited=credited,
             line=unit.tokens[call.start].line,
             start=call.start,
@@ -793,14 +814,14 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                 out.append(Assertion(
                     f"assertThrows ( {' , '.join(types)} )", ("assertThrows",), types,
                     _guard(unit, body, node.start, declared),
-                    frozenset(t for at, t in exits if at < node.start), credited,
+                    _exits_before(exits, node.start), credited,
                     node.catches[0].line, node.catches[0].start, facts=facts,
                 ))  # fmt: skip
     for node in walk(body):
         if isinstance(node, Statement) and node.kind == "assert":
             out.append(
                 Assertion(_text(unit, node.start, node.end), ("assert",), (), _guard(unit, body,
-                          node.start), frozenset(t for at, t in exits if at < node.start), True,
+                          node.start), _exits_before(exits, node.start), True,
                           node.line, node.start)
             )  # fmt: skip
     return out
@@ -811,7 +832,7 @@ def _wait_assertion(unit, body, declared, exits, start, name, arguments, before)
     condition reads, so a moved assertion keeps its subject."""
     return Assertion(
         f"{name} ( {' , '.join(arguments)} )", (name,), arguments,
-        _guard(unit, body, start, declared), frozenset(t for at, t in exits if at < before),
+        _guard(unit, body, start, declared), _exits_before(exits, before),
         True, unit.tokens[start].line, start,
         subject=_followed(roots_of(arguments), _local_definitions(unit, body)),
     )  # fmt: skip
@@ -1856,7 +1877,7 @@ def _context(program: Program, reached, cache: dict) -> tuple[tuple[str, ...], f
         body = reached.parent.method.body
         site = reached.call.start
         guard = parent_guard + _guard(unit, body, site, declared_waits(program))
-        exits = parent_exits | {text for at, text in _exits(unit, body) if at < site}
+        exits = parent_exits | _exits_before(_exits(unit, body), site)
         result = (guard, exits)
     cache[key] = result
     return result
@@ -3275,7 +3296,7 @@ def _soft_assertions(program: Program, path: str, method: Method) -> tuple[dict,
         if words[i] in soft_types and words[i + 2] == "=" and words[i + 3] == "new"
     }
     all_calls = calls_in(unit, method.body)
-    exits = [at for at, _ in _exits(unit, method.body)]
+    exits = _exits(unit, method.body)
     unchecked, checked = {}, []
     for call in all_calls:
         if call.receiver not in receivers or not call.name.startswith("assert"):
@@ -3295,7 +3316,7 @@ def _soft_assertions(program: Program, path: str, method: Method) -> tuple[dict,
             and other.receiver == call.receiver
             and other.start > call.start
             and not _guard(unit, method.body, other.start)
-            and not any(call.start < at < other.start for at in exits)
+            and not any(call.start < at < other.start < until for at, _, until in exits)
             for other in all_calls
         )
         if (managed and call.receiver not in constructed) or closes:

@@ -154,7 +154,9 @@ def _loop_exits(unit: CompilationUnit, method: Method, old_loops: tuple | None =
     """`continue` statements, and `break` statements whose nearest breakable is a loop, outside
     nested lambdas and classes; each one can skip the cases after it. With old_loops, the loops
     of the before method, an exit that is the last statement of a loop the patch added skips no
-    case: the passes after it never ran before, and nothing of the loop body follows it."""
+    case: the passes after it never ran before, and nothing of the loop body follows it. Nor
+    does an exit of an added loop that holds no statement of the before method: all it can
+    skip is code the patch wrote."""
     count = 0
     for node in _outside_nested(method.body):
         if not isinstance(node, Statement) or node.kind not in ("continue", "break"):
@@ -173,7 +175,10 @@ def _loop_exits(unit: CompilationUnit, method: Method, old_loops: tuple | None =
         )  # fmt: skip
         if at is None or around[at].kind == "switch":
             continue
-        if old_loops is not None and _added_and_trailing(unit, around[at:], node, old_loops):
+        if old_loops is not None and (
+            _added_and_trailing(unit, around[at:], node, old_loops)
+            or _added_and_new(unit, around[at], node, old_loops)
+        ):
             continue
         count += 1
     return count
@@ -185,16 +190,19 @@ def loop_key(unit: CompilationUnit, loop: Statement) -> tuple[str, str]:
         t.text for t in unit.tokens[header.start : header.end])  # fmt: skip
 
 
-def loops_of(unit: CompilationUnit, method: Method) -> tuple[Counter, set[str]]:
-    """The loops of a method by kind and header text, and the text of every statement that sits
-    inside one of them."""
+def loops_of(unit: CompilationUnit, method: Method) -> tuple[Counter, set[str], set[str]]:
+    """The loops of a method by kind and header text, the text of every statement that sits
+    inside one of them, and the text of every simple statement of the method."""
     keys: Counter = Counter()
     inside: set[str] = set()
+    everywhere: set[str] = set()
     for n in _outside_nested(method.body):
         if isinstance(n, Statement) and n.kind in ("for", "while", "do"):
             keys[loop_key(unit, n)] += 1
             inside |= _statement_texts(unit, n)
-    return keys, inside
+        if isinstance(n, Statement) and not n.blocks:
+            everywhere.add(text(unit, n))
+    return keys, inside, everywhere
 
 
 def _statement_texts(unit: CompilationUnit, loop: Statement) -> set[str]:
@@ -211,7 +219,7 @@ def _added_and_trailing(unit: CompilationUnit, around: list, node: Statement, ol
     every block's statement on that way is the block's last. A loop is added when no loop of
     its kind and header text was in the before method and it holds no statement that sat
     inside a loop there, so editing a loop's header does not make it new."""
-    keys, inside = old
+    keys, inside, _ = old
     loop = around[0]
     if keys[loop_key(unit, loop)] or (_statement_texts(unit, loop) - {text(unit, node)}) & inside:
         return False
@@ -222,6 +230,13 @@ def _added_and_trailing(unit: CompilationUnit, around: list, node: Statement, ol
         ):
             return False
     return True
+
+
+def _added_and_new(unit: CompilationUnit, loop: Statement, node: Statement, old: tuple) -> bool:
+    keys, _, everywhere = old
+    return not keys[loop_key(unit, loop)] and not (
+        (_statement_texts(unit, loop) - {text(unit, node)}) & everywhere
+    )
 
 
 def _exit_positions(unit: CompilationUnit, method: Method) -> list[tuple[str, int]]:

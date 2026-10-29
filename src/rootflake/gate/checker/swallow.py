@@ -37,7 +37,13 @@ from rootflake.gate.checker.syntax import (
     Statement,
     TypeDecl,
 )
-from rootflake.gate.checker.timing import _RESULT_WAITS, _WAITS, _argument_bounds, _arguments
+from rootflake.gate.checker.timing import (
+    _RESULT_WAITS,
+    _WAITS,
+    _argument_bounds,
+    _arguments,
+    _cleanup,
+)
 from rootflake.gate.checker.tree import path_to, walk
 
 CATCH = "swallow_failure/catch_swallows"
@@ -109,7 +115,7 @@ def _checking(
         return False
     if is_assertion_name(name) or name in _CLOSING or name == "assertThrows":
         return True
-    if prefixes and name.startswith(_CHECK_PREFIXES):
+    if prefixes and any(_word_start(name, p) for p in _CHECK_PREFIXES):
         return True
     if name in _RUNS_THE_TEST and call.receiver_at is not None and not _arguments(unit, call):
         return runs
@@ -122,6 +128,15 @@ def _checking(
     if name in ("get", "join") and not _arguments(unit, call) and _on_a_future(unit, call):
         return True
     return name in WAIT_CONDITIONS and _chain_root(unit, call.start) in AWAIT_ROOTS
+
+
+def _word_start(name: str, prefix: str) -> bool:
+    """Whether a camelCase name starts with the word prefix: `checkState` and `check` do,
+    `checkpointAndReset` does not."""
+    if not name.startswith(prefix):
+        return False
+    rest = name[len(prefix) :]
+    return not rest or not rest[0].islower()
 
 
 def _on_a_future(unit: CompilationUnit, call: Call) -> bool:
@@ -567,7 +582,11 @@ def _try_findings(ctx: Context, change: FileChange) -> Iterator[Finding]:
         if fresh is None:  # a new try is judged whole
             judged = [block]
             names = _assigned(unit, block)
-            last = closing is None and not _follows(unit, nodes, statement)
+            last = (
+                closing is None
+                and not _follows(unit, nodes, statement)
+                and not _all_new(ctx, change, key, block)
+            )
         else:  # a widened one by what it newly holds
             twin_block = twin.blocks[0]
             judged = list(fresh)
@@ -597,7 +616,12 @@ def _try_findings(ctx: Context, change: FileChange) -> Iterator[Finding]:
             fresh is None and moved_in and loop is not None
             and loop_key(unit, loop) not in _pristine_loops(ctx, change.path, key)
         )  # fmt: skip
-        if covers or assigned or last or retried:
+        wrapped = (
+            not _interrupt_idiom(unit, statement)
+            and _wraps_pristine(ctx, change.path, key, block)
+            and not _caught_and_checked(ctx, change.path, nodes, statement)
+        )
+        if covers or assigned or last or retried or wrapped:
             yield Finding(CATCH, change.path, statement.line)
             if (covers or retried) and loop is not None:
                 yield Finding(RETRY_LOOP, change.path, statement.line)
@@ -628,8 +652,8 @@ def _wait_results_checked(
     open_waits = [
         c for c in waits if not (returned and any(r.start <= c.start < r.end for r in returns))
     ]
-    if not open_waits:
-        return True
+    if not open_waits or all(_cleanup(unit, c, statement) for c in open_waits):
+        return True  # cleanup after the test needs no checked result (Decision 7)
     return _read_later(ctx, path, nodes, statement, _assigned(unit, block))
 
 
@@ -664,6 +688,81 @@ def _outside_by_name(program: Program, path: str, key: tuple) -> set[str]:
     if memo not in program.memo:
         program.memo[memo] = _outside_table(program.units[path])
     return program.memo[memo].get(key, set())
+
+
+def _all_new(ctx: Context, change: FileChange, key: tuple, block: Block) -> bool:
+    """Whether a try block holds only statements its pristine member does not have anywhere,
+    a new member's included."""
+    if change.before is None:
+        return True
+    memo = ("swallow/everywhere", change.path)
+    if memo not in ctx.before.memo:
+        ctx.before.memo[memo] = _statement_table(change.before)
+    old = ctx.before.memo[memo].get(key, set())
+    return not set(_statement_texts(change.after, block)) & old
+
+
+def _statement_table(unit: CompilationUnit) -> dict[tuple, set[str]]:
+    out: dict[tuple, set[str]] = {}
+    for node in walk(unit):
+        if isinstance(node, Statement) and not node.blocks and node.kind != "local_type":
+            key = tuple((k, nm) for k, nm, _ in _owner_key(unit, path_to(unit, node.start)))
+            out.setdefault(key, set()).add(_text(unit, node.start, node.end))
+    return out
+
+
+def _caught_and_checked(ctx: Context, path: str, nodes: list, statement: Statement) -> bool:
+    """Whether every catch stores the exception it caught in a name a later assertion reads,
+    the hand written check for an expected exception."""
+    unit = ctx.after.units[path]
+    tokens = unit.tokens
+    stored = set()
+    for catch in statement.catches:
+        names = {
+            tokens[k - 1].text
+            for k in range(catch.block.start + 1, catch.block.end - 1)
+            if tokens[k].text == "=" and tokens[k - 1].kind == "ident"
+            and tokens[k + 1].text == catch.name and tokens[k + 2].text == ";"
+        }  # fmt: skip
+        if not names:
+            return False
+        stored |= names
+    return _read_later(ctx, path, nodes, statement, stored)
+
+
+def _wraps_pristine(ctx: Context, path: str, key: tuple, block: Block) -> bool:
+    """Whether a try block holds a statement its pristine member ran outside any try more often
+    than the patched member still does, so the statement moved into the try rather than being
+    copied ahead of the code that still runs it."""
+    if path not in ctx.before.units:
+        return False
+    before = _outside_counts(ctx.before, path).get(key, Counter())
+    after = _outside_counts(ctx.after, path).get(key, Counter())
+    unit = ctx.after.units[path]
+    return any(before[t] > after[t] for t in _statement_texts(unit, block))
+
+
+def _outside_counts(program: Program, path: str) -> dict[tuple, Counter]:
+    memo = ("swallow/outside_counts", path)
+    if memo not in program.memo:
+        unit = program.units[path]
+        out: dict[tuple, Counter] = {}
+        for node in walk(unit):
+            if not isinstance(node, Statement) or node.blocks or node.kind == "local_type":
+                continue
+            nodes = path_to(unit, node.start)
+            if not _guarded(nodes):
+                key = tuple((k, nm) for k, nm, _ in _owner_key(unit, nodes))
+                out.setdefault(key, Counter())[_text(unit, node.start, node.end)] += 1
+        program.memo[memo] = out
+    return program.memo[memo]
+
+
+def _guarded(nodes: list) -> bool:
+    return any(
+        isinstance(n, Statement) and n.kind == "try" and n.blocks and nodes[k + 1] is n.blocks[0]
+        for k, n in enumerate(nodes[:-1])
+    )
 
 
 def _outside_table(unit: CompilationUnit) -> dict[tuple, set[str]]:
