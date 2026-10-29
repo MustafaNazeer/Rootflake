@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from rootflake.gate.checker.check import check
@@ -121,6 +122,20 @@ class TestProductionRetry:
             for i in range(12)
         )
         assert RETRY not in production(helpers, helpers + bodies, tmp_path)
+
+    def test_many_methods_over_a_long_helper_chain_stay_fast(self, tmp_path):
+        helpers = (
+            "".join(f"void h{i}() {{ h{i + 1}(); }}\n" for i in range(1500)) + "void h1500() { }\n"
+        )
+        bodies = "".join(
+            f'void m{i}() {{ try {{ h0(); }} catch (Exception e) {{ LOG.warn("x", e); }} }}\n'
+            for i in range(150)
+        )
+        started = time.monotonic()
+        found = production(helpers + bodies, (helpers + bodies).replace("void h1500() { }",
+                           "void h1500() { int x = 1; }"), tmp_path)  # fmt: skip
+        assert RETRY not in found
+        assert time.monotonic() - started < 20
 
     def test_a_rescheduling_method_that_already_was_one_is_not(self, tmp_path):
         before = (

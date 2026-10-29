@@ -1,5 +1,6 @@
 import time
 
+import pytest
 from test_checker_timing import IMPORTS, cls, codes, judged, method
 
 from rootflake.gate.checker.swallow import CATCH, EXPECTED, HANDLER, RETRY_LOOP
@@ -346,6 +347,27 @@ class TestQualifiedFailRethrows:
 
     def test_a_fail_on_a_new_object_swallows(self, tmp_path):
         assert CATCH in self.judge_with("", "new Reporter().fail", tmp_path)
+
+    @pytest.mark.parametrize(
+        "kind, head",
+        [("Consumer<Object>", "(Assert) ->"), ("Consumer<Object>", "Assert ->"),
+         ("BiConsumer<Object, Object>", "(Assert, b) ->")],
+    )  # fmt: skip
+    def test_a_fail_on_an_implicit_lambda_parameter_swallows(self, kind, head, tmp_path):
+        body = (
+            f"java.util.function.{kind} c = {head} {{ try {{ service.process(); }}"
+            ' catch (IOException e) { Assert.fail("x"); } };'
+        )
+        before = cls(method(self.BEFORE), JUNIT4)
+        assert CATCH in codes(before, cls(method(body), JUNIT4), tmp_path)
+
+    def test_a_fail_on_a_pattern_variable_swallows(self, tmp_path):
+        body = (
+            "Object o = reporter(); if (o instanceof Promise Assert && ready()) { try {"
+            ' service.process(); } catch (IOException e) { Assert.fail("x"); } }'
+        )
+        before = cls(method(self.BEFORE), JUNIT4)
+        assert CATCH in codes(before, cls(method(body), JUNIT4), tmp_path)
 
     def test_a_fail_on_a_wildcard_type_when_a_read_file_declares_fail_swallows(self, tmp_path):
         members = "static class Reporter { static void fail(String m) { } }\n"

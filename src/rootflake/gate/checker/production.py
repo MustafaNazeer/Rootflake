@@ -145,35 +145,56 @@ def _hands_on_itself(unit: CompilationUnit, call: Call, selves: set[str]) -> boo
                for arg in _arguments(unit, call))  # fmt: skip
 
 
-def _reschedules(program: Program, path: str, method: Method) -> bool:
+def _edges(program: Program, path: str, method: Method, budget: ExpansionBudget | None) -> list:
+    """Each call in a method's body with the methods a scan follows it to, built once per
+    method for the whole check, so the self rescheduling test costs one walk per file. Only
+    a helper reached from another method spends the budget."""
+    memo = program.memo.setdefault(("production", "edges"), {})
+    if id(method) not in memo:
+        if budget is not None:
+            budget.spend(method.line)
+        unit, out = program.units[path], []
+        if method.body is not None:
+            selves = _self_fields(unit)
+            for call in calls_in(unit, method.body):
+                hands = not call.reference and _hands_on_itself(unit, call, selves)
+                plain = call.receiver in (None, "this")
+                out.append((call.name, plain, hands, follow_for_scan(program, path, call)))
+        memo[id(method)] = out
+    return memo[id(method)]
+
+
+def _reschedules(program: Program, path: str, method: Method, budget: ExpansionBudget) -> bool:
     """Whether a method's body, or a helper it reaches, calls it again or hands on a reference
     to it, as a task that schedules itself from its `finally` block does. A task's run() or
-    call() that hands `this` to an executor counts too. Each method has its own budget."""
+    call() that hands `this` to an executor counts too."""
     if method.body is None:
         return False
     task = method.name in _TASK_METHODS
-    for reached in reach(program, [(path, method)], True, ExpansionBudget()):
-        if reached.method.body is None:
-            continue
-        unit = program.units[reached.path]
-        selves = _self_fields(unit) if task else set()
-        for call in calls_in(unit, reached.method.body):
-            if task and not call.reference and _hands_on_itself(unit, call, selves):
+    seen, pending = {id(method)}, [(path, method)]
+    while pending:
+        at, current = pending.pop()
+        spend = None if current is method else budget
+        for name, plain, hands, targets in _edges(program, at, current, spend):
+            if task and hands:
                 return True
-            if call.name != method.name or call.receiver not in (None, "this"):
-                continue
-            if any(m is method for _, m in follow_for_scan(program, reached.path, call)):
+            if name == method.name and plain and any(m is method for _, m in targets):
                 return True
+            for target in targets:
+                if id(target[1]) not in seen:
+                    seen.add(id(target[1]))
+                    pending.append(target)
     return False
 
 
 def _rescheduling(program: Program, path: str) -> list[tuple[tuple, int]]:
     unit = program.units[path]
     out = []
+    budget = program.memo.setdefault(("production", "budget"), ExpansionBudget())
     for node in walk(unit):
         if isinstance(node, Method) and node.body is not None and _keeps_going(unit, node.body):
             try:
-                again = _reschedules(program, path, node)
+                again = _reschedules(program, path, node, budget)
             except Unparsable:
                 again = True  # past the cap: flagged for a person to read
             if again:

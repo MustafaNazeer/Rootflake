@@ -277,10 +277,32 @@ def _names_a_variable(tokens, name: str) -> bool:
     return any(
         t.text == name
         and 0 < k < len(tokens) - 1
-        and (tokens[k - 1].kind == "ident" or tokens[k - 1].text in (">", "]"))
-        and tokens[k + 1].text in ("=", ";", ",", ")", ":")
+        and (
+            (tokens[k - 1].kind == "ident" or tokens[k - 1].text in (">", "]"))
+            and tokens[k + 1].text in _AFTER_DECLARED
+            or _lambda_parameter(tokens, k)
+        )
         for k, t in enumerate(tokens)
     )
+
+
+_AFTER_DECLARED = frozenset(["=", ";", ",", ")", ":", "->", "&&", "||", "?"])
+
+
+def _lambda_parameter(tokens, k: int) -> bool:
+    """Whether the name at k is an implicitly typed lambda parameter: `a ->`, `(a) ->` or
+    `(a, b) ->`."""
+    if tokens[k + 1].text == "->":
+        return True
+    j = k
+    while j > 0 and (tokens[j].kind == "ident" or tokens[j].text == ","):
+        j -= 1
+    if tokens[j].text != "(":
+        return False
+    j = k
+    while j < len(tokens) - 1 and (tokens[j].kind == "ident" or tokens[j].text == ","):
+        j += 1
+    return tokens[j].text == ")" and j + 1 < len(tokens) and tokens[j + 1].text == "->"
 
 
 def _aborts(program: Program, path: str, name: str, index: int) -> bool:
