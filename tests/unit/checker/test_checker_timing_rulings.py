@@ -326,11 +326,125 @@ class TestCodeMovedAfterAnUnmovedDroppedResult:
     # completion.poll (accept-nod-assert-after-completion-wait), so that case stays accepted
     # until it is decided, while a latch keeps its earlier reading.
     def test_after_an_unmoved_poll_is_accepted_for_now(self, tmp_path):
-        before = "go(); assertTrue(x()); q.poll(1, TimeUnit.SECONDS);"
+        before = "assertTrue(x()); go(); q.poll(1, TimeUnit.SECONDS);"
         after = "go(); q.poll(1, TimeUnit.SECONDS); assertTrue(x());"
         assert TIMING not in judged(before, after, tmp_path)
+
+    @pytest.mark.parametrize(
+        "wait", ["q.poll(5, TimeUnit.SECONDS);", "sem.tryAcquire(5, TimeUnit.SECONDS);"]
+    )
+    def test_a_moved_one_is_still_a_fixed_sleep(self, tmp_path, wait):
+        before = f"svc.start(); assertTrue(x()); {wait}"
+        after = f"svc.start(); {wait} assertTrue(x());"
+        assert TIMING in judged(before, after, tmp_path)
 
     def test_after_an_unmoved_latch_is_still_a_fixed_sleep(self, tmp_path):
         before = "go(); assertTrue(x()); latch.await(1, TimeUnit.SECONDS);"
         after = "go(); latch.await(1, TimeUnit.SECONDS); assertTrue(x());"
         assert TIMING in judged(before, after, tmp_path)
+
+
+class TestReviewOfTheRulings:
+    def test_a_thrown_type_a_read_file_declares_stays_an_exit(self, tmp_path):
+        pristine, workspace = tmp_path / "p", tmp_path / "w"
+        shadow = (
+            "package a;\npublic class TimeoutException extends "
+            "org.opentest4j.TestAbortedException { TimeoutException(String m) { } }\n"
+        )
+        test = "src/test/java/a/FooTest.java"
+        old = cls(method(A))
+        new = cls(method(f'if (svc.flaky()) {{ throw new TimeoutException("x"); }} {A}'))
+        for root, source, extra in ((pristine, old, False), (workspace, new, True)):
+            root.mkdir(parents=True)
+            (root / "pom.xml").write_text("<project/>")
+            (root / test).parent.mkdir(parents=True)
+            (root / test).write_text(source)
+            if extra:
+                (root / "src/test/java/a/TimeoutException.java").write_text(shadow)
+        from rootflake.gate.checker.check import Target, check
+
+        found = check([test, "src/test/java/a/TimeoutException.java"], pristine, workspace,
+                      Target("a.FooTest", "testFoo")).findings  # fmt: skip
+        assert REMOVED in {f.code for f in found}
+
+    def test_a_class_level_testng_expected_exception_keeps_a_throw_an_exit(self, tmp_path):
+        header = "@Test(expectedExceptions = IllegalStateException.class)"
+        body = "@Test public void testFoo() {{ {0} assertEquals(svc.count(), 1); }}"
+        old = cls(body.format(""), TESTNG).replace("public class", f"{header} public class")
+        new = cls(body.format('if (svc.flaky()) { throw new IllegalStateException("x"); }'),
+                  TESTNG).replace("public class", f"{header} public class")  # fmt: skip
+        assert REMOVED in codes(old, new, tmp_path)
+
+    def test_an_added_class_level_testng_expected_exception_is_rejected(self, tmp_path):
+        body = "@Test public void testFoo() { assertEquals(svc.count(), 1); }"
+        old = cls(body, TESTNG)
+        new = old.replace("public class", "@Test(expectedExceptions = AssertionError.class) "
+                          "public class")  # fmt: skip
+        assert EXPECTED in codes(old, new, tmp_path)
+
+    def test_a_throw_in_a_testng_configuration_method_stays_an_exit(self, tmp_path):
+        setup = (
+            "@BeforeMethod public void setUp() {{ svc.init(); {0} assertEquals(svc.state(), 1); }}"
+        )
+        imports = TESTNG + "import org.testng.annotations.BeforeMethod;\n"
+        test = "@Test public void testFoo() { assertEquals(svc.count(), 1); }"
+        old = cls(setup.format("") + "\n" + test, imports)
+        new = cls(setup.format('if (svc.flaky()) { throw new IllegalStateException("x"); }')
+                  + "\n" + test, imports)  # fmt: skip
+        assert REMOVED in codes(old, new, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("before", "after", "helper"),
+        [("f.get(500, TimeUnit.MILLISECONDS);", "Future<?> g = f; g.get();", ""),
+         ("f.get(500, TimeUnit.MILLISECONDS);", "waitFor(f);",
+          "void waitFor(Future<?> x) throws Exception { x.get(); }"),
+         ("t.join(500);", "waitFor();", "void waitFor() throws Exception { t.join(); }"),
+         ("f.get(500, TimeUnit.MILLISECONDS);", "f.join();", ""),
+         ("sem.tryAcquire(5, TimeUnit.SECONDS);", "sem.acquireUninterruptibly();", ""),
+         ("lock.tryLock(5, TimeUnit.SECONDS);", "lock.lockInterruptibly();", "")],
+        ids=["alias", "helper_parameter", "helper_field", "completable_join",
+             "acquire_uninterruptibly", "lock_interruptibly"],
+    )  # fmt: skip
+    def test_a_removed_bound_cannot_be_laundered(self, tmp_path, before, after, helper):
+        old = cls(method(f"{before} {A}") + "\nvoid waitFor() { }")
+        new = cls(method(f"{after} {A}") + (f"\n{helper}" if helper else "\nvoid waitFor() { }"))
+        assert TIMING in codes(old, new, tmp_path)
+
+    def test_an_unbounded_wait_on_an_unrelated_field_elsewhere_is_not_paired(self, tmp_path):
+        old = cls(method(f"f.get(500, TimeUnit.MILLISECONDS); {A}") + "\nvoid other() { }")
+        new = cls(method(A) + "\nvoid other() throws Exception { ref.get(); }")
+        assert TIMING not in codes(old, new, tmp_path)
+
+    @pytest.mark.parametrize(
+        "wait",
+        ["await().pollDelay(100, TimeUnit.MILLISECONDS).atMost(5, TimeUnit.SECONDS)"
+         ".until(() -> svc.count() == 1);",
+         "verify(m, after(100)).run();"],
+        ids=["poll_delay", "after"],
+    )  # fmt: skip
+    def test_a_sleep_like_wait_moved_unchanged_into_a_helper_is_not_widened(self, tmp_path, wait):
+        old = cls(method(f"{wait} {A}") + "\nvoid waitDone() { }", MOCKITO)
+        new = cls(method(f"waitDone(); {A}") + f"\nvoid waitDone() {{ {wait} }}", MOCKITO)
+        assert TIMING not in codes(old, new, tmp_path)
+
+    def test_a_zero_duration_poll_delay_is_not_a_sleep(self, tmp_path):
+        old = f"await().atMost(5, TimeUnit.SECONDS).until(() -> svc.count() == 1); {A}"
+        new = ("await().pollDelay(Duration.ZERO).atMost(5, TimeUnit.SECONDS)"
+               f".until(() -> svc.count() == 1); {A}")  # fmt: skip
+        assert judged(old, new, tmp_path) == set()
+
+    def test_one_lost_sleep_is_credited_once(self, tmp_path):
+        before = f"Thread.sleep(1000); verify(m).run(); {A}"
+        after = (
+            "verify(m, after(1000)).run(); await().pollDelay(1000, TimeUnit.MILLISECONDS)"
+            f".atMost(5, TimeUnit.SECONDS).until(() -> svc.count() == 1); {A}"
+        )
+        assert TIMING in mocked(before, after, tmp_path)
+
+    def test_a_guarded_wait_loop_closing_a_synchronized_block_is_checked_after_it(self, tmp_path):
+        after = (
+            "long end = System.currentTimeMillis() + 5000; synchronized (lock) { "
+            "while (svc.count() != 1 && System.currentTimeMillis() < end) { lock.wait(100); } } "
+            f"{A}"
+        )
+        assert TIMING not in judged(A, after, tmp_path)

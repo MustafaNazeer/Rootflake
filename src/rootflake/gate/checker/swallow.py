@@ -1104,7 +1104,9 @@ def _expected_sites(program: Program, path: str) -> list[Site]:
     unit = program.units[path]
     sites = []
     for node in walk(unit):
-        if isinstance(node, Method):
+        # A class level TestNG @Test is read too, the stricter reading, since a public method
+        # without its own @Test runs under the class's.
+        if isinstance(node, Method | TypeDecl):
             for annotation in node.annotations:
                 if annotation.name.rsplit(".", 1)[-1] != "Test" or annotation.arguments is None:
                     continue
@@ -1113,7 +1115,7 @@ def _expected_sites(program: Program, path: str) -> list[Site]:
                 if not unresolved and binding.fqn not in _EXPECTING_TESTS:
                     continue
                 # TestNG's expectedExceptions turns a thrown failure into a pass the same way
-                # (Mustafa 2026-10-30; test-library-semantics section 20).
+                # (ruled 2026-10-30; test-library-semantics section 20).
                 names = (
                     set(_EXPECTING_TESTS.values()) if unresolved
                     else {_EXPECTING_TESTS[binding.fqn]}

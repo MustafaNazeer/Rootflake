@@ -474,7 +474,9 @@ def _throws_skip_local(unit: CompilationUnit, body: Block, statement: Statement)
     )
 
 
-def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str, int]]:
+def _exits(
+    unit: CompilationUnit, body: Block, program: Program | None = None, path: str | None = None
+) -> list[tuple[int, str, int]]:
     """Each exit of a body, with its text, its start, and the end of the code it can skip: the
     loop or switch an unlabelled `break` or `continue` leaves, the whole body otherwise. So a
     `break` in a search loop that ends before an assertion does not stand before it."""
@@ -492,7 +494,7 @@ def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str, int]]:
                 continue
             if node.kind == "return" and _wait_value_return(unit, body, node):
                 continue
-            if node.kind == "throw" and _fails_the_test(unit, body, node):
+            if node.kind == "throw" and _fails_the_test(program, path, body, node):
                 continue
             # Mustafa 2026-10-23: an exit is its statement plus its full guard text, so an
             # existing exit under a changed condition counts as newly guarded.
@@ -502,53 +504,94 @@ def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str, int]]:
     return out
 
 
-_TEST_ENTRIES = frozenset([
+# Methods where a failure fails the test. TestNG configuration methods are left out: a failing
+# one skips the tests that depend on it, as do JUnit 4 and Jupiter names TestNG shares.
+_FAILING_ENTRIES = frozenset([
     "Test", "ParameterizedTest", "RepeatedTest", "TestFactory", "TestTemplate", "Before",
-    "BeforeEach", "BeforeClass", "BeforeAll", "BeforeMethod", "BeforeTest", "BeforeSuite",
-    "BeforeGroups", "After", "AfterEach", "AfterClass", "AfterAll", "AfterMethod", "AfterTest",
-    "AfterSuite", "AfterGroups",
+    "After", "BeforeEach", "AfterEach", "BeforeAll", "AfterAll",
 ])  # fmt: skip
 _EXPECT_CALLS = frozenset(["expect", "expectMessage", "expectCause"])
-# Failure types of the JDK and the test libraries: a new one of these can never be a skip.
-_FAILURE_TYPES = frozenset([
-    "AssertionError", "AssertionFailedError", "ComparisonFailure", "MultipleFailuresError",
-    "Error", "Exception", "RuntimeException", "Throwable", "IllegalStateException",
-    "IllegalArgumentException", "UnsupportedOperationException", "TimeoutException",
-    "IOException", "UncheckedIOException", "InterruptedException", "ExecutionException",
-    "NullPointerException",
+# Failure types of the JDK and the test libraries: a new one of these can never be a skip. A
+# java.lang name is taken as java.lang when no read file declares it; any other is taken only
+# through a single import of the class named here.
+_LANG_FAILURES = frozenset([
+    "AssertionError", "Error", "Exception", "RuntimeException", "Throwable",
+    "IllegalStateException", "IllegalArgumentException", "UnsupportedOperationException",
+    "InterruptedException", "NullPointerException",
+])  # fmt: skip
+_IMPORTED_FAILURES = frozenset([
+    "java.util.concurrent.TimeoutException", "java.util.concurrent.ExecutionException",
+    "java.io.IOException", "java.io.UncheckedIOException", "org.opentest4j.AssertionFailedError",
+    "org.opentest4j.MultipleFailuresError", "org.junit.ComparisonFailure",
+    "junit.framework.AssertionFailedError", "junit.framework.ComparisonFailure",
 ])  # fmt: skip
 
 
-def _fails_the_test(unit: CompilationUnit, body: Block, node: Statement) -> bool:
-    """Whether a throw fails the test, so it hides no assertion after it (Mustafa 2026-10-30):
-    it sits in a test or lifecycle method's own body outside any try with a catch, and the
-    method expects no exception, by an expected attribute or an ExpectedException rule. Only a
-    newly built JDK or test library failure counts, never a value that may hold a skip or a
-    project type that may extend one. A throw in a helper may be caught by its caller and stays
-    an exit."""
-    tokens = unit.tokens
-    thrown = tokens[node.start + 2].text if node.end - node.start > 3 else ""
-    if tokens[node.start + 1].text != "new" or tokens[node.start + 3].text != "(":
+def _declared_type_names(program: Program) -> frozenset[str]:
+    key = ("declared_type_names",)
+    if key not in program.memo:
+        program.memo[key] = frozenset(
+            n.name for unit in program.units.values() for n in walk(unit)
+            if isinstance(n, TypeDecl) and n.name
+        )  # fmt: skip
+    return program.memo[key]
+
+
+def _failure_type(program: Program, path: str, name: str, index: int) -> bool:
+    if name in _declared_type_names(program):
         return False
-    if thrown not in _FAILURE_TYPES or any(
-        isinstance(n, TypeDecl) and n.name == thrown for n in walk(unit)
-    ):
+    binding = program.resolve_type(path, name, index)
+    if name in _LANG_FAILURES and binding.kind in ("unresolved", "java_lang"):
+        return True
+    return binding.kind in ("imported", "library") and binding.fqn in _IMPORTED_FAILURES
+
+
+def _expects_an_exception(program: Program, path: str, body: Block) -> bool:
+    """Whether the method or a class around it declares an expected exception, or the body
+    makes an ExpectedException rule's expect call."""
+    key = ("expects_an_exception", path, body.start)
+    if key in program.memo:
+        return program.memo[key]
+    unit = program.units[path]
+    owners = [n for n in path_to(unit, body.start) if isinstance(n, Method | TypeDecl)]
+    found = any(
+        annotation.arguments is not None and any(
+            t.text in _EXPECTED_ATTRIBUTES
+            for t in unit.tokens[annotation.arguments.start : annotation.arguments.end]
+        )
+        for owner in owners for annotation in owner.annotations
+    ) or any(not c.reference and c.name in _EXPECT_CALLS for c in calls_in(unit, body))  # fmt: skip
+    program.memo[key] = found
+    return found
+
+
+def _fails_the_test(
+    program: Program | None, path: str | None, body: Block, node: Statement
+) -> bool:
+    """Whether a throw fails the test, so it hides no assertion after it (ruled 2026-10-30): a
+    newly built JDK or test library failure, in a test method's or a JUnit lifecycle method's
+    own body, outside any try with a catch, in a method that expects no exception, by an
+    expected attribute on it or its class or an ExpectedException rule. A value, which may hold
+    a skip, a type a read file declares, which may extend one, and a throw in a helper, which
+    its caller may catch, stay exits."""
+    if program is None or path is None:
+        return False
+    unit = program.units[path]
+    tokens = unit.tokens
+    if node.end - node.start <= 3 or tokens[node.start + 1].text != "new":
+        return False
+    if tokens[node.start + 3].text != "(":
+        return False
+    if not _failure_type(program, path, tokens[node.start + 2].text, node.start + 2):
         return False
     method = next(
         (n for n in path_to(unit, body.start) if isinstance(n, Method) and n.body is body), None
     )
     if method is None:
         return False
-    names = {a.name.rsplit(".", 1)[-1] for a in method.annotations}
-    if not names & _TEST_ENTRIES:
+    if not {a.name.rsplit(".", 1)[-1] for a in method.annotations} & _FAILING_ENTRIES:
         return False
-    for annotation in method.annotations:
-        if annotation.arguments is not None and any(
-            t.text in _EXPECTED_ATTRIBUTES
-            for t in unit.tokens[annotation.arguments.start : annotation.arguments.end]
-        ):
-            return False
-    if any(not c.reference and c.name in _EXPECT_CALLS for c in calls_in(unit, body)):
+    if _expects_an_exception(program, path, body):
         return False
     return not any(
         isinstance(n, Statement) and n.kind == "try" and n.catches and n.blocks
@@ -714,7 +757,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
     unit = program.units[path]
     declared = declared_waits(program)
     definitions = _local_definitions(unit, body)
-    exits = _exits(unit, body)
+    exits = _exits(unit, body, program, path)
     facts = _facts(program, path, body)
     rules = _rule_fields(program, path)
     out: list[Assertion] = []
@@ -864,7 +907,7 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
                                            (expected, value), at))  # fmt: skip
     for call in calls_in(unit, body):
         # untilTrue(x) waits for x.get() to be true, so it stands for assertTrue(x.get()), and
-        # untilFalse for assertFalse (Mustafa 2026-10-30).
+        # untilFalse for assertFalse (ruled 2026-10-30).
         if call.name not in _UNTIL_ATOMIC or call.reference or call.arity != 1:
             continue
         if call.name in declared or _chain_root(unit, call.start) not in AWAIT_ROOTS:
@@ -1962,7 +2005,7 @@ def _context(program: Program, reached, cache: dict) -> tuple[tuple[str, ...], f
         body = reached.parent.method.body
         site = reached.call.start
         guard = parent_guard + _guard(unit, body, site, declared_waits(program))
-        exits = parent_exits | _exits_before(_exits(unit, body), site)
+        exits = parent_exits | _exits_before(_exits(unit, body, program, reached.parent.path), site)
         result = (guard, exits)
     cache[key] = result
     return result
@@ -3381,7 +3424,7 @@ def _soft_assertions(program: Program, path: str, method: Method) -> tuple[dict,
         if words[i] in soft_types and words[i + 2] == "=" and words[i + 3] == "new"
     }
     all_calls = calls_in(unit, method.body)
-    exits = _exits(unit, method.body)
+    exits = _exits(unit, method.body, program, path)
     unchecked, checked = {}, []
     for call in all_calls:
         if call.receiver not in receivers or not call.name.startswith("assert"):

@@ -62,20 +62,26 @@ _WAITS = frozenset([
 ])  # fmt: skip
 _RESULT_WAITS = frozenset(["await", "awaitTermination"])
 # Timed waits that report a timeout only through what they return, so a dropped result waits
-# out the bound and checks nothing (Mustafa 2026-10-30).
+# out the bound and checks nothing (ruled 2026-10-30).
 _IGNORED_WAITS = _RESULT_WAITS | frozenset(["tryAcquire", "tryLock", "poll"])
-# A timed wait and the form of it that waits with no bound, with the arities of that form, so
-# `f.get(500, MILLISECONDS)` turned into `f.get()` is a bound removed (Mustafa 2026-10-30).
-_UNBOUNDED_FORM = {
-    "tryAcquire": "acquire", "tryLock": "lock", "poll": "take",
-    "awaitAdvanceInterruptibly": "awaitAdvance",
+# Timed waits by the form a bound taken off them leaves, and the calls that wait in that form
+# with no bound, by arity, so `f.get(500, MILLISECONDS)` turned into `f.get()` or `f.join()` is
+# a bound removed (ruled 2026-10-30).
+_TIMED_FORMS = {
+    "get": "get", "join": "join", "await": "await", "tryAcquire": "acquire", "tryLock": "lock",
+    "poll": "take", "awaitAdvanceInterruptibly": "awaitAdvance",
+    "awaitTermination": "awaitTermination",
 }  # fmt: skip
-_UNBOUNDED_ARITY = {
-    "get": (0,), "join": (0,), "await": (0,), "acquire": (0, 1), "lock": (0,), "take": (0,),
-    "awaitAdvance": (1,),
+_UNBOUNDED_CALLS = {
+    "get": ((0,), ("get",)), "join": ((0,), ("join", "get")), "await": ((0,), ("await",)),
+    "acquire": ((0, 1), ("acquire",)), "acquireUninterruptibly": ((0, 1), ("acquire",)),
+    "lock": ((0,), ("lock",)), "lockInterruptibly": ((0,), ("lock",)), "take": ((0,), ("take",)),
+    "awaitAdvance": ((1,), ("awaitAdvance",)), "close": ((0,), ("awaitTermination",)),
 }  # fmt: skip
+# `close()` is too common to pair with a lost wait on another receiver.
+_SAME_RECEIVER_ONLY = frozenset(["awaitTermination"])
 # Mockito verification modes: a timeout ends once the interaction is seen, while after always
-# waits its full period, so an added or raised after is a fixed sleep (Mustafa 2026-10-30).
+# waits its full period, so an added or raised after is a fixed sleep (ruled 2026-10-30).
 _MOCKITO_WAITS = {"timeout": "<mockito-timeout>", "after": "<mockito-after>"}
 # Bounds that hold a test for their full length whatever the code does: judged as sleeps, a
 # raised or added one is widened unless the member lost a sleep at least as long.
@@ -234,11 +240,30 @@ def _sites(unit: CompilationUnit | None) -> Counter:
     return out
 
 
-def _statements(sites: Counter) -> Counter:
-    """The site counts with the following statement left out."""
+def _previous_text(unit: CompilationUnit, statement: Statement) -> str:
+    nodes = path_to(unit, statement.start)
+    for k in range(len(nodes) - 1, 0, -1):
+        if nodes[k] is statement and isinstance(nodes[k - 1], Block):
+            statements = nodes[k - 1].statements
+            at = next(i for i, s in enumerate(statements) if s is statement)
+            if at == 0:
+                return "{"
+            return _text(unit, statements[at - 1].start, statements[at - 1].end)
+    return ""
+
+
+def _preceded(unit: CompilationUnit | None) -> Counter:
+    """Every block level statement with the statement before it, counted per member."""
     out: Counter = Counter()
-    for site, count in sites.items():
-        out[(site.member, site.statement)] += count
+    if unit is None:
+        return out
+    for node in walk(unit):
+        if isinstance(node, Block):
+            for k, statement in enumerate(node.statements):
+                prev = node.statements[k - 1] if k else None
+                text = _text(unit, prev.start, prev.end) if prev is not None else "{"
+                member = _member_key(path_to(unit, statement.start))
+                out[(member, text, _text(unit, statement.start, statement.end))] += 1
     return out
 
 
@@ -327,6 +352,7 @@ class _Bounds:
     ignored: list[tuple[Call, Statement]]
     bounded: Counter  # timed waits by member, unbounded form and receiver
     unbounded: dict[tuple, list[Call]]  # the same waits made with no bound
+    aliased: set[int]  # unbounded waits on a local or parameter, which may name any receiver
 
 
 def _mockito_mode(unit: CompilationUnit, call: Call) -> bool:
@@ -348,7 +374,27 @@ def _single_bound(args: tuple[str, ...], line: int) -> Bound:
     if found:
         return found[0]
     text = " , ".join(args)
+    if _strip_qualifier(text.split()) == ["Duration", ".", "ZERO"]:
+        return Bound(0.0, False, text, line)
     return Bound(fold(args[0]) if len(args) == 1 else None, False, text, line)
+
+
+def _receiver(unit: CompilationUnit, call: Call, names: dict) -> tuple[str | None, bool]:
+    """A wait's receiver read through a local that only ever holds another name, and whether
+    it is a local or parameter of its method, which may stand for any receiver."""
+    method = _method_at(unit, call.start)
+    if method is None or method.body is None or call.receiver is None:
+        return call.receiver, False
+    if method.start not in names:
+        defs = poll._local_definitions(unit, method.body)
+        names[method.start] = (defs, {p.name for p in method.params})
+    defs, params = names[method.start]
+    receiver = call.receiver
+    values = defs.get(receiver, [])
+    if values and all(len(v.split()) == 1 and v.split()[0].isidentifier() for v in values):
+        if len(set(values)) == 1:
+            receiver = values[0]
+    return receiver, receiver in defs or receiver in params
 
 
 def _bounds(program: Program, path: str) -> _Bounds:
@@ -359,6 +405,8 @@ def _bounds(program: Program, path: str) -> _Bounds:
     sleeps, ignored = [], []
     bounded: Counter = Counter()
     unbounded: dict[tuple, list[Call]] = {}
+    aliased: set[int] = set()
+    receivers: dict = {}
     tokens = unit.tokens
     for call in calls:
         if call.reference:
@@ -388,13 +436,18 @@ def _bounds(program: Program, path: str) -> _Bounds:
         if _inside(modes, call.start):
             continue
         found, used = _argument_bounds(args, line)
-        timed = _UNBOUNDED_FORM.get(call.name, call.name)
-        if timed in _UNBOUNDED_ARITY and not root:
-            key = (member, timed, call.receiver)
-            if found or (call.name == "join" and sleep_form(program, path, call)):
-                bounded[key] += 1
-            elif call.name in _UNBOUNDED_ARITY and call.arity in _UNBOUNDED_ARITY[call.name]:
-                unbounded.setdefault(key, []).append(call)
+        if not root and (call.name in _TIMED_FORMS or call.name in _UNBOUNDED_CALLS):
+            timed = found or (call.name == "join" and sleep_form(program, path, call))
+            receiver, open_name = _receiver(unit, call, receivers)
+            if timed and call.name in _TIMED_FORMS:
+                bounded[(member, _TIMED_FORMS[call.name], receiver)] += 1
+            elif not timed and call.name in _UNBOUNDED_CALLS:
+                arities, forms = _UNBOUNDED_CALLS[call.name]
+                if call.arity in arities:
+                    for form in forms:
+                        unbounded.setdefault((member, form, receiver), []).append(call)
+                    if open_name:
+                        aliased.add(call.start)
         for bound in found:
             groups.setdefault((member, call.name, "pair"), []).append(bound)
         lower = call.name.lower()
@@ -408,7 +461,7 @@ def _bounds(program: Program, path: str) -> _Bounds:
             statement, _ = _statement(nodes)
             if statement is not None and _result_ignored(unit, call, statement):
                 ignored.append((call, statement))
-    return _Bounds(groups, sleeps, ignored, bounded, unbounded)
+    return _Bounds(groups, sleeps, ignored, bounded, unbounded, aliased)
 
 
 class _Whole:
@@ -508,7 +561,7 @@ def sleep_form(program: Program, path: str, call: Call) -> bool:
 
 def _object_wait(program: Program, path: str, call: Call) -> bool:
     """`Object.wait`, which outside a loop that rechecks its condition waits out its timeout,
-    or until any notify, and checks nothing: judged as a sleep (Mustafa 2026-10-30)."""
+    or until any notify, and checks nothing: judged as a sleep (ruled 2026-10-30)."""
     if call.name != "wait" or call.reference or call.arity not in (0, 1, 2):
         return False
     return not follow_for_scan(program, path, call)
@@ -747,6 +800,26 @@ def _following(unit: CompilationUnit, statement: Statement) -> Statement | None:
     return None
 
 
+def _follower(unit: CompilationUnit, statement: Statement) -> Statement | None:
+    """The statement after this one, looking past the end of a `synchronized` block that it
+    closes, as in `synchronized (lock) { while (...) { lock.wait(100); } } assertTrue(...)`."""
+    after = _following(unit, statement)
+    while after is None:
+        nodes = path_to(unit, statement.start)
+        outer = next(
+            (n for n in reversed(nodes) if isinstance(n, Statement) and n is not statement
+             and n.start < statement.start),
+            None,
+        )  # fmt: skip
+        if outer is None or outer.kind != "synchronized" or not outer.blocks:
+            return None
+        inner = outer.blocks[0].statements
+        if not inner or inner[-1] is not statement:
+            return None
+        statement, after = outer, _following(unit, outer)
+    return after
+
+
 def _asserted_result(unit: CompilationUnit, call: Call) -> bool:
     """Whether the call is an argument of an assertion, which checks what it returns."""
     statement, _ = _statement(path_to(unit, call.start))
@@ -782,7 +855,7 @@ def _fixed_loop(
         return False
     if statement is None:
         return False  # a silent loop in a helper is judged at each new call of it
-    after = _following(unit, statement)
+    after = _follower(unit, statement)
     exits = [poll.substitute(e, scope.mapping) for e in found.exits]
     return after is None or not poll.asserts_condition(unit, after, exits)
 
@@ -1017,12 +1090,14 @@ def _cleanup(unit: CompilationUnit, call: Call, statement: Statement) -> bool:
 def _file(ctx: Context, change: FileChange) -> Iterator[Finding]:
     path = change.path
     after = _bounds(ctx.after, path)
-    empty = _Bounds({}, [], [], Counter(), {})
+    empty = _Bounds({}, [], [], Counter(), {}, set())
     before = _bounds(ctx.before, path) if change.before is not None else empty
     old_sleeps = _member_sleeps(ctx.before, path, change.before)
     new_sleeps = _member_sleeps(ctx.after, path, change.after)
     lost_by: dict[tuple, list[Bound]] = {}
     added_by: dict[tuple, list[Bound]] = {}
+    sleep_added: dict[tuple, list[Bound]] = {}
+    sleep_lost: list[Bound] = []
     for group in sorted(set(after.groups) | set(before.groups), key=repr):
         new = after.groups.get(group, [])
         raised, added, lost = _pairing(before.groups.get(group, []), new)
@@ -1033,11 +1108,8 @@ def _file(ctx: Context, change: FileChange) -> Iterator[Finding]:
                 yield Finding(CODE, path, bound.line)
             continue
         if group[1] in _SLEEP_GROUPS:
-            member = group[0]
-            gone = _pairing(old_sleeps.get(member, []), new_sleeps.get(member, []))[2]
-            extra, unpaired = compare(gone, [b for b in added if b.ms != 0])
-            for bound in extra + unpaired:
-                yield Finding(CODE, path, bound.line)
+            sleep_added.setdefault(group[0], []).extend(b for b in added if b.ms != 0)
+            sleep_lost.extend(lost)
             continue
         lost_by.setdefault(group[1:], []).extend(lost)
         added_by.setdefault(group[1:], []).extend(added)
@@ -1046,10 +1118,22 @@ def _file(ctx: Context, change: FileChange) -> Iterator[Finding]:
                 if _over_limit(bound):
                     yield Finding(CODE, path, bound.line)
     # A wait one member lost is paired with one of its name another member gained, so moving a
-    # wait into a helper cannot carry a raised bound (Mustafa 2026-10-30).
+    # wait into a helper cannot carry a raised bound (ruled 2026-10-30).
     for tail, lost in lost_by.items():
         for bound in compare(lost, added_by.get(tail, []))[0]:
             yield Finding(CODE, path, bound.line)
+    # An added or raised after or pollDelay is first set against the sleeps its member lost,
+    # each lost sleep once, then against the after and pollDelay waits other members lost.
+    left: list[Bound] = []
+    for member, added in sorted(sleep_added.items(), key=repr):
+        gone = _pairing(old_sleeps.get(member, []), new_sleeps.get(member, []))[2]
+        extra, unpaired = compare(gone, added)
+        for bound in extra:
+            yield Finding(CODE, path, bound.line)
+        left += unpaired
+    extra, unpaired = compare(sleep_lost, left)
+    for bound in extra + unpaired:
+        yield Finding(CODE, path, bound.line)
     yield from _removed_bounds(change, before, after)
     old_timeouts = _method_timeouts(change.before) if change.before is not None else {}
     for member, new in _method_timeouts(change.after).items():
@@ -1061,14 +1145,14 @@ def _file(ctx: Context, change: FileChange) -> Iterator[Finding]:
         if member in old_rules and _raised(old_rules[member], new):
             yield Finding(CODE, path, new.line if new is not None else old_rules[member].line)
     old_sites, new_sites = _sites(change.before), _sites(change.after)
-    old_statements, new_statements = _statements(old_sites), _statements(new_sites)
+    old_preceded, new_preceded = _preceded(change.before), _preceded(change.after)
     for call, statement in after.ignored:
         site = _site(change.after, call.start)
         if new_sites[site] <= old_sites[site]:
             continue
-        key = (site.member, site.statement)
-        if call.name not in _RESULT_WAITS and new_statements[key] <= old_statements[key]:
-            continue  # an unmoved one with code newly after it is a ruling still open
+        before_it = (site.member, _previous_text(change.after, statement), site.statement)
+        if call.name not in _RESULT_WAITS and new_preceded[before_it] <= old_preceded[before_it]:
+            continue  # unmoved, with only the code after it new: a ruling still open
         if not _cleanup(change.after, call, statement):
             yield Finding(CODE, path, change.after.tokens[call.start].line)
     yield from _sleep_findings(ctx, change, after)
@@ -1077,24 +1161,44 @@ def _file(ctx: Context, change: FileChange) -> Iterator[Finding]:
 
 def _removed_bounds(change: FileChange, before: _Bounds, after: _Bounds) -> Iterator[Finding]:
     """A timed wait whose bound was taken off, as `f.get(500, MILLISECONDS)` turned into
-    `f.get()` or `sem.tryAcquire(5, SECONDS)` into `sem.acquire()`: each wait of the same form
-    on the same receiver that a member gained, up to the timed ones it lost, is widened. The
-    gained waits on added statements are taken first."""
+    `f.get()` or `sem.tryAcquire(5, SECONDS)` into `sem.acquire()`. Each unbounded wait of a
+    form on a receiver that a member gained, up to the timed ones of that form and receiver it
+    lost, is widened, the gained waits on added statements first. What is left is paired across
+    the file: a timed wait lost anywhere with an unbounded one of its form gained anywhere on
+    the same receiver, or on a local or parameter, which may stand for it."""
     old_sites, new_sites = _sites(change.before), _sites(change.after)
     unit = change.after
-    for key, calls in after.unbounded.items():
+
+    def fresh(call: Call) -> bool:
+        site = _site(unit, call.start)
+        return new_sites[site] > old_sites[site]
+
+    lost_left: Counter = Counter()
+    gained_left: dict[str, list[tuple[str | None, Call]]] = {}
+    for key in set(before.bounded) | set(after.bounded) | set(after.unbounded):
+        _, form, receiver = key
+        calls = after.unbounded.get(key, [])
         lost = before.bounded[key] - after.bounded[key]
         gained = len(calls) - len(before.unbounded.get(key, []))
-        if lost <= 0 or gained <= 0:
-            continue
-
-        def fresh(call: Call) -> bool:
-            site = _site(unit, call.start)
-            return new_sites[site] > old_sites[site]
-
-        ordered = sorted(calls, key=lambda c: (not fresh(c), c.start))
-        for call in ordered[: min(lost, gained)]:
+        ordered = sorted(calls, key=lambda c: (not fresh(c), c.start))[: max(gained, 0)]
+        taken = min(max(lost, 0), len(ordered))
+        for call in ordered[:taken]:
             yield Finding(CODE, change.path, unit.tokens[call.start].line)
+        if lost > taken:
+            lost_left[(form, receiver)] += lost - taken
+        gained_left.setdefault(form, []).extend((receiver, c) for c in ordered[taken:])
+    used: set[int] = set()
+    for (form, receiver), count in sorted(lost_left.items(), key=repr):
+        for other, call in gained_left.get(form, []):
+            if count == 0:
+                break
+            if call.start in used:
+                continue
+            open_name = call.start in after.aliased and form not in _SAME_RECEIVER_ONLY
+            if other == receiver or open_name:
+                used.add(call.start)
+                count -= 1
+                yield Finding(CODE, change.path, unit.tokens[call.start].line)
 
 
 def _member_sleeps(
@@ -1119,7 +1223,7 @@ def _member_sleeps(
 
 
 def _spin_loops(ctx: Context, change: FileChange) -> Iterator[Finding]:
-    """An added loop that waits without a sleep (Mustafa 2026-10-30): a body that is empty or
+    """An added loop that waits without a sleep (ruled 2026-10-30): a body that is empty or
     only spins (`Thread.onSpinWait()`, `Thread.yield()`) under a condition that reads state, or
     a condition that makes a timed wait, as in `while (!latch.await(1, SECONDS)) {}`. It is
     judged under the poll rules, so it must be bounded by a clock or counter and checked."""
