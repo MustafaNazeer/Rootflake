@@ -504,8 +504,8 @@ def _exits(
     return out
 
 
-# Methods where a failure fails the test. TestNG configuration methods are left out: a failing
-# one skips the tests that depend on it, as do JUnit 4 and Jupiter names TestNG shares.
+# Methods where a failure fails the test. TestNG configuration methods, where a failure may
+# skip the tests instead, are left out, and so are the class level names TestNG shares.
 _FAILING_ENTRIES = frozenset([
     "Test", "ParameterizedTest", "RepeatedTest", "TestFactory", "TestTemplate", "Before",
     "After", "BeforeEach", "AfterEach", "BeforeAll", "AfterAll",
