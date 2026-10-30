@@ -421,14 +421,78 @@ def _cast_receiver(unit: CompilationUnit, call: Call) -> str | None:
 
 @dataclass(frozen=True)
 class _Open:
-    traced: frozenset  # the names its definitions hold
+    traced: frozenset  # the names its definitions hold, followed through every alias
     forms: frozenset  # the forms its declared type makes, for a parameter
 
 
+def _alias_targets(value: str) -> set[str]:
+    """The names a definition holds as it is, through brackets, casts and a conditional's
+    branches, as `f` in `f`, `(Future<?>) f` or `ok ? f : g`. Anything built from a name, such
+    as `Optional.of(f)`, holds none."""
+    words = value.split()
+    branches = [words]
+    if "?" in words and ":" in words:
+        q = words.index("?")
+        c = next((k for k in range(len(words) - 1, q, -1) if words[k] == ":"), None)
+        if c is not None:
+            branches = [words[q + 1 : c], words[c + 1 :]]
+    out = set()
+    for branch in branches:
+        while branch[:1] == ["("]:
+            close = _matching_close(branch, 0)
+            if close is None:
+                break
+            if close == len(branch) - 1:
+                branch = branch[1:-1]
+            else:
+                branch = branch[close + 1 :]  # a cast
+        if len(branch) == 1 and branch[0].isidentifier():
+            out.add(branch[0])
+    return out
+
+
+def _type_bound(unit: CompilationUnit, method: Method, name: str) -> str:
+    """A parameter's declared simple type, with a type variable of the method or a class around
+    it read as its first bound."""
+    tokens = unit.tokens
+    holders = [method] + [
+        d for d in reversed(path_to(unit, method.start)) if isinstance(d, TypeDecl)
+    ]
+    for holder in holders:
+        words = []
+        for token in tokens[holder.start : holder.end]:
+            if token.text in ("(", "{"):
+                break
+            words.append(token.text)
+        for k in range(len(words) - 2):
+            if words[k] == name and words[k + 1] == "extends" and words[k - 1] in ("<", ","):
+                j = k + 2
+                parts = []
+                while j < len(words) and words[j] not in ("<", ",", "&", ">"):
+                    parts.append(words[j])
+                    j += 1
+                return _simple_type("".join(parts))
+    return name
+
+
+def _field_definitions(unit: CompilationUnit, memo: dict) -> dict[str, list[str]]:
+    """Every value the file gives each field: its initializers and its assignments anywhere."""
+    if "fields" not in memo:
+        out: dict[str, list[str]] = {}
+        for node in walk(unit):
+            if isinstance(node, Field):
+                for name, span in node.initializers.items():
+                    out.setdefault(name, []).append(_text(unit, span.start, span.end))
+        for name, value in poll._assignments(unit, 0, len(unit.tokens)):
+            out.setdefault(name, []).append(value)
+        memo["fields"] = out
+    return memo["fields"]
+
+
 def _receiver(unit: CompilationUnit, call: Call, memo: dict) -> tuple[str | None, _Open | None]:
-    """A wait's receiver, read through a cast and through a local, or a field assigned in the
-    same method, that only ever holds another name. For a local or such a field, also the names
-    its definitions hold; for a parameter, the forms its declared type makes."""
+    """A wait's receiver, read through a cast and through every local or field alias that only
+    ever holds another name, transitively. For a name with other definitions, also the names
+    they hold; for a parameter, the forms its declared type makes."""
     receiver = call.receiver
     if receiver == "<expr>":
         receiver = _cast_receiver(unit, call) or receiver
@@ -436,24 +500,43 @@ def _receiver(unit: CompilationUnit, call: Call, memo: dict) -> tuple[str | None
     if method is None or method.body is None or receiver is None:
         return receiver, None
     if method.start not in memo:
-        defs = poll._local_definitions(unit, method.body)
-        for name, value in poll._assignments(unit, method.body.start, method.body.end):
-            if name not in defs:
-                defs.setdefault(("field", name), []).append(value)
+        local = poll._local_definitions(unit, method.body)
         params = {p.name: _simple_type(p.type) for p in method.params}
-        memo[method.start] = (defs, params)
-    defs, params = memo[method.start]
-    values = defs.get(receiver) or defs.get(("field", receiver), [])
-    if values and all(len(v.split()) == 1 and v.split()[0].isidentifier() for v in values):
-        if len(set(values)) == 1:
-            return values[0], None
-    if values:
-        traced = frozenset(w for v in values for w in v.split() if w.isidentifier())
-        return receiver, _Open(traced, frozenset())
-    if receiver in params:
-        forms = frozenset(f for f, types in _FORM_TYPES.items() if params[receiver] in types)
-        return receiver, _Open(frozenset(), forms)
-    return receiver, None
+        memo[method.start] = (local, params)
+    local, params = memo[method.start]
+    fields = _field_definitions(unit, memo)
+
+    def definitions(name: str) -> list[str]:
+        if name in local:
+            return local[name]
+        if name in params:
+            return []
+        return fields.get(name, [])
+
+    current, seen = receiver, {receiver}
+    while True:
+        values = definitions(current)
+        targets = [_alias_targets(v) for v in values]
+        if not values or any(len(t) != 1 for t in targets) or len(set().union(*targets)) != 1:
+            break
+        (nxt,) = set().union(*targets)
+        if nxt in seen:
+            break
+        seen.add(nxt)
+        current = nxt
+    frontier = [current]
+    while frontier:
+        for value in definitions(frontier.pop()):
+            for target in _alias_targets(value) - seen:
+                seen.add(target)
+                frontier.append(target)
+    if current in params:
+        type_name = _type_bound(unit, method, params[current])
+        forms = frozenset(f for f, types in _FORM_TYPES.items() if type_name in types)
+        return current, _Open(frozenset(seen), forms)
+    if len(seen) > 1 or definitions(current):
+        return current, _Open(frozenset(seen), frozenset())
+    return current, None
 
 
 def _bounds(program: Program, path: str) -> _Bounds:

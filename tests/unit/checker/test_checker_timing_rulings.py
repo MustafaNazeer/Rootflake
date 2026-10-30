@@ -478,3 +478,30 @@ class TestRemovedBoundsAcrossTheFile:
         old = cls(fields + method(f"f.get(500, TimeUnit.MILLISECONDS); {A}"))
         new = cls(fields + method(f"{after} {A}"))
         assert TIMING in codes(old, new, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("fields", "after", "helper"),
+        [("", "Future<?> g = f; Future<?> h = g; h.get();", ""),
+         ("Future<?> g;\n@BeforeEach void up() { g = f; }\n", "g.get();", ""),
+         ("Future<?> g = f;\n", "g.get();", ""),
+         ("", "waitFor(f);",
+          "<F extends Future<?>> void waitFor(F x) throws Exception { x.get(); }")],
+        ids=["two_hops", "field_set_in_setup", "field_initializer", "type_variable_parameter"],
+    )  # fmt: skip
+    def test_a_removed_bound_followed_further_is_widened(self, tmp_path, fields, after, helper):
+        head = "Future<?> f;\n" + fields
+        old = cls(head + method(f"f.get(500, TimeUnit.MILLISECONDS); {A}"))
+        new = cls(head + method(f"{after} {A}") + (f"\n{helper}" if helper else ""))
+        assert TIMING in codes(old, new, tmp_path)
+
+    @pytest.mark.parametrize(
+        "after",
+        ["AtomicReference<Object> r = new AtomicReference<>(f); assertNotNull(r.get());",
+         "Optional<Future<?>> o = Optional.of(f); assertNotNull(o.get());",
+         "Supplier<Object> s = () -> f; assertNotNull(s.get());"],
+        ids=["atomic_reference", "optional", "supplier"],
+    )  # fmt: skip
+    def test_a_value_built_from_the_receiver_is_not_paired(self, tmp_path, after):
+        old = cls(method(f"f.get(500, TimeUnit.MILLISECONDS); {A}"))
+        new = cls(method(f"await().atMost(5, TimeUnit.SECONDS).until(f::isDone); {after} {A}"))
+        assert TIMING not in codes(old, new, tmp_path)
