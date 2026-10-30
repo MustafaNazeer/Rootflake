@@ -505,3 +505,28 @@ class TestRemovedBoundsAcrossTheFile:
         old = cls(method(f"f.get(500, TimeUnit.MILLISECONDS); {A}"))
         new = cls(method(f"await().atMost(5, TimeUnit.SECONDS).until(f::isDone); {after} {A}"))
         assert TIMING not in codes(old, new, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("holder", "helper"),
+        [("", '@SuppressWarnings("x") <F extends Future<?>> void waitFor(F x) throws Exception'
+              " { x.get(); }"),
+         ("", "<F extends Runnable & Future<?>> void waitFor(F x) throws Exception { x.get(); }"),
+         ('@SuppressWarnings("x") ', "void waitFor(F x) throws Exception { x.get(); }")],
+        ids=["annotated_method", "second_bound", "annotated_class"],
+    )  # fmt: skip
+    def test_a_type_variable_bound_is_read_past_annotations(self, tmp_path, holder, helper):
+        old = method(f"f.get(500, TimeUnit.MILLISECONDS); {A}")
+        new = method(f"waitFor(f); {A}") + f"\n{helper}"
+        if holder:
+            head = IMPORTS + f"{holder}class SvcTest<F extends Future<?>> {{\nF f;\n"
+            old_src, new_src = head + old + "\n}\n", head + new + "\n}\n"
+        else:
+            old_src, new_src = cls("Future<?> f;\n" + old), cls("Future<?> f;\n" + new)
+        assert TIMING in codes(old_src, new_src, tmp_path)
+
+    def test_another_methods_local_of_a_fields_name_is_not_the_field(self, tmp_path):
+        other = "\nvoid other() { Future<?> g; g = f; }"
+        head = "Future<?> f;\nAtomicInteger g = new AtomicInteger();\n"
+        old = cls(head + method(f"f.get(500, TimeUnit.MILLISECONDS); {A}") + other, ATOMIC)
+        new = cls(head + method(f"{self.W} assertEquals(1, g.get()); {A}") + other, ATOMIC)
+        assert TIMING not in codes(old, new, tmp_path)

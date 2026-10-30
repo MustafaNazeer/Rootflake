@@ -451,40 +451,70 @@ def _alias_targets(value: str) -> set[str]:
     return out
 
 
-def _type_bound(unit: CompilationUnit, method: Method, name: str) -> str:
+def _type_bound(unit: CompilationUnit, method: Method, name: str) -> frozenset[str]:
     """A parameter's declared simple type, with a type variable of the method or a class around
-    it read as its first bound."""
+    it read as its bounds."""
     tokens = unit.tokens
     holders = [method] + [
         d for d in reversed(path_to(unit, method.start)) if isinstance(d, TypeDecl)
     ]
     for holder in holders:
-        words = []
-        for token in tokens[holder.start : holder.end]:
-            if token.text in ("(", "{"):
-                break
-            words.append(token.text)
-        for k in range(len(words) - 2):
+        words, k = [], holder.start
+        while k < holder.end and tokens[k].text not in ("(", "{"):
+            if tokens[k].text == "@":  # an annotation, with any arguments it has
+                k += 1
+                while k + 2 < holder.end and tokens[k + 1].text == ".":
+                    k += 2
+                if k + 1 < holder.end and tokens[k + 1].text == "(":
+                    depth, k = 0, k + 1
+                    while k < holder.end:
+                        depth += tokens[k].text == "("
+                        depth -= tokens[k].text == ")"
+                        if depth == 0:
+                            break
+                        k += 1
+                k += 1
+                continue
+            words.append(tokens[k].text)
+            k += 1
+        for k in range(1, len(words) - 2):
             if words[k] == name and words[k + 1] == "extends" and words[k - 1] in ("<", ","):
-                j = k + 2
-                parts = []
-                while j < len(words) and words[j] not in ("<", ",", "&", ">"):
-                    parts.append(words[j])
+                bounds, parts, depth, j = set(), [], 0, k + 2
+                while j < len(words):
+                    word = words[j]
+                    if word == "<":
+                        depth += 1
+                    elif word == ">" and depth:
+                        depth -= 1
+                    elif depth == 0 and word in ("&", ",", ">"):
+                        bounds.add(_simple_type("".join(parts)))
+                        parts = []
+                        if word != "&":
+                            break
+                    elif depth == 0:
+                        parts.append(word)
                     j += 1
-                return _simple_type("".join(parts))
-    return name
+                return frozenset(bounds)
+    return frozenset([name])
 
 
 def _field_definitions(unit: CompilationUnit, memo: dict) -> dict[str, list[str]]:
-    """Every value the file gives each field: its initializers and its assignments anywhere."""
+    """Every value the file gives each field: its initializers, and its assignments in any
+    method or initializer that does not declare a local or parameter of that name."""
     if "fields" not in memo:
         out: dict[str, list[str]] = {}
         for node in walk(unit):
             if isinstance(node, Field):
                 for name, span in node.initializers.items():
                     out.setdefault(name, []).append(_text(unit, span.start, span.end))
-        for name, value in poll._assignments(unit, 0, len(unit.tokens)):
-            out.setdefault(name, []).append(value)
+            body = node.body if isinstance(node, Method | Initializer) else None
+            if body is None or not isinstance(body, Block):
+                continue
+            own = set(poll._local_definitions(unit, body))
+            own |= {p.name for p in getattr(node, "params", ())}
+            for name, value in poll._assignments(unit, body.start, body.end):
+                if name not in own:
+                    out.setdefault(name, []).append(value)
         memo["fields"] = out
     return memo["fields"]
 
@@ -531,8 +561,8 @@ def _receiver(unit: CompilationUnit, call: Call, memo: dict) -> tuple[str | None
                 seen.add(target)
                 frontier.append(target)
     if current in params:
-        type_name = _type_bound(unit, method, params[current])
-        forms = frozenset(f for f, types in _FORM_TYPES.items() if type_name in types)
+        type_names = _type_bound(unit, method, params[current])
+        forms = frozenset(f for f, types in _FORM_TYPES.items() if type_names & types)
         return current, _Open(frozenset(seen), forms)
     if len(seen) > 1 or definitions(current):
         return current, _Open(frozenset(seen), frozenset())
