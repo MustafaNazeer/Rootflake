@@ -530,3 +530,30 @@ class TestRemovedBoundsAcrossTheFile:
         old = cls(head + method(f"f.get(500, TimeUnit.MILLISECONDS); {A}") + other, ATOMIC)
         new = cls(head + method(f"{self.W} assertEquals(1, g.get()); {A}") + other, ATOMIC)
         assert TIMING not in codes(old, new, tmp_path)
+
+    @pytest.mark.parametrize(
+        ("setup", "run"),
+        [("@BeforeEach void up() { if (svc == null) { Future<?> g = null; } g = f; }", ""),
+         ("@BeforeEach void up() { Runnable r = () -> { Future<?> g = null; }; g = f; }", ""),
+         ("Runnable r = () -> { g = f; };", "r.run(); "),
+         ("@BeforeEach void up() { Future<?> g = null; this.g = f; }", "")],
+        ids=["closed_block_local", "lambda_local", "field_initializer_lambda", "this_qualified"],
+    )  # fmt: skip
+    def test_a_field_assignment_beside_an_out_of_scope_local_is_read(self, tmp_path, setup, run):
+        head = f"Future<?> f;\nFuture<?> g;\n{setup}\n"
+        old = cls(head + method(f"f.get(500, TimeUnit.MILLISECONDS); {A}"))
+        new = cls(head + method(f"{run}g.get(); {A}"))
+        assert TIMING in codes(old, new, tmp_path)
+
+    @pytest.mark.parametrize(
+        "other",
+        ["void other() { for (Future<?> g = f; g != null; ) { break; } }",
+         "void other() { Consumer<Future<?>> c = g -> { g = f; }; }",
+         "void other() { try { } catch (RuntimeException g) { } }"],
+        ids=["for_variable", "lambda_parameter", "catch_parameter"],
+    )  # fmt: skip
+    def test_another_methods_scoped_name_is_not_the_field(self, tmp_path, other):
+        head = "Future<?> f;\nAtomicInteger g = new AtomicInteger();\n"
+        old = cls(head + method(f"f.get(500, TimeUnit.MILLISECONDS); {A}") + f"\n{other}", ATOMIC)
+        new = cls(head + method(f"{self.W} assertEquals(1, g.get()); {A}") + f"\n{other}", ATOMIC)
+        assert TIMING not in codes(old, new, tmp_path)

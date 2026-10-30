@@ -18,7 +18,13 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 
 from rootflake.gate.checker import poll
-from rootflake.gate.checker.assertions import _close, _split_arguments, _text, is_assertion_name
+from rootflake.gate.checker.assertions import (
+    _close,
+    _shadowed,
+    _split_arguments,
+    _text,
+    is_assertion_name,
+)
 from rootflake.gate.checker.calls import Call, Reached, calls_in, follow_for_scan, reach
 from rootflake.gate.checker.model import Context, FileChange, Finding
 from rootflake.gate.checker.scope import Program
@@ -499,22 +505,28 @@ def _type_bound(unit: CompilationUnit, method: Method, name: str) -> frozenset[s
 
 
 def _field_definitions(unit: CompilationUnit, memo: dict) -> dict[str, list[str]]:
-    """Every value the file gives each field: its initializers, and its assignments in any
-    method or initializer that does not declare a local or parameter of that name."""
+    """Every value the file gives each field: its initializers, and each `name = value` or
+    `this.name = value` anywhere in the file, field initializer lambdas included, where no
+    local or parameter of that name is in scope."""
     if "fields" not in memo:
         out: dict[str, list[str]] = {}
+        tokens = unit.tokens
         for node in walk(unit):
             if isinstance(node, Field):
                 for name, span in node.initializers.items():
                     out.setdefault(name, []).append(_text(unit, span.start, span.end))
-            body = node.body if isinstance(node, Method | Initializer) else None
-            if body is None or not isinstance(body, Block):
+            if not isinstance(node, Statement) or node.kind != "expression":
                 continue
-            own = set(poll._local_definitions(unit, body))
-            own |= {p.name for p in getattr(node, "params", ())}
-            for name, value in poll._assignments(unit, body.start, body.end):
-                if name not in own:
-                    out.setdefault(name, []).append(value)
+            for k in range(node.start + 1, node.end):
+                token = tokens[k]
+                if token.kind == "op" and token.text == "=" and tokens[k - 1].kind == "ident":
+                    name = tokens[k - 1].text
+                    qualified = (
+                        k >= 3 and tokens[k - 2].text == "." and tokens[k - 3].text == "this"
+                    )
+                    if qualified or not _shadowed(unit, k - 1, name):
+                        out.setdefault(name, []).append(_text(unit, k + 1, node.end - 1))
+                    break
         memo["fields"] = out
     return memo["fields"]
 
