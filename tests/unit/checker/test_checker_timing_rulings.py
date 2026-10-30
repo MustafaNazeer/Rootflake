@@ -448,3 +448,33 @@ class TestReviewOfTheRulings:
             f"{A}"
         )
         assert TIMING not in judged(A, after, tmp_path)
+
+
+class TestRemovedBoundsAcrossTheFile:
+    W = "await().atMost(5, TimeUnit.SECONDS).until(f::isDone);"
+
+    @pytest.mark.parametrize(
+        ("after", "helper"),
+        [("AtomicInteger n = svc.counter(); assertEquals(1, n.get());", ""),
+         ('Optional<String> o = svc.name(); assertEquals("a", o.get());', ""),
+         ("check(svc.name());", 'void check(Optional<String> o) { assertEquals("a", o.get()); }'),
+         ("Supplier<Integer> s = svc::count; assertEquals(1, (int) s.get());", ""),
+         ("Lock l = rw.writeLock(); l.lock(); try { assertEquals(1, n); } finally { l.unlock(); }",
+          "")],
+        ids=["atomic", "optional", "optional_parameter", "supplier", "other_lock"],
+    )  # fmt: skip
+    def test_an_unrelated_unbounded_call_is_not_paired(self, tmp_path, after, helper):
+        old = cls(method(f"f.get(500, TimeUnit.MILLISECONDS); {A}") + "\nvoid check() { }")
+        new = cls(method(f"{self.W} {after} {A}") + (f"\n{helper}" if helper else ""))
+        assert TIMING not in codes(old, new, tmp_path)
+
+    @pytest.mark.parametrize(
+        "after",
+        ["((Future<?>) f).get();", "g = f; g.get();", "Future<?> g = ok() ? f : h; g.get();"],
+        ids=["cast", "field_alias", "ternary"],
+    )  # fmt: skip
+    def test_a_removed_bound_read_through_a_name_is_widened(self, tmp_path, after):
+        fields = "Future<?> f, g, h;\n"
+        old = cls(fields + method(f"f.get(500, TimeUnit.MILLISECONDS); {A}"))
+        new = cls(fields + method(f"{after} {A}"))
+        assert TIMING in codes(old, new, tmp_path)

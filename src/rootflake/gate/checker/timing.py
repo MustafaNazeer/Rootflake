@@ -352,7 +352,7 @@ class _Bounds:
     ignored: list[tuple[Call, Statement]]
     bounded: Counter  # timed waits by member, unbounded form and receiver
     unbounded: dict[tuple, list[Call]]  # the same waits made with no bound
-    aliased: set[int]  # unbounded waits on a local or parameter, which may name any receiver
+    aliased: dict  # unbounded waits on a local or parameter, by what they may stand for
 
 
 def _mockito_mode(unit: CompilationUnit, call: Call) -> bool:
@@ -379,22 +379,81 @@ def _single_bound(args: tuple[str, ...], line: int) -> Bound:
     return Bound(fold(args[0]) if len(args) == 1 else None, False, text, line)
 
 
-def _receiver(unit: CompilationUnit, call: Call, names: dict) -> tuple[str | None, bool]:
-    """A wait's receiver read through a local that only ever holds another name, and whether
-    it is a local or parameter of its method, which may stand for any receiver."""
-    method = _method_at(unit, call.start)
-    if method is None or method.body is None or call.receiver is None:
-        return call.receiver, False
-    if method.start not in names:
-        defs = poll._local_definitions(unit, method.body)
-        names[method.start] = (defs, {p.name for p in method.params})
-    defs, params = names[method.start]
+# The types that make a wait of each form, for a parameter the waits may have been moved into.
+_FORM_TYPES = {
+    "get": frozenset(["Future", "FutureTask", "CompletableFuture", "ForkJoinTask", "RunnableFuture",
+                      "ScheduledFuture", "ListenableFuture"]),
+    "join": frozenset(["Thread", "ForkJoinTask"]),
+    "await": frozenset(["CountDownLatch", "CyclicBarrier", "Condition"]),
+    "acquire": frozenset(["Semaphore"]),
+    "lock": frozenset(["Lock", "ReentrantLock", "ReadLock", "WriteLock"]),
+    "take": frozenset(["BlockingQueue", "BlockingDeque", "TransferQueue", "LinkedBlockingQueue",
+                       "ArrayBlockingQueue", "LinkedBlockingDeque", "LinkedTransferQueue",
+                       "PriorityBlockingQueue", "DelayQueue", "SynchronousQueue",
+                       "CompletionService", "ExecutorCompletionService"]),
+    "awaitAdvance": frozenset(["Phaser"]),
+}  # fmt: skip
+
+
+def _simple_type(text: str) -> str:
+    return text.split("<", 1)[0].strip().rsplit(".", 1)[-1].strip()
+
+
+def _cast_receiver(unit: CompilationUnit, call: Call) -> str | None:
+    """The name a bracketed receiver holds, as `f` in `((Future<?>) f).get()`."""
+    tokens = unit.tokens
+    if call.start < 2 or tokens[call.start - 1].text != "." or tokens[call.start - 2].text != ")":
+        return None
+    depth, k = 0, call.start - 2
+    while k >= 0:
+        depth += tokens[k].text == ")"
+        depth -= tokens[k].text == "("
+        if depth == 0:
+            break
+        k -= 1
+    words = [t.text for t in tokens[k + 1 : call.start - 2]]
+    if len(words) == 1 and words[0].isidentifier():
+        return words[0]
+    if words[:1] == ["("] and len(words) >= 3 and words[-2] == ")" and words[-1].isidentifier():
+        return words[-1]
+    return None
+
+
+@dataclass(frozen=True)
+class _Open:
+    traced: frozenset  # the names its definitions hold
+    forms: frozenset  # the forms its declared type makes, for a parameter
+
+
+def _receiver(unit: CompilationUnit, call: Call, memo: dict) -> tuple[str | None, _Open | None]:
+    """A wait's receiver, read through a cast and through a local, or a field assigned in the
+    same method, that only ever holds another name. For a local or such a field, also the names
+    its definitions hold; for a parameter, the forms its declared type makes."""
     receiver = call.receiver
-    values = defs.get(receiver, [])
+    if receiver == "<expr>":
+        receiver = _cast_receiver(unit, call) or receiver
+    method = _method_at(unit, call.start)
+    if method is None or method.body is None or receiver is None:
+        return receiver, None
+    if method.start not in memo:
+        defs = poll._local_definitions(unit, method.body)
+        for name, value in poll._assignments(unit, method.body.start, method.body.end):
+            if name not in defs:
+                defs.setdefault(("field", name), []).append(value)
+        params = {p.name: _simple_type(p.type) for p in method.params}
+        memo[method.start] = (defs, params)
+    defs, params = memo[method.start]
+    values = defs.get(receiver) or defs.get(("field", receiver), [])
     if values and all(len(v.split()) == 1 and v.split()[0].isidentifier() for v in values):
         if len(set(values)) == 1:
-            receiver = values[0]
-    return receiver, receiver in defs or receiver in params
+            return values[0], None
+    if values:
+        traced = frozenset(w for v in values for w in v.split() if w.isidentifier())
+        return receiver, _Open(traced, frozenset())
+    if receiver in params:
+        forms = frozenset(f for f, types in _FORM_TYPES.items() if params[receiver] in types)
+        return receiver, _Open(frozenset(), forms)
+    return receiver, None
 
 
 def _bounds(program: Program, path: str) -> _Bounds:
@@ -405,7 +464,7 @@ def _bounds(program: Program, path: str) -> _Bounds:
     sleeps, ignored = [], []
     bounded: Counter = Counter()
     unbounded: dict[tuple, list[Call]] = {}
-    aliased: set[int] = set()
+    aliased: dict[int, _Open] = {}
     receivers: dict = {}
     tokens = unit.tokens
     for call in calls:
@@ -446,8 +505,8 @@ def _bounds(program: Program, path: str) -> _Bounds:
                 if call.arity in arities:
                     for form in forms:
                         unbounded.setdefault((member, form, receiver), []).append(call)
-                    if open_name:
-                        aliased.add(call.start)
+                    if open_name is not None:
+                        aliased[call.start] = open_name
         for bound in found:
             groups.setdefault((member, call.name, "pair"), []).append(bound)
         lower = call.name.lower()
@@ -1090,7 +1149,7 @@ def _cleanup(unit: CompilationUnit, call: Call, statement: Statement) -> bool:
 def _file(ctx: Context, change: FileChange) -> Iterator[Finding]:
     path = change.path
     after = _bounds(ctx.after, path)
-    empty = _Bounds({}, [], [], Counter(), {}, set())
+    empty = _Bounds({}, [], [], Counter(), {}, {})
     before = _bounds(ctx.before, path) if change.before is not None else empty
     old_sleeps = _member_sleeps(ctx.before, path, change.before)
     new_sleeps = _member_sleeps(ctx.after, path, change.after)
@@ -1165,7 +1224,8 @@ def _removed_bounds(change: FileChange, before: _Bounds, after: _Bounds) -> Iter
     form on a receiver that a member gained, up to the timed ones of that form and receiver it
     lost, is widened, the gained waits on added statements first. What is left is paired across
     the file: a timed wait lost anywhere with an unbounded one of its form gained anywhere on
-    the same receiver, or on a local or parameter, which may stand for it."""
+    the same receiver, on a local or a field assigned there whose definitions name it, or on a
+    parameter whose declared type makes that form."""
     old_sites, new_sites = _sites(change.before), _sites(change.after)
     unit = change.after
 
@@ -1194,8 +1254,13 @@ def _removed_bounds(change: FileChange, before: _Bounds, after: _Bounds) -> Iter
                 break
             if call.start in used:
                 continue
-            open_name = call.start in after.aliased and form not in _SAME_RECEIVER_ONLY
-            if other == receiver or open_name:
+            seen = after.aliased.get(call.start)
+            stands_for = (
+                seen is not None
+                and form not in _SAME_RECEIVER_ONLY
+                and (receiver in seen.traced or form in seen.forms)
+            )
+            if other == receiver or stands_for:
                 used.add(call.start)
                 count -= 1
                 yield Finding(CODE, change.path, unit.tokens[call.start].line)
