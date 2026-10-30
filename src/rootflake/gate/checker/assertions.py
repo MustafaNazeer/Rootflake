@@ -316,6 +316,7 @@ def _bracketed(tokens) -> str:
 
 
 WAIT_CONDITIONS = frozenset(["until", "untilAsserted", "untilAtomic", "untilAccumulated"])
+_UNTIL_ATOMIC = {"untilTrue": "assertTrue", "untilFalse": "assertFalse"}
 
 
 AWAIT_ROOTS = frozenset(["await", "waitAtMost", "given", "with", "Awaitility"])
@@ -491,12 +492,69 @@ def _exits(unit: CompilationUnit, body: Block) -> list[tuple[int, str, int]]:
                 continue
             if node.kind == "return" and _wait_value_return(unit, body, node):
                 continue
+            if node.kind == "throw" and _fails_the_test(unit, body, node):
+                continue
             # Mustafa 2026-10-23: an exit is its statement plus its full guard text, so an
             # existing exit under a changed condition counts as newly guarded.
             guard = " / ".join(_guard(unit, body, node.start))
             text = f"{_text(unit, node.start, node.end)} @ {guard}"
             out.append((node.start, text, _skips_until(unit, body, node)))
     return out
+
+
+_TEST_ENTRIES = frozenset([
+    "Test", "ParameterizedTest", "RepeatedTest", "TestFactory", "TestTemplate", "Before",
+    "BeforeEach", "BeforeClass", "BeforeAll", "BeforeMethod", "BeforeTest", "BeforeSuite",
+    "BeforeGroups", "After", "AfterEach", "AfterClass", "AfterAll", "AfterMethod", "AfterTest",
+    "AfterSuite", "AfterGroups",
+])  # fmt: skip
+_EXPECT_CALLS = frozenset(["expect", "expectMessage", "expectCause"])
+# Failure types of the JDK and the test libraries: a new one of these can never be a skip.
+_FAILURE_TYPES = frozenset([
+    "AssertionError", "AssertionFailedError", "ComparisonFailure", "MultipleFailuresError",
+    "Error", "Exception", "RuntimeException", "Throwable", "IllegalStateException",
+    "IllegalArgumentException", "UnsupportedOperationException", "TimeoutException",
+    "IOException", "UncheckedIOException", "InterruptedException", "ExecutionException",
+    "NullPointerException",
+])  # fmt: skip
+
+
+def _fails_the_test(unit: CompilationUnit, body: Block, node: Statement) -> bool:
+    """Whether a throw fails the test, so it hides no assertion after it (Mustafa 2026-10-30):
+    it sits in a test or lifecycle method's own body outside any try with a catch, and the
+    method expects no exception, by an expected attribute or an ExpectedException rule. Only a
+    newly built JDK or test library failure counts, never a value that may hold a skip or a
+    project type that may extend one. A throw in a helper may be caught by its caller and stays
+    an exit."""
+    tokens = unit.tokens
+    thrown = tokens[node.start + 2].text if node.end - node.start > 3 else ""
+    if tokens[node.start + 1].text != "new" or tokens[node.start + 3].text != "(":
+        return False
+    if thrown not in _FAILURE_TYPES or any(
+        isinstance(n, TypeDecl) and n.name == thrown for n in walk(unit)
+    ):
+        return False
+    method = next(
+        (n for n in path_to(unit, body.start) if isinstance(n, Method) and n.body is body), None
+    )
+    if method is None:
+        return False
+    names = {a.name.rsplit(".", 1)[-1] for a in method.annotations}
+    if not names & _TEST_ENTRIES:
+        return False
+    for annotation in method.annotations:
+        if annotation.arguments is not None and any(
+            t.text in _EXPECTED_ATTRIBUTES
+            for t in unit.tokens[annotation.arguments.start : annotation.arguments.end]
+        ):
+            return False
+    if any(not c.reference and c.name in _EXPECT_CALLS for c in calls_in(unit, body)):
+        return False
+    return not any(
+        isinstance(n, Statement) and n.kind == "try" and n.catches and n.blocks
+        and n.blocks[0].start <= node.start < n.blocks[0].end
+        for n in path_to(unit, node.start)
+    )  # fmt: skip
 
 
 def _skips_until(unit: CompilationUnit, body: Block, node: Statement) -> int:
@@ -722,7 +780,15 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
         assertion = Assertion(
             text=_text(unit, start, end),
             signature=_with_default_mode(
-                (*(n for n in names if n not in _DESCRIPTIONS), *matchers),
+                (
+                    *(
+                        n
+                        for n in names
+                        if n not in _DESCRIPTIONS
+                        and not (names[0] in AWAIT_ROOTS and n in _AWAIT_TIMING)
+                    ),
+                    *matchers,
+                ),
                 _mode_argument(unit, call, names),
             ),
             arguments=_split_arguments(unit, call.start + 1, _close(unit, call.start + 1)),
@@ -796,6 +862,19 @@ def collect(program: Program, path: str, body: Block) -> list[Assertion]:
             if expected is not None:
                 out.append(_wait_assertion(unit, body, declared, exits, at, "assertEquals",
                                            (expected, value), at))  # fmt: skip
+    for call in calls_in(unit, body):
+        # untilTrue(x) waits for x.get() to be true, so it stands for assertTrue(x.get()), and
+        # untilFalse for assertFalse (Mustafa 2026-10-30).
+        if call.name not in _UNTIL_ATOMIC or call.reference or call.arity != 1:
+            continue
+        if call.name in declared or _chain_root(unit, call.start) not in AWAIT_ROOTS:
+            continue
+        if _chain_root(unit, call.start) in declared:
+            continue
+        close = _close(unit, call.end)
+        value = f"{_bracketed(unit.tokens[call.end + 1 : close])} . get ( )"
+        out.append(_wait_assertion(unit, body, declared, exits, call.start,
+                                   _UNTIL_ATOMIC[call.name], (value,), call.start))  # fmt: skip
     for node in walk(body):
         if isinstance(node, Statement) and node.kind == "try" and node.blocks:
             statements = node.blocks[0].statements
@@ -1796,6 +1875,12 @@ _DESCRIPTIONS = frozenset(
     ["as", "describedAs", "withFailMessage", "overridingErrorMessage", "withRepresentation"]
 )
 _TIMED = frozenset(["timeout", "after"])
+# Awaitility settings that only time a wait: Decision 7 judges their bounds, so adding or
+# changing one leaves the wait the same assertion. atLeast, between and during stay, since each
+# also fails the wait.
+_AWAIT_TIMING = frozenset(
+    ["atMost", "timeout", "forever", "pollInterval", "pollDelay", "pollInSameThread", "alias"]
+)
 
 
 def _timed_mode(program: Program, path: str, unit: CompilationUnit, call: Call) -> bool:

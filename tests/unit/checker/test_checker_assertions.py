@@ -112,12 +112,44 @@ class TestNewGuards:
         after = body_of("if (never()) { assertEquals(1, f()); }")
         assert REMOVED in codes(before, after, tmp_path)
 
-    @pytest.mark.parametrize(
-        "exit_", ["if (slow()) { return; }", "if (slow()) throw new IllegalStateException();"]
-    )
-    def test_a_new_exit_before_an_assertion(self, tmp_path, exit_):
+    def test_a_new_exit_before_an_assertion(self, tmp_path):
         before = body_of("int v = f(); assertEquals(1, v);")
-        after = body_of(f"int v = f(); {exit_} assertEquals(1, v);")
+        after = body_of("int v = f(); if (slow()) { return; } assertEquals(1, v);")
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_throw_in_the_test_fails_it_and_hides_nothing(self, tmp_path):
+        before = body_of("int v = f(); assertEquals(1, v);")
+        after = body_of("int v = f(); if (slow()) throw new IllegalStateException(); "
+                        "assertEquals(1, v);")  # fmt: skip
+        assert codes(before, after, tmp_path) == set()
+
+    @pytest.mark.parametrize(
+        ("statements", "annotation"),
+        [
+            ("try { if (slow()) throw new IllegalStateException(); assertEquals(1, v); } "
+             "catch (IllegalStateException e) { log(e); }", "@Test"),
+            ("if (slow()) throw new IllegalStateException(); assertEquals(1, v);",
+             "@Test(expected = IllegalStateException.class)"),
+            ("thrown.expect(IllegalStateException.class); "
+             "if (slow()) throw new IllegalStateException(); assertEquals(1, v);", "@Test"),
+        ],
+    )  # fmt: skip
+    def test_a_throw_that_can_pass_or_be_caught_is_still_an_exit(
+        self, tmp_path, statements, annotation
+    ):
+        def source(body: str) -> str:
+            return body_of(body).replace("@Test public", f"{annotation} public")
+
+        before = source(statements.replace("if (slow()) throw new IllegalStateException(); ", ""))
+        after = source(statements)
+        assert REMOVED in codes(before, after, tmp_path)
+
+    def test_a_throw_in_a_helper_is_still_an_exit(self, tmp_path):
+        helper = "  void check(int v) {{ {0} assertEquals(1, v); }}"
+        before = body_of("check(f());", helper.format(""))
+        after = body_of(
+            "check(f());", helper.format("if (slow()) throw new IllegalStateException();")
+        )
         assert REMOVED in codes(before, after, tmp_path)
 
     def test_a_new_exit_after_the_assertions_is_fine_here(self, tmp_path):
@@ -1247,7 +1279,9 @@ class TestSecondReview:
 def test_the_default_verification_mode_is_times_one(tmp_path, before, after):
     old = with_imports(body_of(before), MOCKITO_IMPORTS)
     new = with_imports(body_of(after), MOCKITO_IMPORTS)
-    assert codes(old, new, tmp_path) == set()
+    # An added after(n) still waits its full period, which the timing rule judges.
+    sleeps = {"weaken_assertion/timing_bound_widened"} if "after" in after else set()
+    assert codes(old, new, tmp_path) == sleeps
 
 
 def test_jsonassert_text_in_a_message_does_not_hide_a_tolerance(tmp_path):

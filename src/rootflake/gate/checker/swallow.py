@@ -1092,9 +1092,15 @@ def _exit_sites(program: Program, path: str) -> list[Site]:
     return sites
 
 
+_EXPECTING_TESTS = {
+    "org.junit.Test": "expected",
+    "org.testng.annotations.Test": "expectedExceptions",
+}
+
+
 def _expected_sites(program: Program, path: str) -> list[Site]:
-    """Expected exception declarations: a JUnit 4 expected attribute and an ExpectedException
-    rule."""
+    """Expected exception declarations: a JUnit 4 expected attribute, a TestNG
+    expectedExceptions attribute and an ExpectedException rule."""
     unit = program.units[path]
     sites = []
     for node in walk(unit):
@@ -1103,11 +1109,18 @@ def _expected_sites(program: Program, path: str) -> list[Site]:
                 if annotation.name.rsplit(".", 1)[-1] != "Test" or annotation.arguments is None:
                     continue
                 binding = resolve(program, path, annotation.name, annotation.start + 1)
-                if binding.fqn not in (None, "org.junit.Test") and binding.kind != "unresolved":
+                unresolved = binding.fqn is None or binding.kind == "unresolved"
+                if not unresolved and binding.fqn not in _EXPECTING_TESTS:
                     continue
+                # TestNG's expectedExceptions turns a thrown failure into a pass the same way
+                # (Mustafa 2026-10-30; test-library-semantics section 20).
+                names = (
+                    set(_EXPECTING_TESTS.values()) if unresolved
+                    else {_EXPECTING_TESTS[binding.fqn]}
+                )  # fmt: skip
                 tokens = unit.tokens
                 span = range(annotation.arguments.start, annotation.arguments.end - 1)
-                if any(tokens[k].text == "expected" and tokens[k + 1].text == "=" for k in span):
+                if any(tokens[k].text in names and tokens[k + 1].text == "=" for k in span):
                     key = member_key(program, unit, node.start)
                     sites.append(Site(key, "expected", EXPECTED, annotation.line, node.start))
         elif isinstance(node, Field) and _simple(node.type) == "ExpectedException":

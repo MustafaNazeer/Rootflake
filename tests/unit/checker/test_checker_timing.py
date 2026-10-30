@@ -265,16 +265,14 @@ class TestAwaitility:
             tmp_path,
         ) == {TIMING}
 
-    def test_a_poll_delay_before_a_real_condition_is_not(self, tmp_path):
-        assert (
-            judged(
-                "f(); assertTrue(ready());",
-                "f(); await().pollDelay(100, TimeUnit.MILLISECONDS).until(() -> ready());"
-                " assertTrue(ready());",
-                tmp_path,
-            )
-            == set()
-        )
+    def test_an_added_poll_delay_before_a_real_condition_is_a_fixed_sleep_too(self, tmp_path):
+        # Mustafa 2026-10-30: the delay is waited out before the condition is first read.
+        assert judged(
+            "f(); assertTrue(ready());",
+            "f(); await().pollDelay(100, TimeUnit.MILLISECONDS).until(() -> ready());"
+            " assertTrue(ready());",
+            tmp_path,
+        ) == {TIMING}
 
     def test_an_await_on_a_latch_is_not_an_awaitility_root(self, tmp_path):
         assert (

@@ -61,6 +61,26 @@ _WAITS = frozenset([
     "tryAcquire", "tryLock", "awaitAdvanceInterruptibly",
 ])  # fmt: skip
 _RESULT_WAITS = frozenset(["await", "awaitTermination"])
+# Timed waits that report a timeout only through what they return, so a dropped result waits
+# out the bound and checks nothing (Mustafa 2026-10-30).
+_IGNORED_WAITS = _RESULT_WAITS | frozenset(["tryAcquire", "tryLock", "poll"])
+# A timed wait and the form of it that waits with no bound, with the arities of that form, so
+# `f.get(500, MILLISECONDS)` turned into `f.get()` is a bound removed (Mustafa 2026-10-30).
+_UNBOUNDED_FORM = {
+    "tryAcquire": "acquire", "tryLock": "lock", "poll": "take",
+    "awaitAdvanceInterruptibly": "awaitAdvance",
+}  # fmt: skip
+_UNBOUNDED_ARITY = {
+    "get": (0,), "join": (0,), "await": (0,), "acquire": (0, 1), "lock": (0,), "take": (0,),
+    "awaitAdvance": (1,),
+}  # fmt: skip
+# Mockito verification modes: a timeout ends once the interaction is seen, while after always
+# waits its full period, so an added or raised after is a fixed sleep (Mustafa 2026-10-30).
+_MOCKITO_WAITS = {"timeout": "<mockito-timeout>", "after": "<mockito-after>"}
+# Bounds that hold a test for their full length whatever the code does: judged as sleeps, a
+# raised or added one is widened unless the member lost a sleep at least as long.
+_SLEEP_GROUPS = frozenset(["<mockito-after>", "<pollDelay>"])
+_SPIN_CALLS = frozenset(["onSpinWait", "yield"])
 _AFTER_LIFECYCLE = frozenset([
     "After", "AfterEach", "AfterClass", "AfterAll", "AfterMethod", "AfterTest", "AfterSuite",
     "AfterGroups",
@@ -214,6 +234,14 @@ def _sites(unit: CompilationUnit | None) -> Counter:
     return out
 
 
+def _statements(sites: Counter) -> Counter:
+    """The site counts with the following statement left out."""
+    out: Counter = Counter()
+    for site, count in sites.items():
+        out[(site.member, site.statement)] += count
+    return out
+
+
 def _mode_spans(unit: CompilationUnit, calls: list[Call]) -> list[tuple[int, int]]:
     return [(c.end, _close(unit, c.end)) for c in calls if c.name in _MODE_CALLS and c.arity]
 
@@ -295,8 +323,32 @@ def _chain_bound(chain, line: int) -> Bound:
 @dataclass
 class _Bounds:
     groups: dict[tuple, list[Bound]]
-    sleeps: list[tuple[int, str]]  # direct sleep forms and always true pollDelay waits
+    sleeps: list[tuple[int, str]]  # always true pollDelay and during waits
     ignored: list[tuple[Call, Statement]]
+    bounded: Counter  # timed waits by member, unbounded form and receiver
+    unbounded: dict[tuple, list[Call]]  # the same waits made with no bound
+
+
+def _mockito_mode(unit: CompilationUnit, call: Call) -> bool:
+    if call.name not in _MOCKITO_WAITS or call.arity != 1 or call.reference:
+        return False
+    if call.receiver == "Mockito":
+        return True
+    if call.receiver is not None:
+        return False
+    return any(
+        imp.static and imp.name.startswith("org.mockito.")
+        and (imp.wildcard or imp.name.rsplit(".", 1)[-1] == call.name)
+        for imp in unit.imports
+    )  # fmt: skip
+
+
+def _single_bound(args: tuple[str, ...], line: int) -> Bound:
+    found, _ = _argument_bounds(args, line)
+    if found:
+        return found[0]
+    text = " , ".join(args)
+    return Bound(fold(args[0]) if len(args) == 1 else None, False, text, line)
 
 
 def _bounds(program: Program, path: str) -> _Bounds:
@@ -305,6 +357,8 @@ def _bounds(program: Program, path: str) -> _Bounds:
     modes = _mode_spans(unit, calls)
     groups: dict[tuple, list[Bound]] = {}
     sleeps, ignored = [], []
+    bounded: Counter = Counter()
+    unbounded: dict[tuple, list[Call]] = {}
     tokens = unit.tokens
     for call in calls:
         if call.reference:
@@ -313,18 +367,34 @@ def _bounds(program: Program, path: str) -> _Bounds:
         member = _member_key(nodes)
         line = tokens[call.start].line
         args = _arguments(unit, call)
-        if _awaitility_root(unit, call):
+        root = _awaitility_root(unit, call)
+        if root:
             chain = _chain(unit, call)
             groups.setdefault((member, "<awaitility>"), []).append(_chain_bound(chain, line))
+            for name, _, chain_args in chain:
+                if name == "pollDelay" and chain_args:
+                    bound = _single_bound(chain_args, line)
+                    groups.setdefault((member, "<pollDelay>"), []).append(bound)
             names = [name for name, _, _ in chain]
-            if "pollDelay" in names and chain[-1][0].startswith("until"):
+            if ("pollDelay" in names or "during" in names) and chain[-1][0].startswith("until"):
                 if " , ".join(chain[-1][2]) in _TRUE_CONDITIONS:
                     sleeps.append((call.start, "pollDelay"))
         if call.name == "setDefaultTimeout":
             groups.setdefault((member, "<setDefaultTimeout>"), []).append(_value("", line))
+        if _mockito_mode(unit, call):
+            group = (member, _MOCKITO_WAITS[call.name])
+            groups.setdefault(group, []).append(_single_bound(args, line))
+            continue
         if _inside(modes, call.start):
             continue
         found, used = _argument_bounds(args, line)
+        timed = _UNBOUNDED_FORM.get(call.name, call.name)
+        if timed in _UNBOUNDED_ARITY and not root:
+            key = (member, timed, call.receiver)
+            if found or (call.name == "join" and sleep_form(program, path, call)):
+                bounded[key] += 1
+            elif call.name in _UNBOUNDED_ARITY and call.arity in _UNBOUNDED_ARITY[call.name]:
+                unbounded.setdefault(key, []).append(call)
         for bound in found:
             groups.setdefault((member, call.name, "pair"), []).append(bound)
         lower = call.name.lower()
@@ -334,11 +404,11 @@ def _bounds(program: Program, path: str) -> _Bounds:
                 if k not in used and number is not None:
                     group = (member, call.name, k)
                     groups.setdefault(group, []).append(Bound(number, False, arg, line))
-        if call.name in _RESULT_WAITS and found:
+        if call.name in _IGNORED_WAITS and found:
             statement, _ = _statement(nodes)
             if statement is not None and _result_ignored(unit, call, statement):
                 ignored.append((call, statement))
-    return _Bounds(groups, sleeps, ignored)
+    return _Bounds(groups, sleeps, ignored, bounded, unbounded)
 
 
 class _Whole:
@@ -434,6 +504,20 @@ def sleep_form(program: Program, path: str, call: Call) -> bool:
     if follow_for_scan(program, path, call):
         return False  # a read declaration is followed into its body instead
     return True
+
+
+def _object_wait(program: Program, path: str, call: Call) -> bool:
+    """`Object.wait`, which outside a loop that rechecks its condition waits out its timeout,
+    or until any notify, and checks nothing: judged as a sleep (Mustafa 2026-10-30)."""
+    if call.name != "wait" or call.reference or call.arity not in (0, 1, 2):
+        return False
+    return not follow_for_scan(program, path, call)
+
+
+def _sleeps_like(program: Program, path: str, call: Call) -> bool:
+    """A test side sleep: a sleep form or an `Object.wait`. Production code keeps reading only
+    sleep forms."""
+    return sleep_form(program, path, call) or _object_wait(program, path, call)
 
 
 # -- timeouts on test methods and rules ---------------------------------------------------
@@ -594,11 +678,18 @@ def _raised(old: Bound | None, new: Bound | None) -> bool:
 
 
 def compare(old: list[Bound], new: list[Bound]) -> tuple[list[Bound], list[Bound]]:
-    """The raised bounds and the newly added ones among the calls of one name in one member.
+    """The raised bounds and the newly added ones among the calls of one name in one member."""
+    raised, added, _ = _pairing(old, new)
+    return raised, added
+
+
+def _pairing(old: list[Bound], new: list[Bound]) -> tuple[list[Bound], list[Bound], list[Bound]]:
+    """The raised bounds, the newly added ones and the lost ones among the calls of one name.
 
     Bounds equal in text pair up first. The rest are paired largest first, an unknown new value
     counting as the largest and an unknown old one as the smallest, so a raised bound is found
-    whichever call it sits in; the smallest leftover new bounds are the newly added calls.
+    whichever call it sits in; the smallest leftover new bounds are the newly added calls, and
+    the smallest leftover old ones the calls that went.
     """
     left = Counter(b.text for b in old)
     rest_new = []
@@ -619,7 +710,7 @@ def compare(old: list[Bound], new: list[Bound]) -> tuple[list[Bound], list[Bound
     rest_new.sort(key=lambda b: size(b, float("inf")), reverse=True)
     rest_old.sort(key=lambda b: size(b, float("-inf")), reverse=True)
     raised = [n for n, o in zip(rest_new, rest_old, strict=False) if _raised(o, n)]
-    return raised, rest_new[len(rest_old) :]
+    return raised, rest_new[len(rest_old) :], rest_old[len(rest_new) :]
 
 
 def _over_limit(bound: Bound) -> bool:
@@ -745,7 +836,7 @@ def _reaches_sleep(ctx: Context, path: str, call: Call) -> bool:
             continue
         inner_unit = program.units[reached.path]
         for inner in calls_in(inner_unit, reached.method.body):
-            if inner.reference or not sleep_form(program, reached.path, inner):
+            if inner.reference or not _sleeps_like(program, reached.path, inner):
                 continue
             where, at, holder = reached, inner.start, reached
             loop = _innermost_loop(inner_unit, at, reached.method)
@@ -789,7 +880,7 @@ def _reaches_ignored_wait(ctx: Context, path: str, call: Call) -> bool:
             continue
         inner = program.units[reached.path]
         for wait in calls_in(inner, body):
-            if wait.reference or wait.name not in _RESULT_WAITS:
+            if wait.reference or wait.name not in _IGNORED_WAITS:
                 continue
             if not _argument_bounds(_arguments(inner, wait), 0)[0]:
                 continue
@@ -815,7 +906,7 @@ def _sleep_findings(ctx: Context, change: FileChange, found: _Bounds) -> Iterato
         if new_sites[site] <= old_sites[site]:
             continue
         line = unit.tokens[call.start].line
-        if call.start in direct or sleep_form(program, change.path, call):
+        if call.start in direct or _sleeps_like(program, change.path, call):
             if (site.member, site.following, line) in lowered:
                 continue
             method = _method_at(unit, call.start)
@@ -846,7 +937,7 @@ def _lowered_sleeps(ctx: Context, change: FileChange) -> tuple[set[tuple], set[t
         found = {}
         lookup = constant_lookup(_file_constants(unit))
         for call in calls_in(unit, _Whole(unit)):
-            if call.reference or not sleep_form(program, change.path, call):
+            if call.reference or not _sleeps_like(program, change.path, call):
                 continue
             args = _arguments(unit, call)
             values, _ = _argument_bounds(args, 0)
@@ -926,19 +1017,40 @@ def _cleanup(unit: CompilationUnit, call: Call, statement: Statement) -> bool:
 def _file(ctx: Context, change: FileChange) -> Iterator[Finding]:
     path = change.path
     after = _bounds(ctx.after, path)
-    before = _bounds(ctx.before, path) if change.before is not None else _Bounds({}, [], [])
-    for group, new in after.groups.items():
-        raised, added = compare(before.groups.get(group, []), new)
+    empty = _Bounds({}, [], [], Counter(), {})
+    before = _bounds(ctx.before, path) if change.before is not None else empty
+    old_sleeps = _member_sleeps(ctx.before, path, change.before)
+    new_sleeps = _member_sleeps(ctx.after, path, change.after)
+    lost_by: dict[tuple, list[Bound]] = {}
+    added_by: dict[tuple, list[Bound]] = {}
+    for group in sorted(set(after.groups) | set(before.groups), key=repr):
+        new = after.groups.get(group, [])
+        raised, added, lost = _pairing(before.groups.get(group, []), new)
         for bound in raised:
             yield Finding(CODE, path, bound.line)
         if group[1] == "<setDefaultTimeout>":
             for bound in added:
                 yield Finding(CODE, path, bound.line)
             continue
+        if group[1] in _SLEEP_GROUPS:
+            member = group[0]
+            gone = _pairing(old_sleeps.get(member, []), new_sleeps.get(member, []))[2]
+            extra, unpaired = compare(gone, [b for b in added if b.ms != 0])
+            for bound in extra + unpaired:
+                yield Finding(CODE, path, bound.line)
+            continue
+        lost_by.setdefault(group[1:], []).extend(lost)
+        added_by.setdefault(group[1:], []).extend(added)
         if group[1] == "<awaitility>" or (group[1] in _WAITS and group[-1] == "pair"):
             for bound in added:
                 if _over_limit(bound):
                     yield Finding(CODE, path, bound.line)
+    # A wait one member lost is paired with one of its name another member gained, so moving a
+    # wait into a helper cannot carry a raised bound (Mustafa 2026-10-30).
+    for tail, lost in lost_by.items():
+        for bound in compare(lost, added_by.get(tail, []))[0]:
+            yield Finding(CODE, path, bound.line)
+    yield from _removed_bounds(change, before, after)
     old_timeouts = _method_timeouts(change.before) if change.before is not None else {}
     for member, new in _method_timeouts(change.after).items():
         if member in old_timeouts and _raised(old_timeouts[member], new):
@@ -949,13 +1061,111 @@ def _file(ctx: Context, change: FileChange) -> Iterator[Finding]:
         if member in old_rules and _raised(old_rules[member], new):
             yield Finding(CODE, path, new.line if new is not None else old_rules[member].line)
     old_sites, new_sites = _sites(change.before), _sites(change.after)
+    old_statements, new_statements = _statements(old_sites), _statements(new_sites)
     for call, statement in after.ignored:
         site = _site(change.after, call.start)
         if new_sites[site] <= old_sites[site]:
             continue
+        key = (site.member, site.statement)
+        if call.name not in _RESULT_WAITS and new_statements[key] <= old_statements[key]:
+            continue  # an unmoved one with code newly after it is a ruling still open
         if not _cleanup(change.after, call, statement):
             yield Finding(CODE, path, change.after.tokens[call.start].line)
     yield from _sleep_findings(ctx, change, after)
+    yield from _spin_loops(ctx, change)
+
+
+def _removed_bounds(change: FileChange, before: _Bounds, after: _Bounds) -> Iterator[Finding]:
+    """A timed wait whose bound was taken off, as `f.get(500, MILLISECONDS)` turned into
+    `f.get()` or `sem.tryAcquire(5, SECONDS)` into `sem.acquire()`: each wait of the same form
+    on the same receiver that a member gained, up to the timed ones it lost, is widened. The
+    gained waits on added statements are taken first."""
+    old_sites, new_sites = _sites(change.before), _sites(change.after)
+    unit = change.after
+    for key, calls in after.unbounded.items():
+        lost = before.bounded[key] - after.bounded[key]
+        gained = len(calls) - len(before.unbounded.get(key, []))
+        if lost <= 0 or gained <= 0:
+            continue
+
+        def fresh(call: Call) -> bool:
+            site = _site(unit, call.start)
+            return new_sites[site] > old_sites[site]
+
+        ordered = sorted(calls, key=lambda c: (not fresh(c), c.start))
+        for call in ordered[: min(lost, gained)]:
+            yield Finding(CODE, change.path, unit.tokens[call.start].line)
+
+
+def _member_sleeps(
+    program: Program, path: str, unit: CompilationUnit | None
+) -> dict[tuple, list[Bound]]:
+    """The test side sleeps of a file by member, each with its length when it folds."""
+    out: dict[tuple, list[Bound]] = {}
+    if unit is None:
+        return out
+    lookup = constant_lookup(_file_constants(unit))
+    for call in calls_in(unit, _Whole(unit)):
+        if call.reference or not _sleeps_like(program, path, call):
+            continue
+        args = _arguments(unit, call)
+        values, _ = _argument_bounds(args, 0)
+        ms = values[0].ms if values else (fold(args[0], lookup) if args else None)
+        line = unit.tokens[call.start].line
+        text = _text(unit, call.start, _close(unit, call.end) + 1) if call.arity is not None else ""
+        member = _member_key(path_to(unit, call.start))
+        out.setdefault(member, []).append(Bound(ms, False, text, line))
+    return out
+
+
+def _spin_loops(ctx: Context, change: FileChange) -> Iterator[Finding]:
+    """An added loop that waits without a sleep (Mustafa 2026-10-30): a body that is empty or
+    only spins (`Thread.onSpinWait()`, `Thread.yield()`) under a condition that reads state, or
+    a condition that makes a timed wait, as in `while (!latch.await(1, SECONDS)) {}`. It is
+    judged under the poll rules, so it must be bounded by a clock or counter and checked."""
+    program, unit = ctx.after, change.after
+    old_sites, new_sites = _sites(change.before), _sites(unit)
+    for loop in walk(unit):
+        if not isinstance(loop, Statement) or loop.kind not in _LOOPS or loop.header is None:
+            continue
+        site = _site(unit, loop.start)
+        if new_sites[site] <= old_sites[site]:
+            continue
+        method = _method_at(unit, loop.start)
+        if method is None or method.body is None:
+            continue
+        defs = poll._local_definitions(unit, method.body)
+        scope = poll.Scope(program, {}, poll._counters(unit, loop), defs, defs)
+        if not (_timed_condition(unit, loop) or (
+            _only_spins(unit, loop) and "state" in poll.kinds(poll._condition(unit, loop), scope)
+        )):  # fmt: skip
+            continue
+        check = (unit, None if _called(program, method) else loop, None)
+        if _fixed_loop(program, change.path, method, loop, loop.end, scope, check):
+            yield Finding(CODE, change.path, loop.line)
+
+
+def _only_spins(unit: CompilationUnit, loop: Statement) -> bool:
+    for body in loop.blocks:
+        for statement in body.statements:
+            if statement.kind == "empty":
+                continue
+            if statement.kind != "expression":
+                return False
+            calls = [c for c in calls_in(unit, statement) if not c.reference]
+            if len(calls) != 1 or calls[0].name not in _SPIN_CALLS or calls[0].arity != 0:
+                return False
+    return True
+
+
+def _timed_condition(unit: CompilationUnit, loop: Statement) -> bool:
+    header = loop.header
+    for call in calls_in(unit, header):
+        if call.reference or call.name not in _WAITS:
+            continue
+        if _argument_bounds(_arguments(unit, call), 0)[0]:
+            return True
+    return False
 
 
 def _line_of(unit: CompilationUnit, member: tuple, fallback: int) -> int:
